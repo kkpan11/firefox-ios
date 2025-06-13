@@ -13,7 +13,7 @@ final class HomepageViewController: UIViewController,
                                     UIAdaptivePresentationControllerDelegate,
                                     FeatureFlaggable,
                                     ContentContainable,
-                                    Notifiable,
+                                    Screenshotable,
                                     Themeable,
                                     StoreSubscriber {
     // MARK: - Typealiases
@@ -145,7 +145,6 @@ final class HomepageViewController: UIViewController,
             )
         )
 
-        setupNotifications(forObserver: self, observing: [UIContentSizeCategory.didChangeNotification])
         listenForThemeChange(view)
         applyTheme()
         addTapGestureRecognizerToDismissKeyboard()
@@ -176,6 +175,17 @@ final class HomepageViewController: UIViewController,
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         resetTrackedObjects()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        store.dispatch(
+            HomepageAction(
+                numberOfTopSitesPerRow: numberOfTilesPerRow(for: availableWidth),
+                windowUUID: windowUUID,
+                actionType: HomepageActionType.viewDidLayoutSubviews
+            )
+        )
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -309,16 +319,6 @@ final class HomepageViewController: UIViewController,
             screen: .homepage
         )
         store.dispatch(action)
-    }
-
-    // MARK: - Notifiable
-    func handleNotifications(_ notification: Notification) {
-        switch notification.name {
-        case UIContentSizeCategory.didChangeNotification:
-            dynamicTypeChanged()
-        default:
-            break
-        }
     }
 
     // MARK: - Theming
@@ -646,11 +646,40 @@ final class HomepageViewController: UIViewController,
         }
     }
 
-    private func dynamicTypeChanged() {
-        collectionView?.visibleCells.forEach { cell in
-            guard let customCell = cell as? TopSiteCell else { return }
-            customCell.updateDynamicConstraints()
+    // MARK: - Screenshotable
+
+    func screenshot(bounds: CGRect) -> UIImage? {
+        let renderer = UIGraphicsImageRenderer(size: bounds.size)
+
+        return renderer.image { context in
+            themeManager.getCurrentTheme(for: windowUUID).colors.layer1.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height))
+            // Draw the wallpaper separately, so the potential safe area coordinates is filled with the
+            // wallpaper
+            wallpaperView.drawHierarchy(
+                in: CGRect(
+                    x: 0,
+                    y: 0,
+                    width: bounds.width,
+                    height: bounds.height
+                ),
+                afterScreenUpdates: false
+            )
+
+            view.drawHierarchy(
+                in: CGRect(
+                    x: bounds.origin.x,
+                    y: -bounds.origin.y,
+                    width: bounds.width,
+                    height: collectionView?.frame.height ?? 0.0
+                ),
+                afterScreenUpdates: false
+            )
         }
+    }
+
+    func screenshot(quality: CGFloat) -> UIImage? {
+        return screenshot(bounds: view.bounds)
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {

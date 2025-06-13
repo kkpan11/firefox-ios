@@ -180,13 +180,6 @@ final class FeatureFlagsDebugViewController: SettingsTableViewController, Featur
                     self?.reloadView()
                 },
                 FeatureFlagsBoolSetting(
-                    with: .tabAnimation,
-                    titleText: format(string: "Tab Tray Animation"),
-                    statusText: format(string: "Toggle to use the new tab tray animation when new tab experiment is enabled")
-                ) { [weak self] _ in
-                    self?.reloadView()
-                },
-                FeatureFlagsBoolSetting(
                     with: .toolbarRefactor,
                     titleText: format(string: "Toolbar Redesign"),
                     statusText: format(string: "Toggle to enable the toolbar redesign")
@@ -218,6 +211,13 @@ final class FeatureFlagsDebugViewController: SettingsTableViewController, Featur
                     with: .updatedPasswordManager,
                     titleText: format(string: "Updated Password Manager"),
                     statusText: format(string: "Toggle to enable the updated password manager")
+                ) { [weak self] _ in
+                    self?.reloadView()
+                },
+                FeatureFlagsBoolSetting(
+                    with: .webEngineIntegrationRefactor,
+                    titleText: format(string: "Web Engine Integration Refactor"),
+                    statusText: format(string: "Toggle to enable the use of WebEngine library")
                 ) { [weak self] _ in
                     self?.reloadView()
                 },

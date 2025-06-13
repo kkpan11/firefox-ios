@@ -7,89 +7,79 @@ import UIKit
 import ComponentLibrary
 
 public final class MenuRedesignMainView: UIView,
-                                 ThemeApplicable {
+                                         ThemeApplicable {
     private struct UX {
         static let headerTopMargin: CGFloat = 15
+        static let horizontalMargin: CGFloat = 16
+        static let closeButtonSize: CGFloat = 30
+        static let headerTopMarginWithButton: CGFloat = 8
     }
+
+    public var closeButtonCallback: (() -> Void)?
 
     // MARK: - UI Elements
-    private var collectionView: MenuCollectionView = .build()
     private var tableView: MenuRedesignTableView = .build()
-    public var accountHeaderView: HeaderView = .build()
-
-    // MARK: - Initializers
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupView()
-        handleUpdateHeaderLineView()
+    private lazy var closeButton: CloseButton = .build { button in
+        button.addTarget(self, action: #selector(self.closeTapped), for: .touchUpInside)
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
+    private var viewConstraints: [NSLayoutConstraint] = []
 
     // MARK: - UI Setup
-    private func setupView() {
-        accountHeaderView.updateHeaderLineView(isHidden: true)
-        self.addSubview(accountHeaderView)
-        self.addSubview(collectionView)
+    private func setupView(with data: [MenuSection]) {
+        self.removeConstraints(viewConstraints)
+        viewConstraints.removeAll()
         self.addSubview(tableView)
+        if let section = data.first(where: { $0.isHomepage }), section.isHomepage {
+            self.addSubview(closeButton)
+            viewConstraints.append(contentsOf: [
+                closeButton.topAnchor.constraint(equalTo: self.topAnchor, constant: UX.headerTopMargin),
+                closeButton.trailingAnchor.constraint(equalTo: self.trailingAnchor, constant: -UX.horizontalMargin),
+                closeButton.widthAnchor.constraint(equalToConstant: UX.closeButtonSize),
+                closeButton.heightAnchor.constraint(equalToConstant: UX.closeButtonSize),
 
-        NSLayoutConstraint.activate([
-            accountHeaderView.topAnchor.constraint(equalTo: self.topAnchor, constant: UX.headerTopMargin),
-            accountHeaderView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
-            accountHeaderView.trailingAnchor.constraint(equalTo: self.trailingAnchor),
-
-            collectionView.topAnchor.constraint(equalTo: accountHeaderView.bottomAnchor),
-            collectionView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: self.trailingAnchor),
-
-            tableView.topAnchor.constraint(equalTo: collectionView.bottomAnchor),
-            tableView.bottomAnchor.constraint(equalTo: self.bottomAnchor),
-            tableView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: self.trailingAnchor)
-        ])
-    }
-
-    public func setupDetails(subtitle: String, title: String, icon: UIImage?) {
-        accountHeaderView.setupDetails(subtitle: subtitle,
-                                       title: title,
-                                       icon: icon)
-    }
-
-    public func setupAccessibilityIdentifiers(closeButtonA11yLabel: String,
-                                              closeButtonA11yId: String,
-                                              mainButtonA11yLabel: String,
-                                              mainButtonA11yId: String,
-                                              menuA11yId: String,
-                                              menuA11yLabel: String) {
-        accountHeaderView.setupAccessibility(closeButtonA11yLabel: closeButtonA11yLabel,
-                                             closeButtonA11yId: closeButtonA11yId,
-                                             mainButtonA11yLabel: mainButtonA11yLabel,
-                                             mainButtonA11yId: mainButtonA11yId)
-        collectionView.setupAccessibilityIdentifiers(menuA11yId: menuA11yId, menuA11yLabel: menuA11yLabel)
-        tableView.setupAccessibilityIdentifiers(menuA11yId: menuA11yId, menuA11yLabel: menuA11yLabel)
-    }
-
-    private func handleUpdateHeaderLineView() {
-        tableView.updateHeaderLineView = { [weak self] isHidden in
-            guard let self else { return }
-            self.accountHeaderView.updateHeaderLineView(isHidden: isHidden)
+                tableView.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: UX.headerTopMarginWithButton),
+                tableView.bottomAnchor.constraint(equalTo: self.bottomAnchor),
+                tableView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
+                tableView.trailingAnchor.constraint(equalTo: self.trailingAnchor)
+            ])
+        } else {
+            self.closeButton.removeFromSuperview()
+            viewConstraints.append(contentsOf: [
+                tableView.topAnchor.constraint(equalTo: self.topAnchor, constant: UX.headerTopMargin),
+                tableView.bottomAnchor.constraint(equalTo: self.bottomAnchor),
+                tableView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
+                tableView.trailingAnchor.constraint(equalTo: self.trailingAnchor)
+            ])
         }
+        NSLayoutConstraint.activate(viewConstraints)
+    }
+
+    public func setupAccessibilityIdentifiers(menuA11yId: String,
+                                              menuA11yLabel: String,
+                                              closeButtonA11yLabel: String,
+                                              closeButtonA11yIdentifier: String) {
+        let closeButtonViewModel = CloseButtonViewModel(a11yLabel: closeButtonA11yLabel,
+                                                        a11yIdentifier: closeButtonA11yIdentifier)
+        closeButton.configure(viewModel: closeButtonViewModel)
+        tableView.setupAccessibilityIdentifiers(menuA11yId: menuA11yId, menuA11yLabel: menuA11yLabel)
     }
 
     // MARK: - Interface
     public func reloadDataView(with data: [MenuSection]) {
-        collectionView.reloadCollectionView(with: data)
+        setupView(with: data)
         tableView.reloadTableView(with: data)
+    }
+
+    // MARK: - Callbacks
+    @objc
+    private func closeTapped() {
+        closeButtonCallback?()
     }
 
     // MARK: - ThemeApplicable
     public func applyTheme(theme: Theme) {
         backgroundColor = .clear
-        collectionView.applyTheme(theme: theme)
         tableView.applyTheme(theme: theme)
-        accountHeaderView.applyTheme(theme: theme)
-        accountHeaderView.setIconTheme(with: theme)
     }
 }

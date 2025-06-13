@@ -205,9 +205,10 @@ class Action {
     static let SentToDevice = "SentToDevice"
     static let AddToReadingListBrowserTabMenu = "AddToReadingListBrowserTabMenu"
 
-    static let SelectAutomatically = "SelectAutomatically"
-    static let SelectManually = "SelectManually"
-    static let SystemThemeSwitch = "SystemThemeSwitch"
+    static let SelectAutomaticTheme = "SelectAutomaticTheme"
+    static let SelectLightTheme = "SelectLightTheme"
+    static let SelectDarkTheme = "SelectDarkTheme"
+    static let SelectBrowserDarkTheme = "SelectBrowserDarkTheme"
 
     static let AddCustomSearchEngine = "AddCustomSearchEngine"
     static let RemoveCustomSearchEngine = "RemoveCustomSearchEngine"
@@ -620,14 +621,17 @@ func createScreenGraph(for test: XCTestCase, with app: XCUIApplication) -> MMScr
     }
 
     map.addScreenState(DisplaySettings) { screenState in
-        screenState.gesture(forAction: Action.SelectAutomatically) { userState in
-            app.cells.staticTexts["Automatically"].waitAndTap()
+        screenState.gesture(forAction: Action.SelectAutomaticTheme) { userState in
+            app.buttons[AccessibilityIdentifiers.Settings.Appearance.automaticThemeView].waitAndTap()
         }
-        screenState.gesture(forAction: Action.SelectManually) { userState in
-            app.cells.staticTexts["Manually"].waitAndTap()
+        screenState.gesture(forAction: Action.SelectLightTheme) { userState in
+            app.buttons[AccessibilityIdentifiers.Settings.Appearance.lightThemeView].waitAndTap()
         }
-        screenState.gesture(forAction: Action.SystemThemeSwitch) { userState in
-            app.switches["SystemThemeSwitchValue"].waitAndTap()
+        screenState.gesture(forAction: Action.SelectDarkTheme) { userState in
+            app.buttons[AccessibilityIdentifiers.Settings.Appearance.darkThemeView].waitAndTap()
+        }
+        screenState.gesture(forAction: Action.SelectBrowserDarkTheme) { userState in
+            app.switches[AccessibilityIdentifiers.Settings.Appearance.darkModeToggle].waitAndTap()
         }
         screenState.backAction = navigationControllerBackAction
     }
@@ -776,11 +780,11 @@ func createScreenGraph(for test: XCTestCase, with app: XCUIApplication) -> MMScr
 
     map.addScreenState(ToolbarSettings) { screenState in
         screenState.gesture(forAction: Action.SelectToolbarBottom) { UserState in
-            app.cells[AccessibilityIdentifiers.Settings.SearchBar.bottomSetting].waitAndTap()
+            app.buttons[AccessibilityIdentifiers.Settings.SearchBar.bottomSetting].waitAndTap()
         }
 
         screenState.gesture(forAction: Action.SelectToolbarTop) { UserState in
-            app.cells[AccessibilityIdentifiers.Settings.SearchBar.topSetting].waitAndTap()
+            app.buttons[AccessibilityIdentifiers.Settings.SearchBar.topSetting].waitAndTap()
         }
 
         screenState.backAction = navigationControllerBackAction
@@ -936,7 +940,7 @@ func createScreenGraph(for test: XCTestCase, with app: XCUIApplication) -> MMScr
                 transitionTo: HomePanelsScreen
             )
             screenState.tap(
-                app.tables.cells.buttons[StandardImageIdentifiers.Large.tab],
+                app.tables.cells.buttons[StandardImageIdentifiers.Large.privateMode],
                 forAction: Action.OpenPrivateTabLongPressTabsButton,
                 transitionTo: NewTabScreen
             ) { userState in
@@ -984,15 +988,9 @@ func createScreenGraph(for test: XCTestCase, with app: XCUIApplication) -> MMScr
             to: TrackingProtectionContextMenuDetails
         )
 
-        if isTablet {
         screenState.tap(
             app.buttons[AccessibilityIdentifiers.Toolbar.addNewTabButton],
             forAction: Action.GoToHomePage)
-            } else {
-                screenState.tap(
-                    app.buttons[AccessibilityIdentifiers.Toolbar.homeButton],
-                forAction: Action.GoToHomePage)
-            }
 
         screenState.tap(
             app.buttons[AccessibilityIdentifiers.Toolbar.searchButton],

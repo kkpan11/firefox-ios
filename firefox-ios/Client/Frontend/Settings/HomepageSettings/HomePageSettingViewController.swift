@@ -131,8 +131,8 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
             let jumpBackInSetting = BoolSetting(
                 prefs: profile.prefs,
                 theme: themeManager.getCurrentTheme(for: windowUUID),
-                prefKey: PrefsKeys.UserFeatureFlagPrefs.JumpBackInSection,
-                defaultValue: true,
+                prefKey: PrefsKeys.FeatureFlags.JumpBackInSection,
+                defaultValue: featureFlags.isFeatureEnabled(.hntJumpBackInSection, checking: .userOnly),
                 titleText: .Settings.Homepage.CustomizeFirefoxHome.JumpBackIn
             ) { value in
                 store.dispatch(
@@ -148,8 +148,8 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
             let bookmarksSetting = BoolSetting(
                 prefs: profile.prefs,
                 theme: themeManager.getCurrentTheme(for: windowUUID),
-                prefKey: PrefsKeys.UserFeatureFlagPrefs.BookmarksSection,
-                defaultValue: true,
+                prefKey: PrefsKeys.FeatureFlags.BookmarksSection,
+                defaultValue: featureFlags.isFeatureEnabled(.hntBookmarksSection, checking: .userOnly),
                 titleText: .Settings.Homepage.CustomizeFirefoxHome.Bookmarks
             ) { value in
                 store.dispatch(
@@ -208,15 +208,19 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
 
         typealias a11y = AccessibilityIdentifiers.Settings.Homepage.StartAtHome
 
-        let onOptionSelected: (Bool, StartAtHomeSetting) -> Void = { [weak self] state, option in
-            self?.prefs.setString(option.rawValue, forKey: PrefsKeys.FeatureFlags.StartAtHome)
+        let onOptionSelected: (
+            Bool,
+            StartAtHomeSetting,
+            StartAtHomeSetting?
+        ) -> Void = { [weak self] state, newOption, previousOption in
+            self?.prefs.setString(newOption.rawValue, forKey: PrefsKeys.FeatureFlags.StartAtHome)
             self?.tableView.reloadData()
 
-            let extras = [
-                TelemetryWrapper.EventExtraKey.preference.rawValue: PrefsKeys.FeatureFlags.StartAtHome,
-                TelemetryWrapper.EventExtraKey.preferenceChanged.rawValue: option.rawValue
-            ]
-            TelemetryWrapper.recordEvent(category: .action, method: .change, object: .setting, extras: extras)
+            SettingsTelemetry().changedSetting(
+                PrefsKeys.FeatureFlags.StartAtHome,
+                to: newOption.rawValue,
+                from: previousOption?.rawValue ?? SettingsTelemetry.Placeholders.missingValue
+            )
         }
 
         let afterFourHoursOption = CheckmarkSetting(
@@ -225,8 +229,9 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
             accessibilityIdentifier: a11y.afterFourHours,
             isChecked: { return self.currentStartAtHomeSetting == .afterFourHours },
             onChecked: {
+                let previousOption = self.currentStartAtHomeSetting
                 self.currentStartAtHomeSetting = .afterFourHours
-                onOptionSelected(true, .afterFourHours)
+                onOptionSelected(true, .afterFourHours, previousOption)
             })
 
         let alwaysOption = CheckmarkSetting(
@@ -235,8 +240,9 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
             accessibilityIdentifier: a11y.always,
             isChecked: { return self.currentStartAtHomeSetting == .always },
             onChecked: {
+                let previousOption = self.currentStartAtHomeSetting
                 self.currentStartAtHomeSetting = .always
-                onOptionSelected(true, .always)
+                onOptionSelected(true, .always, previousOption)
             })
 
         let neverOption = CheckmarkSetting(
@@ -245,8 +251,9 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
             accessibilityIdentifier: a11y.disabled,
             isChecked: { return self.currentStartAtHomeSetting == .disabled },
             onChecked: {
+                let previousOption = self.currentStartAtHomeSetting
                 self.currentStartAtHomeSetting = .disabled
-                onOptionSelected(false, .disabled)
+                onOptionSelected(false, .disabled, previousOption)
             })
 
         let section = SettingSection(

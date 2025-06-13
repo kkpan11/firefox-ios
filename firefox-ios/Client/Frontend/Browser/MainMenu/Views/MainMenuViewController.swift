@@ -114,17 +114,7 @@ class MainMenuViewController: UIViewController,
             )
         )
 
-        if isMenuRedesign {
-            menuRedesignContent.accountHeaderView.closeButtonCallback = { [weak self] in
-                guard let self else { return }
-                self.dispatchCloseMenuAction()
-            }
-
-            menuRedesignContent.accountHeaderView.mainButtonCallback = { [weak self] in
-                guard let self else { return }
-                self.dispatchSyncSignInAction()
-            }
-        } else {
+        if !isMenuRedesign {
             menuContent.accountHeaderView.closeButtonCallback = { [weak self] in
                 guard let self else { return }
                 self.dispatchCloseMenuAction()
@@ -133,6 +123,11 @@ class MainMenuViewController: UIViewController,
             menuContent.accountHeaderView.mainButtonCallback = { [weak self] in
                 guard let self else { return }
                 self.dispatchSyncSignInAction()
+            }
+        } else {
+            menuRedesignContent.closeButtonCallback = { [weak self] in
+                guard let self else { return }
+                self.dispatchCloseMenuAction()
             }
         }
 
@@ -222,12 +217,6 @@ class MainMenuViewController: UIViewController,
             menuRedesignContent.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             menuRedesignContent.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
         ])
-
-        let icon = UIImage(named: StandardImageIdentifiers.Large.avatarCircle)?
-            .withRenderingMode(.alwaysTemplate)
-        menuRedesignContent.setupDetails(subtitle: .MainMenu.Account.SignedOutDescription,
-                                         title: .MainMenu.Account.SignedOutTitle,
-                                         icon: icon)
     }
 
     private func setupHintView() {
@@ -254,7 +243,7 @@ class MainMenuViewController: UIViewController,
                     hintView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.hintViewMargin * 4)
                 ])
                 if isMenuRedesign {
-                    hintView.topAnchor.constraint(equalTo: menuRedesignContent.accountHeaderView.topAnchor,
+                    hintView.topAnchor.constraint(equalTo: menuRedesignContent.topAnchor,
                                                   constant: UX.hintViewMargin).isActive = true
                 } else {
                     hintView.topAnchor.constraint(equalTo: menuContent.accountHeaderView.topAnchor,
@@ -266,7 +255,7 @@ class MainMenuViewController: UIViewController,
                     hintView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.hintViewMargin)
                 ])
                 if isMenuRedesign {
-                    hintView.bottomAnchor.constraint(equalTo: menuRedesignContent.accountHeaderView.topAnchor,
+                    hintView.bottomAnchor.constraint(equalTo: menuRedesignContent.topAnchor,
                                                      constant: -UX.hintViewMargin).isActive = true
                 } else {
                     hintView.bottomAnchor.constraint(equalTo: menuContent.accountHeaderView.topAnchor,
@@ -364,13 +353,7 @@ class MainMenuViewController: UIViewController,
     }
 
     private func updateHeaderWith(accountData: AccountData, icon: UIImage?) {
-        if isMenuRedesign {
-            menuRedesignContent.accountHeaderView.setupDetails(subtitle: accountData.subtitle ?? "",
-                                                               title: accountData.title,
-                                                               icon: icon,
-                                                               warningIcon: accountData.warningIcon,
-                                                               theme: themeManager.getCurrentTheme(for: windowUUID))
-        } else {
+        if !isMenuRedesign {
             menuContent.accountHeaderView.setupDetails(subtitle: accountData.subtitle ?? "",
                                                        title: accountData.title,
                                                        icon: icon,
@@ -411,12 +394,10 @@ class MainMenuViewController: UIViewController,
         mainButtonA11yLabel: String = .MainMenu.Account.AccessibilityLabels.MainButton) {
             if isMenuRedesign {
                 menuRedesignContent.setupAccessibilityIdentifiers(
-                    closeButtonA11yLabel: .MainMenu.Account.AccessibilityLabels.CloseButton,
-                    closeButtonA11yId: AccessibilityIdentifiers.MainMenu.HeaderView.closeButton,
-                    mainButtonA11yLabel: mainButtonA11yLabel,
-                    mainButtonA11yId: AccessibilityIdentifiers.MainMenu.HeaderView.mainButton,
                     menuA11yId: AccessibilityIdentifiers.MainMenu.mainMenu,
-                    menuA11yLabel: .MainMenu.TabsSection.AccessibilityLabels.MainMenu)
+                    menuA11yLabel: .MainMenu.TabsSection.AccessibilityLabels.MainMenu,
+                    closeButtonA11yLabel: .MainMenu.Account.AccessibilityLabels.CloseButton,
+                    closeButtonA11yIdentifier: AccessibilityIdentifiers.MainMenu.HeaderView.closeButton)
             } else {
                 menuContent.setupAccessibilityIdentifiers(
                     closeButtonA11yLabel: .MainMenu.Account.AccessibilityLabels.CloseButton,
@@ -429,9 +410,7 @@ class MainMenuViewController: UIViewController,
     }
 
     private func adjustLayout(isDeviceRotating: Bool = false) {
-        if isMenuRedesign {
-            menuRedesignContent.accountHeaderView.adjustLayout()
-        } else {
+        if !isMenuRedesign {
             menuContent.accountHeaderView.adjustLayout()
         }
         if isDeviceRotating {

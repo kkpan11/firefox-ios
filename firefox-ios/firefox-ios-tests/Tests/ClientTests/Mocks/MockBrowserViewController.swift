@@ -157,6 +157,10 @@ class MockBrowserViewController: BrowserViewController {
     override func removeDocumentLoadingView() {
         removeDocumentLoadingViewCalled += 1
     }
+
+    override func willNavigateAway(from tab: Tab?, completion: (() -> Void)? = nil) {
+        completion?()
+    }
 }
 
 class MockContentContainer: ContentContainer {
@@ -173,6 +177,10 @@ class MockContentContainer: ContentContainer {
 
 class MockScreenshotView: Screenshotable {
     func screenshot(quality: CGFloat) -> UIImage? {
+        return UIImage.checkmark
+    }
+
+    func screenshot(bounds: CGRect) -> UIImage? {
         return UIImage.checkmark
     }
 }

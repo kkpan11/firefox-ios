@@ -174,17 +174,6 @@ final class AddressToolbarContainer: UIView,
         return toolbar.resignFirstResponder()
     }
 
-    override var transform: CGAffineTransform {
-        get {
-            return toolbar.transform
-        }
-        set {
-            toolbar.transform = newValue
-            leftSkeletonAddressBar.transform = newValue
-            rightSkeletonAddressBar.transform = newValue
-        }
-    }
-
     // MARK: - Redux
 
     func subscribeToRedux() {
@@ -355,6 +344,12 @@ final class AddressToolbarContainer: UIView,
         }
     }
 
+    func applyTransform(_ transform: CGAffineTransform) {
+        regularToolbar.transform = transform
+        leftSkeletonAddressBar.transform = transform
+        rightSkeletonAddressBar.transform = transform
+    }
+
     // MARK: - ThemeApplicable
     func applyTheme(theme: Theme) {
         regularToolbar.applyTheme(theme: theme)
@@ -468,6 +463,7 @@ final class AddressToolbarContainer: UIView,
             delegate?.openSuggestions(searchTerm: locationText ?? "")
         } else {
             let action = ToolbarAction(searchTerm: locationText,
+                                       shouldAnimate: true,
                                        windowUUID: windowUUID,
                                        actionType: ToolbarActionType.didStartEditingUrl)
             store.dispatch(action)

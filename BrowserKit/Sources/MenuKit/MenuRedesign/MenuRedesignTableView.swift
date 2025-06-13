@@ -13,7 +13,7 @@ final class MenuRedesignTableView: UIView,
     private struct UX {
         static let topPadding: CGFloat = 12
         static let tableViewMargin: CGFloat = 16
-        static let distanceBetweenSections: CGFloat = 32
+        static let distanceBetweenSections: CGFloat = 16
     }
 
     private var tableView: UITableView
@@ -55,10 +55,11 @@ final class MenuRedesignTableView: UIView,
     private func setupTableView() {
         tableView.delegate = self
         tableView.dataSource = self
-        tableView.register(
-            MenuRedesignCell.self,
-            forCellReuseIdentifier: MenuRedesignCell.cellIdentifier
-        )
+        tableView.register(MenuRedesignCell.self, forCellReuseIdentifier: MenuRedesignCell.cellIdentifier)
+        tableView.register(MenuInfoCell.self, forCellReuseIdentifier: MenuInfoCell.cellIdentifier)
+        tableView.register(MenuAccountCell.self, forCellReuseIdentifier: MenuAccountCell.cellIdentifier)
+        tableView.register(MenuSquaresViewContentCell.self,
+                           forCellReuseIdentifier: MenuSquaresViewContentCell.cellIdentifier)
     }
 
     func setupAccessibilityIdentifiers(menuA11yId: String, menuA11yLabel: String) {
@@ -82,7 +83,9 @@ final class MenuRedesignTableView: UIView,
         _ tableView: UITableView,
         numberOfRowsInSection section: Int
     ) -> Int {
-        if let isExpanded = menuData[section].isExpanded, isExpanded {
+        if menuData[section].isHorizontalTabsSection {
+            return 1
+        } else if let isExpanded = menuData[section].isExpanded, isExpanded {
             return menuData[section].options.count
         } else {
             return menuData[section].options.count(where: { !$0.isOptional })
@@ -93,15 +96,57 @@ final class MenuRedesignTableView: UIView,
         _ tableView: UITableView,
         cellForRowAt indexPath: IndexPath
     ) -> UITableViewCell {
+        if menuData[indexPath.section].isHorizontalTabsSection {
+            guard let cell = tableView.dequeueReusableCell(
+                withIdentifier: MenuSquaresViewContentCell.cellIdentifier,
+                for: indexPath) as? MenuSquaresViewContentCell else {
+                return UITableViewCell()
+            }
+            if let theme { cell.applyTheme(theme: theme) }
+            cell.reloadData(with: menuData)
+            return cell
+        }
+
+        let rowOption = menuData[indexPath.section].options[indexPath.row]
+
+        if rowOption.iconImage != nil || rowOption.needsReAuth != nil {
+            guard let cell = tableView.dequeueReusableCell(
+                withIdentifier: MenuAccountCell.cellIdentifier,
+                for: indexPath
+            ) as? MenuAccountCell else {
+                return UITableViewCell()
+            }
+            if let theme {
+                cell.configureCellWith(model: rowOption, theme: theme)
+                cell.applyTheme(theme: theme)
+            }
+            return cell
+        }
+
+        if rowOption.infoTitle != nil {
+            guard let cell = tableView.dequeueReusableCell(
+                withIdentifier: MenuInfoCell.cellIdentifier,
+                for: indexPath
+            ) as? MenuInfoCell else {
+                return UITableViewCell()
+            }
+            if let theme {
+                cell.configureCellWith(model: rowOption)
+                cell.applyTheme(theme: theme)
+            }
+            return cell
+        }
+
         guard let cell = tableView.dequeueReusableCell(
             withIdentifier: MenuRedesignCell.cellIdentifier,
             for: indexPath
         ) as? MenuRedesignCell else {
             return UITableViewCell()
         }
-
-        cell.configureCellWith(model: menuData[indexPath.section].options[indexPath.row])
-        if let theme { cell.applyTheme(theme: theme) }
+        if let theme {
+            cell.configureCellWith(model: rowOption, theme: theme)
+            cell.applyTheme(theme: theme)
+        }
         return cell
     }
 
@@ -129,11 +174,11 @@ final class MenuRedesignTableView: UIView,
     }
 
     func reloadTableView(with data: [MenuSection]) {
-        // We ignore first section because it is handled in MenuCollectionView
-        if let firstSection = data.first, firstSection.isTopTabsSection {
+        // We handle independently Horizontal Tabs Section in MenuSquaresViewContentCell
+        if let firstSection = data.first, firstSection.isHorizontalTabsSection {
             tableView.showsVerticalScrollIndicator = false
             menuData = data
-            menuData.remove(at: 0)
+            menuData.removeAll(where: { $0.isHorizontalTabsSection })
         } else {
             menuData = data
         }

@@ -21,7 +21,11 @@ enum NimbusFeatureFlagID: String, CaseIterable {
     case feltPrivacyFeltDeletion
     case feltPrivacySimplifiedUI
     case firefoxSuggestFeature
+    case hntBookmarksSection
     case hntContentFeedRefresh
+    case hntCusomizationSection
+    case hntJumpBackInSection
+    case hntSponsoredShortcuts
     case hntTopSitesVisualRefresh
     case homepageRebuild
     case inactiveTabs
@@ -30,6 +34,7 @@ enum NimbusFeatureFlagID: String, CaseIterable {
     case menuRefactorHint
     case menuRedesign
     case microsurvey
+    case modernOnboardingUI
     case nativeErrorPage
     case noInternetConnectionErrorPage
     case pdfRefactor
@@ -41,7 +46,6 @@ enum NimbusFeatureFlagID: String, CaseIterable {
     case sentFromFirefoxTreatmentA
     case splashScreen
     case startAtHome
-    case tabAnimation
     case tabTrayUIExperiments
     case toolbarNavigationHint
     case toolbarUpdateHint
@@ -55,6 +59,7 @@ enum NimbusFeatureFlagID: String, CaseIterable {
     case unifiedSearch
     case updatedPasswordManager
     case useRustKeychain
+    case webEngineIntegrationRefactor
 
     // Add flags here if you want to toggle them in the `FeatureFlagsDebugViewController`. Add in alphabetical order.
     var debugKey: String? {
@@ -76,7 +81,6 @@ enum NimbusFeatureFlagID: String, CaseIterable {
                 .noInternetConnectionErrorPage,
                 .searchEngineConsolidation,
                 .sentFromFirefox,
-                .tabAnimation,
                 .tabTrayUIExperiments,
                 .toolbarRefactor,
                 .trackingProtectionRefactor,
@@ -85,7 +89,8 @@ enum NimbusFeatureFlagID: String, CaseIterable {
                 .unifiedAds,
                 .unifiedSearch,
                 .useRustKeychain,
-                .updatedPasswordManager:
+                .updatedPasswordManager,
+                .webEngineIntegrationRefactor:
             return rawValue + PrefsKeys.FeatureFlags.DebugSuffixKey
         default:
             return nil
@@ -113,6 +118,12 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
             return FlagKeys.SearchBarPosition
         case .firefoxSuggestFeature:
             return FlagKeys.FirefoxSuggest
+        case .hntBookmarksSection:
+            return FlagKeys.BookmarksSection
+        case .hntJumpBackInSection:
+            return FlagKeys.JumpBackInSection
+        case .hntSponsoredShortcuts:
+            return FlagKeys.SponsoredShortcuts
         case .inactiveTabs:
             return FlagKeys.InactiveTabs
         case .sentFromFirefox:
@@ -130,6 +141,7 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
                 .feltPrivacyFeltDeletion,
                 .feltPrivacySimplifiedUI,
                 .hntContentFeedRefresh,
+                .hntCusomizationSection,
                 .hntTopSitesVisualRefresh,
                 .homepageRebuild,
                 .loginsVerificationEnabled,
@@ -137,6 +149,7 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
                 .menuRefactorHint,
                 .menuRedesign,
                 .microsurvey,
+                .modernOnboardingUI,
                 .nativeErrorPage,
                 .noInternetConnectionErrorPage,
                 .pdfRefactor,
@@ -146,7 +159,6 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
                 .searchEngineConsolidation,
                 .sentFromFirefoxTreatmentA,
                 .splashScreen,
-                .tabAnimation,
                 .tabTrayUIExperiments,
                 .toolbarNavigationHint,
                 .toolbarUpdateHint,
@@ -159,7 +171,8 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
                 .unifiedAds,
                 .unifiedSearch,
                 .updatedPasswordManager,
-                .useRustKeychain:
+                .useRustKeychain,
+                .webEngineIntegrationRefactor:
             return nil
         }
     }
