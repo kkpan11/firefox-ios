@@ -5,6 +5,7 @@
 import Common
 import Foundation
 import WebKit
+import TabDataStore
 
 enum TabManagerConstants {
     static let tabScreenshotNamespace = "TabManagerScreenshots"
@@ -15,23 +16,19 @@ enum TabsDeletionPeriod: String {
 }
 
 // MARK: - TabManager protocol
+@MainActor
 protocol TabManager: AnyObject {
-    var windowUUID: WindowUUID { get }
+    nonisolated var windowUUID: WindowUUID { get }
     var isRestoringTabs: Bool { get }
-    var delaySelectingNewPopupTab: TimeInterval { get }
+    var tabRestoreHasFinished: Bool { get }
     var recentlyAccessedNormalTabs: [Tab] { get }
-    var count: Int { get }
 
     var selectedTab: Tab? { get }
-    var backupCloseTab: BackupCloseTab? { get set }
 
     var tabs: [Tab] { get }
-    var normalTabs: [Tab] { get } // Includes active and inactive tabs
-    var normalActiveTabs: [Tab] { get }
-    var inactiveTabs: [Tab] { get }
+    var normalTabs: [Tab] { get }
     var privateTabs: [Tab] { get }
 
-    subscript(index: Int) -> Tab? { get }
     subscript(webView: WKWebView) -> Tab? { get }
 
     // MARK: - Add/Remove Delegate
@@ -40,100 +37,151 @@ protocol TabManager: AnyObject {
     func removeDelegate(_ delegate: TabManagerDelegate, completion: (() -> Void)?)
 
     // MARK: - Select Tab
-    func selectTab(_ tab: Tab?, previous: Tab?)
+    /// Selects the given tab as the active tab.
+    ///
+    /// - Parameters:
+    ///   - tab: The tab to select.
+    ///   - previous: The tab to treat as the previously selected tab..
+    ///   - immediatePreservation: When `true`, tab state is persisted synchronously instead of being deferred.
+    func selectTab(_ tab: Tab?, previous: Tab?, immediatePreservation: Bool)
 
     // MARK: - Add Tab
+
+    /// Add tabs for a list of URLs
+    /// - Parameters:
+    ///   - urls: The list of URL to create tabs with
+    ///   - zombie: Whether the webviews should be created right away or not,
+    ///   only set to false if you need to select the tab right away
+    ///   - shouldSelectTab: Whether the last tab from the urls added should be selected or not
+    ///   - isPrivate: Whether the tabs should be created in private mode or not
     func addTabsForURLs(_ urls: [URL], zombie: Bool, shouldSelectTab: Bool, isPrivate: Bool)
+
+    /// Add a tab in the tabs array
+    /// - Parameters:
+    ///   - request: The request created
+    ///   - afterTab: Place the new tab after this tab, can be nil to create the tab at the end of the tabs array
+    ///   - zombie: Whether the webview should be created right away or not,
+    ///   only set to false if you need to select the tab right away
+    ///   - isPrivate: whether the tabs should be created in private mode or not
+    ///   - groupID: The group identifier, or nil for an ungrouped tab
+    /// - Returns: The newly created tab
     @discardableResult
     func addTab(_ request: URLRequest?,
                 afterTab: Tab?,
                 zombie: Bool,
-                isPrivate: Bool) -> Tab
+                isPrivate: Bool,
+                groupID: TabGroupID?) -> Tab
 
-    // MARK: - Remove Tab
-    // TODO: FXIOS-11272 Remove this function in favor of the async remove tab.
-    /// GCD remove tab option using tabUUID with completion
-    /// - Parameters:
-    ///   - tabUUID: UUID from the tab
-    ///   - completion: closure called after remove tab completes on main thread
-    func removeTabWithCompletion(_ tabUUID: TabUUID, completion: (() -> Void)?)
+    // MARK: - Remove tab
 
-    /// Async Remove tab option using tabUUID.
+    /// Remove tab option using tabUUID.
     /// - Parameter tabUUID: UUID from the tab
-    func removeTab(_ tabUUID: TabUUID) async
+    func removeTab(_ tabUUID: TabUUID)
 
-    /// Async Remove all tabs indicating if is on private mode or not
+    /// Remove all tabs indicating if is on private mode or not
     /// - Parameter isPrivateMode: Is private mode enabled or not
-    func removeAllTabs(isPrivateMode: Bool) async
+    func removeAllTabs(isPrivateMode: Bool)
 
     /// Removes all tabs matching the urls, used when other clients request to close tabs on this device.
-    func removeTabs(by urls: [URL]) async
+    func removeTabs(by urls: [URL])
     func removeTabs(_ tabs: [Tab])
 
     /// Remove normal tabs older than a certain period of time
     func removeNormalTabsOlderThan(period: TabsDeletionPeriod, currentDate: Date)
 
-    // MARK: - Undo Close
-    func undoCloseTab()
-    /// Undo close all tabs, it will restore the tabs that were backed up when the close action was called.
-    func undoCloseAllTabs()
-
-    // MARK: Inactive Tabs
-
-    /// Get inactive tabs from the list of tabs based on the time condition to be considered inactive.
-    /// Replaces LegacyInactiveTabModel and related classes
-    ///
-    /// - Returns: Return list of tabs considered inactive
-    func getInactiveTabs() -> [Tab]
-
-    /// Async Remove all inactive tabs, used when user closes all inactive tabs
-    func removeAllInactiveTabs() async
-
-    /// Undo all inactive tabs closure. All inactive tabs are added back to the list of tabs
-    func undoCloseInactiveTabs() async
-
     // MARK: Get Tab
     func getTabForUUID(uuid: TabUUID) -> Tab?
     func getTabForURL(_ url: URL) -> Tab?
-    func getMostRecentHomepageTab() -> Tab?
+
+    // MARK: - Window merging
+
+    /// Persists the live session state (back/forward history) of every tab in this window and
+    /// returns the serialized tab data, used when merging this window's tabs into another window.
+    /// Private tabs are included only when the user's "close private tabs" setting is disabled,
+    /// matching the behaviour applied when the window would otherwise be closed.
+    /// - Returns: the tab data for every tab that should move to the destination window.
+    func tabDataForWindowMerge() -> [TabData]
+
+    /// Appends tabs from other windows' merged data into this window. The tabs are created as
+    /// zombies (no webview until selected) and keep their original UUIDs, so their history is
+    /// restored from the tab session store on selection. Tabs whose UUID already exists are skipped.
+    /// - Parameter tabDataList: the tab data collected from the other windows being merged.
+    func addTabs(fromWindowMergeData tabDataList: [TabData])
+
+    /// Empties this window's tab list after its tabs were copied into another window by
+    /// `tabDataForWindowMerge()`. The tabs' session data and screenshots are deliberately left on
+    /// disk because the destination window's tabs now reference them by the same UUIDs. Called
+    /// before the merged-away window is closed so that a save triggered on the way down writes an
+    /// empty tab list rather than resurrecting tabs that have already moved.
+    @MainActor
+    func discardTabsMovedToAnotherWindow()
 
     // MARK: Other Tab Actions
     func clearAllTabsHistory()
     func reorderTabs(isPrivate privateMode: Bool, fromIndex visibleFromIndex: Int, toIndex visibleToIndex: Int)
-    func preserveTabs()
+    /// Persists the current tab state to disk.
+    ///
+    /// Should only be called after tab restore has finished. When `immediate` is `true`,
+    /// the save is forced synchronously — use this for time-sensitive cases such as
+    /// backgrounding the app or switching to another app. When `false`, the save may
+    /// be deferred, suitable for llower-priority updates such as opening, closing,
+    /// or switching between tabs during normal browsing.
+    ///
+    /// - Parameter immediate: Whether the tab data should be saved immediately (`true`)
+    ///   or can be deferred (`false`).
+    func preserveTabs(immediate: Bool)
 
     /// Commits the pending changes to the persistent store.
     func commitChanges()
 
     func notifyCurrentTabDidFinishLoading()
-    func restoreTabs(_ forced: Bool)
-    func startAtHomeCheck() -> Bool
+
+    func restoreTabs()
+
     func expireLoginAlerts()
-    @discardableResult
-    func switchPrivacyMode() -> SwitchPrivacyModeResult
+
     func addPopupForParentTab(profile: Profile, parentTab: Tab, configuration: WKWebViewConfiguration) -> Tab
     func tabDidSetScreenshot(_ tab: Tab)
+    func offloadBackgroundWebViews() async
+
+    /// Stops in-flight loads and discards every webview, the selected tab's included, ahead of
+    /// a `proxyConfigurations` change (e.g. on VPN toggle). Webviews hold the pre-change
+    /// connection pool, so they have to bee closed and have inflight requests cancelled
+    /// for the new proxy to take effect.
+    func tearDownWebViewsForProxyChange() async
+
+    /// Rebuilds the selected tab's webview against a fresh `WKWebViewConfiguration` once the new
+    /// proxy stack is in place, restoring the session saved during teardown so the tab keeps its
+    /// back/forward list across the change.
+    func restoreSelectedTabForProxyChange()
+
+    /// ADR 0008: load `tab`'s screenshot from disk if it isn't already in memory. Intended for
+    /// just-in-time loading driven by the tab tray's prefetch data source. No-op if the tab
+    /// already has a screenshot.
+    func restoreScreenshot(for tab: Tab)
 }
 
 extension TabManager {
-    func selectTab(_ tab: Tab?) {
-        selectTab(tab, previous: nil)
+    func selectTab(_ tab: Tab?, previous: Tab? = nil, immediatePreservation: Bool = false) {
+        selectTab(tab, previous: previous, immediatePreservation: immediatePreservation)
     }
 
-    func restoreTabs(_ forced: Bool = false) {
-        restoreTabs(forced)
+    func preserveTabs(immediate: Bool = false) {
+        preserveTabs(immediate: immediate)
     }
 
     @discardableResult
     func addTab(_ request: URLRequest? = nil,
                 afterTab: Tab? = nil,
                 zombie: Bool = false,
-                isPrivate: Bool = false
+                isPrivate: Bool = false,
+                groupID: TabGroupID? = nil
     ) -> Tab {
         addTab(request,
                afterTab: afterTab,
                zombie: zombie,
-               isPrivate: isPrivate)
+               isPrivate: isPrivate,
+               groupID: groupID)
     }
 
     func addTabsForURLs(_ urls: [URL], zombie: Bool, shouldSelectTab: Bool = true, isPrivate: Bool = false) {

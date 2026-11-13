@@ -15,6 +15,7 @@ struct GenericSectionView<Content: View>: View {
     let title: String
     let description: String?
     let content: () -> Content
+    let identifier: String
 
     let theme: Theme?
 
@@ -26,18 +27,22 @@ struct GenericSectionView<Content: View>: View {
         return Color(theme?.colors.textSecondary ?? UIColor.clear)
     }
 
-    private struct UX {
+    private enum UX {
         static var sectionPadding: CGFloat { 16 }
-        static var dividerHeight: CGFloat { 0.7 }
         static var textPadding: CGFloat { 8 }
         static var contentPadding: CGFloat { 4 }
     }
 
-    init(theme: Theme?, title: String, description: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+    init(theme: Theme?,
+         title: String,
+         description: String? = nil,
+         identifier: String,
+         @ViewBuilder content: @escaping () -> Content) {
         self.title = title
         self.description = description
         self.content = content
         self.theme = theme
+        self.identifier = identifier
     }
 
     var body: some View {
@@ -46,12 +51,8 @@ struct GenericSectionView<Content: View>: View {
                                      sectionTitleColor: sectionTitleColor)
             .padding([.leading, .trailing], UX.sectionPadding)
 
-            Divider().frame(height: UX.dividerHeight)
-
             content()
                 .padding([.top, .bottom], UX.contentPadding)
-
-            Divider().frame(height: UX.dividerHeight)
 
             // Optional description at the bottom
             if let description = description {
@@ -61,6 +62,8 @@ struct GenericSectionView<Content: View>: View {
             }
         }
         .padding(.bottom, UX.sectionPadding)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
     }
 
     /// Creates the footer view with the provided text.
@@ -69,7 +72,7 @@ struct GenericSectionView<Content: View>: View {
     private func footerView(_ text: String) -> some View {
         HStack {
             Text(text)
-                .font(.caption)
+                .font(FXFontStyles.Regular.caption1.scaledSwiftUIFont())
                 .foregroundColor(descriptionTextColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

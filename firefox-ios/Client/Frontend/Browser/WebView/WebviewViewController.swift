@@ -10,12 +10,9 @@ import Common
 
 class WebviewViewController: UIViewController,
                              ContentContainable,
-                             ScreenshotableView,
-                             FullscreenDelegate {
-    private var webView: WKWebView
+                             ScreenshotableView {
+    private var webView: WKWebView?
     var contentType: ContentType = .webview
-    // TODO: FXIOS-12158 Add back after investigating why video player is broken
-//    var isFullScreen = false
 
     init(webView: WKWebView) {
         self.webView = webView
@@ -32,23 +29,20 @@ class WebviewViewController: UIViewController,
     }
 
     private func setupWebView() {
+        guard let webView else { return }
         view.addSubview(webView)
         webView.pinToSuperview()
     }
 
-    func update(webView: WKWebView) {
+    func update(webView: WKWebView?) {
         self.webView = webView
-
-        // Avoid updating constraints while on fullscreen mode
-        // TODO: FXIOS-12158 Add back after investigating why video player is broken
-//        guard !isFullScreen else { return }
         setupWebView()
     }
 
     // MARK: - ScreenshotableView
 
     func getScreenshotData(completionHandler: @escaping (ScreenshotData?) -> Void) {
-        guard let url = webView.url,
+        guard let webView, let url = webView.url,
               InternalURL(url) == nil else {
             completionHandler(nil)
             return
@@ -66,20 +60,5 @@ class WebviewViewController: UIViewController,
                 completionHandler(nil)
             }
         }
-    }
-
-    // MARK: - FullscreenDelegate
-
-    func enteringFullscreen() {
-        // TODO: FXIOS-12158 Add back after investigating why video player is broken
-//        isFullScreen = true
-//        webView.translatesAutoresizingMaskIntoConstraints = true
-//        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    }
-
-    func exitingFullscreen() {
-        // TODO: FXIOS-12158 Add back after investigating why video player is broken
-//        setupWebView()
-//        isFullScreen = false
     }
 }

@@ -5,7 +5,7 @@
 import Foundation
 
 /// An enumeration representing different navigational routes in an application.
-enum Route: Equatable {
+enum Route {
     /// Represents a search route that takes a URL, a boolean value indicating whether the search
     /// is private or not and an optional set of search options.
     ///
@@ -28,7 +28,8 @@ enum Route: Equatable {
     /// - Parameters:
     ///   - query: A string representing the query to be searched and.
     ///   - isPrivate: A boolean value indicating whether the search is private or not.
-    case searchQuery(query: String, isPrivate: Bool)
+    ///   - options: An optional set of `SearchOptions` values that can be used to customize the search behavior.
+    case searchQuery(query: String, isPrivate: Bool, options: Set<SearchOptions>? = nil)
 
     /// Represents a route for sending Glean data.
     ///
@@ -58,6 +59,9 @@ enum Route: Equatable {
     ///
     /// - Parameter params: An instance of `FxALaunchParams` containing the parameters for the sign-in.
     case fxaSignIn(params: FxALaunchParams)
+
+    /// Represents a validated Mozilla Accounts pairing URL opened from outside Firefox.
+    case fxaPairing(url: URL)
 
     /// Represents a default browser route that takes a `DefaultBrowserSection` value indicating
     /// the section to be displayed.
@@ -114,13 +118,14 @@ enum Route: Equatable {
         case topSites
         case wallpaper
         case rateApp
+        case translation
     }
 
     /// An enumeration representing different actions that can be performed within the application.
     enum AppAction: String, CaseIterable, Equatable {
         case closePrivateTabs = "close-private-tabs"
-        case showQRCode
         case showIntroOnboarding = "show-intro-onboarding"
+        case mergeWindows = "merge-windows"
     }
 
     /// An enumeration representing different sections of the default browser settings.
@@ -133,5 +138,10 @@ enum Route: Equatable {
     enum SearchOptions: Equatable {
         /// An option to focus the user's attention on the location field of the search interface.
         case focusLocationField
+        /// An option to force open a new tab even when on homepage
+        case forceNewTab
+        /// An option indicating the search was started from a home screen widget search button, so the next
+        /// search from the address bar is attributed to the widget search access point.
+        case widgetSearch
     }
 }

@@ -6,8 +6,8 @@ import Foundation
 import Common
 import UIKit
 
-public class PaddedSwitch: UIView, ThemeApplicable {
-    struct UX {
+public final class PaddedSwitch: UIView, ThemeApplicable {
+    enum UX {
         static let padding: CGFloat = 8
     }
 

@@ -6,93 +6,86 @@ import XCTest
 import Common
 
 class PhotonActionSheetTests: BaseTestCase {
+    var toolBarScreen: ToolbarScreen!
+    var photonActionSheetScreen: PhotonActionSheetScreen!
+    var browserScreen: BrowserScreen!
+    var topSitesScreen: TopSitesScreen!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        toolBarScreen = ToolbarScreen(app: app)
+        photonActionSheetScreen = PhotonActionSheetScreen(app: app)
+        browserScreen = BrowserScreen(app: app)
+        topSitesScreen = TopSitesScreen(app: app)
+    }
+
+    private func openNewShareSheet() {
+        navigator.nowAt(HomePanelsScreen)
+        navigator.goto(URLBarOpen)
+        navigator.openURL("example.com")
+        mozWaitForElementToExist(app.webViews.firstMatch)
+        browserScreen.waitForClipboardToastToDisappear()
+        toolBarScreen.tapShareButton()
+        photonActionSheetScreen.assertPhotonActionSheetExists()
+        photonActionSheetScreen.tapFennecIcon()
+    }
+
     // https://mozilla.testrail.io/index.php?/cases/view/2306849
     // Smoketest
     func testPinToShortcuts() {
-        navigator.openURL(path(forTestPage: "test-example.html"))
-        waitUntilPageLoad()
+        app.launch()
+        navigator.nowAt(HomePanelsScreen)
+        navigator.goto(URLBarOpen)
+        navigator.openURL(path(forTestPage: TestPages.exampleHTML))
+        mozWaitForElementToExist(app.webViews.firstMatch)
+
         // Open Page Action Menu Sheet and Pin the site
+        navigator.nowAt(BrowserTab)
+        navigator.goto(BrowserTabMenuMore)
         navigator.performAction(Action.PinToTopSitesPAM)
 
         // Navigate to topsites to verify that the site has been pinned
         navigator.nowAt(BrowserTab)
         navigator.performAction(Action.OpenNewTabFromTabTray)
+        browserScreen.tapCancelButtonIfExist()
 
         // Verify that the site is pinned to top
-        let itemCell = app.links[AccessibilityIdentifiers.FirefoxHomepage.TopSites.itemCell]
-        let cell = itemCell.staticTexts["Example Domain"]
-        mozWaitForElementToExist(cell)
-        if #available(iOS 17, *) {
-            mozWaitForElementToExist(app.links["Pinned: Example Domain"].images[StandardImageIdentifiers.Small.pinBadgeFill])
-        } else {
-            // No identifier is available for iOS 17 amd below
-            mozWaitForElementToExist(app.links["Pinned: Example Domain"].images.element(boundBy: 1))
-        }
+        topSitesScreen.assertTopSiteExists(named: TestLabels.exampleDomain)
+        topSitesScreen.assertTopSitePinned(named: TestLabels.exampleDomain)
 
         // Remove pin
-        cell.press(forDuration: 2)
-        app.tables.cells.buttons[StandardImageIdentifiers.Large.pinSlash].waitAndTap()
-        // Check that it has been unpinned
-        if #available(iOS 17, *) {
-            mozWaitForElementToNotExist(app.links["Example Domain"].images[StandardImageIdentifiers.Small.pinBadgeFill])
-        } else {
-            mozWaitForElementToNotExist(app.links["Example Domain"].images.element(boundBy: 1))
-        }
-
-        mozWaitForElementToNotExist(cell)
-    }
-
-    private func openNewShareSheet() {
-        navigator.openURL("example.com")
-        waitUntilPageLoad()
-        mozWaitForElementToNotExist(app.staticTexts["Fennec pasted from CoreSimulatorBridge"])
-        app.buttons[AccessibilityIdentifiers.Toolbar.shareButton].waitAndTap()
-
-        if #unavailable(iOS 16) {
-            waitForElementsToExist(
-                [
-                    app.otherElements["ActivityListView"].navigationBars["UIActivityContentView"],
-                    app.buttons["Copy"]
-                ]
-            )
-        } else {
-            waitForElementsToExist(
-                [
-                app.otherElements["ActivityListView"].otherElements["Example Domain"],
-                app.otherElements["ActivityListView"].otherElements["example.com"],
-                app.collectionViews.cells["Copy"]
-                ]
-            )
-        }
-        var fennecElement = app.collectionViews.scrollViews.cells.elementContainingText("Fennec")
-        // This is not ideal but only way to get the element on iPhone 8
-        // for iPhone 11, that would be boundBy: 2
-        if #unavailable(iOS 17) {
-            fennecElement = app.collectionViews.scrollViews.cells.element(boundBy: 2)
-        }
-        fennecElement.waitAndTap()
-        mozWaitForElementToExist(app.navigationBars["ShareTo.ShareView"])
+        topSitesScreen.longPressOnPinnedSite(named: TestLabels.exampleDomain)
+        topSitesScreen.tapPinSlashIcon()
+        topSitesScreen.assertTopSiteNotPinned(named: TestLabels.exampleDomain)
+        topSitesScreen.assertTopSiteDoesNotExist(named: TestLabels.exampleDomain)
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306841
     // Smoketest
-    func testSharePageWithShareSheetOptions() {
-        openNewShareSheet()
-        waitForElementsToExist(
-            [
-                app.staticTexts["Open in Firefox"],
-                app.staticTexts["Load in Background"],
-                app.staticTexts["Bookmark This Page"],
-                app.staticTexts["Add to Reading List"]
-            ]
+    func testSharePageWithShareSheetOptions() throws {
+        try XCTSkipIf(
+            isFirefoxBeta || isFirefox,
+            "Skipping test because Firefox and FirefoxBeta are not yet supported"
         )
-        mozWaitForElementToExist(app.staticTexts["Send to Device"])
+        app.launch()
+        openNewShareSheet()
+        photonActionSheetScreen.assertShareViewExists()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2323203
-    func testShareSheetSendToDevice() {
+    func testShareSheetSendToDevice() throws {
+        try XCTSkipIf(
+            isFirefoxBeta || isFirefox,
+            "Skipping test because Firefox and FirefoxBeta are not yet supported"
+        )
         openNewShareSheet()
-        app.staticTexts["Send to Device"].waitAndTap()
+        var attempts = 2
+        let sendToDeviceButton = app.staticTexts["Send to Device"]
+        while sendToDeviceButton.isVisible() && attempts > 0 {
+            sendToDeviceButton.waitAndTap()
+            mozWaitForElementToNotExist(sendToDeviceButton)
+            attempts -= 1
+        }
         waitForElementsToExist(
             [
                 app.navigationBars.buttons[AccessibilityIdentifiers.ShareTo.HelpView.doneButton],
@@ -103,7 +96,11 @@ class PhotonActionSheetTests: BaseTestCase {
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2323204
-    func testShareSheetOpenAndCancel() {
+    func testShareSheetOpenAndCancel() throws {
+        try XCTSkipIf(
+            isFirefoxBeta || isFirefox,
+            "Skipping test because Firefox and FirefoxBeta are not yet supported"
+        )
         openNewShareSheet()
         app.buttons["Cancel"].waitAndTap()
         // User is back to the BrowserTab where the sharesheet was launched

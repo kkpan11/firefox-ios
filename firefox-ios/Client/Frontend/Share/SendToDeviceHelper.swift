@@ -15,11 +15,6 @@ class SendToDeviceHelper {
         let iconColor: UIColor
     }
 
-    enum ViewType {
-        case instructions
-        case picker
-    }
-
     private var shareItem: ShareItem
     private var profile: Profile
     private var colors: Colors
@@ -32,6 +27,7 @@ class SendToDeviceHelper {
         self.delegate = delegate
     }
 
+    @MainActor
     func initialViewController() -> UIViewController {
         if !hasAccount() {
             // Display instructions to log in if user has no account

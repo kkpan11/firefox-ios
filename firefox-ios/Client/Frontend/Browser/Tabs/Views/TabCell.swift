@@ -9,11 +9,14 @@ import Shared
 import SiteImageView
 
 protocol TabCellDelegate: AnyObject {
+    @MainActor
     func tabCellDidClose(for tabUUID: TabUUID)
 }
 
-class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
-    struct UX {
+final class TabCell: UICollectionViewCell,
+                     ThemeApplicable,
+                     ReusableCell {
+    enum UX {
         static let borderWidth: CGFloat = 3.0
         static let cornerRadius: CGFloat = 16
         static let subviewDefaultPadding: CGFloat = 6.0
@@ -26,10 +29,6 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
                                                                   leading: 12,
                                                                   bottom: 12,
                                                                   trailing: 12)
-
-        // Using the same sizes for fallback favicon as the top sites on the homepage
-        static let imageBackgroundSize = TopSiteItemCell.UX.imageBackgroundSize
-        static let topSiteIconSize = TopSiteItemCell.UX.iconSize
     }
     // MARK: - Properties
 
@@ -51,17 +50,14 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
     }
 
     private lazy var faviconBG: UIView = .build { view in
-        view.layer.cornerRadius = HomepageViewModel.UX.generalCornerRadius
-        view.layer.borderWidth = HomepageViewModel.UX.generalBorderWidth
-        view.layer.shadowOffset = HomepageViewModel.UX.shadowOffset
-        view.layer.shadowRadius = HomepageViewModel.UX.shadowRadius
+        view.layer.cornerRadius = HomepageUX.generalCornerRadius
+        view.layer.borderWidth = HomepageUX.generalBorderWidth
+        view.layer.shadowOffset = HomepageUX.shadowOffset
+        view.layer.shadowRadius = HomepageUX.shadowRadius
         view.isHidden = true
     }
 
-    private lazy var screenshotView: UIImageView = .build { view in
-        view.contentMode = .scaleAspectFill
-        view.clipsToBounds = true
-    }
+    private lazy var screenshotView: TabCellCustomImage = .build()
 
     private lazy var titleText: UILabel = .build { label in
         label.numberOfLines = 1
@@ -78,6 +74,8 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
         configuration.contentInsets = UX.closeButtonEdgeInset
         button.configuration = configuration
     }
+
+    private var borderGradientColors: [CGColor]?
 
     // MARK: - Initializer
 
@@ -108,7 +106,13 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
     required init?(coder aDecoder: NSCoder) { fatalError("init(coder:) not yet supported") }
 
     // MARK: - Configuration
-    func configure(with tabModel: TabModel, theme: Theme?, delegate: TabCellDelegate, a11yId: String) {
+    func configure(
+        with tabModel: TabModel,
+        theme: Theme?,
+        delegate: TabCellDelegate,
+        a11yId: String,
+        newTabTitle: String?
+    ) {
         self.tabModel = tabModel
         self.delegate = delegate
 
@@ -118,16 +122,16 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
 
         animator?.animateBackToCenter()
 
-        titleText.text = tabModel.tabTitle
-        accessibilityLabel = getA11yTitleLabel(tabModel: tabModel)
+        titleText.text = newTabTitle ?? tabModel.tabTitle
+        accessibilityLabel = getA11yTitleLabel(tabModel: tabModel, newTabTitle: newTabTitle)
+
+        if let firefoxFavicon = UIImage(named: ImageIdentifiers.firefoxFavicon) {
+            favicon.manuallySetImage(firefoxFavicon)
+        }
+
         isAccessibilityElement = true
         accessibilityHint = .TabsTray.TabTraySwipeToCloseAccessibilityHint
         accessibilityIdentifier = a11yId
-
-        let identifier = StandardImageIdentifiers.Large.globe
-        if let globeFavicon = UIImage(named: identifier)?.withRenderingMode(.alwaysTemplate) {
-            favicon.manuallySetImage(globeFavicon)
-        }
 
         if !tabModel.isFxHomeTab, let tabURL = tabModel.url?.absoluteString {
             favicon.setFavicon(FaviconImageViewModel(siteURLString: tabURL))
@@ -164,7 +168,37 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
         smallFaviconView.tintColor = theme.colors.textPrimary
 
         let isPrivate = tabModel?.isPrivate ?? false
-        layer.borderColor = (isPrivate ? theme.colors.borderAccentPrivate : theme.colors.borderAccent).cgColor
+        updateBorder(theme: theme, isSelected: isSelectedTab, isPrivate: isPrivate)
+    }
+
+    private func updateBorder(theme: Theme, isSelected: Bool, isPrivate: Bool) {
+        borderGradientColors = nil
+        layer.borderWidth = isSelected ? UX.borderWidth : 0
+
+        guard isSelected else {
+            layer.borderColor = UIColor.clear.cgColor
+            return
+        }
+
+        if theme.isNova {
+            borderGradientColors = theme.colors.gradientBorder.cgColors
+            setNeedsLayout()
+        } else {
+            layer.borderColor = (isPrivate ? theme.colors.borderAccentPrivate : theme.colors.borderAccent).cgColor
+        }
+    }
+
+    private func gradientBorderImage(size: CGSize, colors: [CGColor]) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { context in
+            guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                            colors: colors as CFArray,
+                                            locations: nil) else { return }
+            context.cgContext.drawLinearGradient(gradient,
+                                                 start: .zero,
+                                                 end: CGPoint(x: size.width, y: size.height),
+                                                 options: [])
+        }
     }
 
     // MARK: - Configuration
@@ -191,6 +225,10 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
         } else if let tabScreenshot = tabModel.screenshot {
             // Use Tab screenshot when available
             screenshotView.image = tabScreenshot
+        } else if tabModel.hasScreenshotOnDisk {
+            // A screenshot exists on disk and is being loaded asynchronously. Keep the cell blank
+            // until it arrives to avoid a brief favicon-to-screenshot flash after tab restoration.
+            screenshotView.image = nil
         } else {
             // Favicon or letter image when tab screenshot isn't available
             faviconBG.isHidden = false
@@ -215,26 +253,35 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
                                          left: UX.borderWidth,
                                          bottom: UX.borderWidth,
                                          right: UX.borderWidth)
-            layer.borderColor = (isPrivate ? theme.colors.borderAccentPrivate : theme.colors.borderAccent).cgColor
-            layer.borderWidth = UX.borderWidth
             layer.cornerRadius = UX.cornerRadius
         } else {
             layoutMargins = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-            layer.borderColor = UIColor.clear.cgColor
-            layer.borderWidth = 0
             layer.cornerRadius = UX.cornerRadius
         }
+        updateBorder(theme: theme, isSelected: selected, isPrivate: isPrivate)
     }
 
     // MARK: - UICollectionViewCell
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let borderGradientColors, bounds.width > 0, bounds.height > 0 else { return }
+        layer.borderColor = UIColor(patternImage: gradientBorderImage(size: bounds.size,
+                                                                      colors: borderGradientColors)).cgColor
+    }
+
     override func prepareForReuse() {
         // Reset any close animations.
         super.prepareForReuse()
+        tabModel = nil
+        accessibilityLabel = nil
         screenshotView.image = nil
         backgroundHolder.transform = .identity
         backgroundHolder.alpha = 1
         faviconBG.isHidden = true
+        borderGradientColors = nil
+        layer.borderColor = UIColor.clear.cgColor
+        layer.borderWidth = 0
         layer.shadowOffset = .zero
         layer.shadowPath = nil
         layer.shadowOpacity = 0
@@ -285,11 +332,11 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
 
             faviconBG.centerYAnchor.constraint(equalTo: backgroundHolder.centerYAnchor, constant: UX.faviconYOffset),
             faviconBG.centerXAnchor.constraint(equalTo: backgroundHolder.centerXAnchor),
-            faviconBG.heightAnchor.constraint(equalToConstant: UX.imageBackgroundSize.height),
-            faviconBG.widthAnchor.constraint(equalToConstant: UX.imageBackgroundSize.width),
+            faviconBG.heightAnchor.constraint(equalToConstant: HomepageUX.imageBackgroundSize.height),
+            faviconBG.widthAnchor.constraint(equalToConstant: HomepageUX.imageBackgroundSize.width),
 
-            smallFaviconView.heightAnchor.constraint(equalToConstant: UX.topSiteIconSize.height),
-            smallFaviconView.widthAnchor.constraint(equalToConstant: UX.topSiteIconSize.width),
+            smallFaviconView.heightAnchor.constraint(equalToConstant: HomepageUX.topSiteIconSize.height),
+            smallFaviconView.widthAnchor.constraint(equalToConstant: HomepageUX.topSiteIconSize.width),
             smallFaviconView.centerYAnchor.constraint(equalTo: faviconBG.centerYAnchor),
             smallFaviconView.centerXAnchor.constraint(equalTo: faviconBG.centerXAnchor),
         ])
@@ -311,8 +358,8 @@ class TabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
         return true
     }
 
-    private func getA11yTitleLabel(tabModel: TabModel) -> String? {
-        let baseName = tabModel.tabTitle
+    private func getA11yTitleLabel(tabModel: TabModel, newTabTitle: String?) -> String? {
+        let baseName = newTabTitle ?? tabModel.tabTitle
 
         if isSelectedTab, !baseName.isEmpty {
             return baseName + ". " + String.TabsTray.TabTrayCurrentlySelectedTabAccessibilityLabel

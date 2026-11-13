@@ -4,13 +4,19 @@
 
 import Foundation
 import Glean
-import Storage
 import Common
 
 import class MozillaAppServices.BookmarkFolderData
 import enum MozillaAppServices.BookmarkRoots
 
-final class AppStartupTelemetry {
+protocol AppStartupTelemetry {
+    /// Send the relevant telemetry after App startup.
+    @MainActor
+    func sendStartupTelemetry()
+}
+
+// TODO: FXIOS-14115 - DefaultAppStartupTelemetry @unchecked Sendable
+final class DefaultAppStartupTelemetry: AppStartupTelemetry, @unchecked Sendable {
     let profile: Profile
 
     // MARK: Init
@@ -19,6 +25,7 @@ final class AppStartupTelemetry {
     }
 
     // MARK: Logic
+    @MainActor
     public func sendStartupTelemetry() {
         queryCreditCards()
         queryLogins()
@@ -29,13 +36,14 @@ final class AppStartupTelemetry {
     // MARK: Credit Cards
     func queryCreditCards() {
         _ = profile.autofill.reopenIfClosed()
-        profile.autofill.listCreditCards(completion: { cards, error in
+        profile.autofill.listCreditCards(completion: { [weak self] cards, error in
             guard let cards = cards, error == nil else { return }
-            self.sendCreditCardsSavedAllTelemetry(numberOfSavedCreditCards: cards.count)
+            self?.sendCreditCardsSavedAllTelemetry(numberOfSavedCreditCards: cards.count)
         })
     }
 
     // MARK: Logins
+    @MainActor
     func queryLogins() {
         let loginsViewModel = PasswordManagerViewModel(
             profile: profile,
@@ -46,8 +54,8 @@ final class AppStartupTelemetry {
         let dataSource = LoginDataSource(viewModel: loginsViewModel)
         loginsViewModel.loadLogins(loginDataSource: dataSource)
 
-        loginsViewModel.queryLogins("") { logins in
-            self.sendLoginsSavedAllTelemetry(numberOfSavedLogins: logins.count)
+        loginsViewModel.queryLogins("") { [weak self] logins in
+            self?.sendLoginsSavedAllTelemetry(numberOfSavedLogins: logins.count)
         }
     }
 
@@ -62,16 +70,16 @@ final class AppStartupTelemetry {
     func queryBookmarks() {
         profile.places
             .getBookmarksTree(rootGUID: BookmarkRoots.MobileFolderGUID, recursive: false)
-            .uponQueue(.main) { result in
+            .uponQueue(.main) { [weak self] result in
                 guard let mobileFolder = result.successValue as? BookmarkFolderData else {
                     return
                 }
 
                 if let mobileBookmarks = mobileFolder.fxChildren, !mobileBookmarks.isEmpty {
-                    self.sendDoesHaveMobileBookmarksTelemetry()
-                    self.sendMobileBookmarksCountTelemetry(bookmarksCount: Int64(mobileBookmarks.count))
+                    self?.sendDoesHaveMobileBookmarksTelemetry()
+                    self?.sendMobileBookmarksCountTelemetry(bookmarksCount: Int64(mobileBookmarks.count))
                 } else {
-                    self.sendDoesntHaveMobileBookmarksTelemetry()
+                    self?.sendDoesntHaveMobileBookmarksTelemetry()
                 }
             }
     }

@@ -5,6 +5,7 @@
 import Common
 import Foundation
 
+@MainActor
 protocol AlphaDimmable {
     func updateAlphaForSubviews(_ alpha: CGFloat)
 }
@@ -14,12 +15,19 @@ class BaseAlphaStackView: UIStackView, AlphaDimmable, ThemeApplicable {
     var isSpacerClearBackground = false
     lazy var toolbarHelper: ToolbarHelperInterface = ToolbarHelper()
 
-    private var isToolbarRefactorEnabled: Bool {
-        return FxNimbus.shared.features.toolbarRefactorFeature.value().enabled
+    /// Arranged subview that collapses while the toolbars are minimized on scroll.
+    weak var scrollCollapsibleView: UIView? {
+        didSet {
+            guard oldValue !== scrollCollapsibleView else { return }
+            oldValue?.isHidden = false
+            oldValue?.alpha = 1
+        }
     }
 
-    private var isToolbarTranslucencyEnabled: Bool {
-        return FxNimbus.shared.features.toolbarRefactorFeature.value().translucency
+    /// Height `scrollCollapsibleView` currently takes up in the stack.
+    var scrollCollapsibleHeight: CGFloat {
+        guard let scrollCollapsibleView, !scrollCollapsibleView.isHidden else { return 0 }
+        return scrollCollapsibleView.frame.height
     }
 
     override init(frame: CGRect) {
@@ -37,6 +45,15 @@ class BaseAlphaStackView: UIStackView, AlphaDimmable, ThemeApplicable {
             guard let alphaView = subview as? AlphaDimmable else { continue }
             alphaView.updateAlphaForSubviews(alpha)
         }
+        updateScrollCollapsibleView(isCollapsed: alpha.isZero)
+    }
+
+    /// Hides or shows `scrollCollapsibleView`. Call it inside an animation block to animate the collapse.
+    func updateScrollCollapsibleView(isCollapsed: Bool) {
+        guard let scrollCollapsibleView, scrollCollapsibleView.isHidden != isCollapsed else { return }
+        scrollCollapsibleView.isHidden = isCollapsed
+        scrollCollapsibleView.alpha = isCollapsed ? 0 : 1
+        superview?.layoutIfNeeded()
     }
 
     private func setupStyle() {
@@ -54,6 +71,7 @@ class BaseAlphaStackView: UIStackView, AlphaDimmable, ThemeApplicable {
         keyboardSpacer?.removeFromSuperview()
         if keyboardSpacer == nil {
             keyboardSpacer = UIView()
+            keyboardSpacer?.accessibilityIdentifier = AccessibilityIdentifiers.Browser.keyboardSpacer
         }
         addArrangedViewToBottom(keyboardSpacer!)
         setKeyboardSpacerHeight(height: spacerHeight)
@@ -105,7 +123,11 @@ class BaseAlphaStackView: UIStackView, AlphaDimmable, ThemeApplicable {
             spacer.bottomAnchor.constraint(equalTo: self.bottomAnchor)
         ])
         insetSpacer = spacer
-        layoutIfNeeded()
+    }
+
+    func moveSpacerToBack() {
+        guard let insetSpacer = self.insetSpacer else { return }
+        sendSubviewToBack(insetSpacer)
     }
 
     func removeBottomInsetSpacer() {
@@ -113,12 +135,11 @@ class BaseAlphaStackView: UIStackView, AlphaDimmable, ThemeApplicable {
 
         removeArrangedView(insetSpacer)
         self.insetSpacer = nil
-        layoutIfNeeded()
     }
 
     func applyTheme(theme: Theme) {
-        let color: UIColor = isToolbarRefactorEnabled ? theme.colors.layer3 : theme.colors.layer1
-        let backgroundAlpha = toolbarHelper.backgroundAlpha()
+        let color: UIColor = theme.colors.layerSurfaceLow
+        let backgroundAlpha = toolbarHelper.glassEffectAlpha
 
         backgroundColor = isClearBackground ? .clear : color
         keyboardSpacer?.backgroundColor = isSpacerClearBackground ? .clear : color.withAlphaComponent(backgroundAlpha)

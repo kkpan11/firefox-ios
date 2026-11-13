@@ -5,12 +5,12 @@
 import SwiftUI
 import Common
 
-struct AppIconSelectionView: View, ThemeApplicable {
-    private let windowUUID: WindowUUID
+struct AppIconSelectionView: ThemeableView, FeatureFlaggable {
+    let windowUUID: WindowUUID
     private let logger: Logger
     private let telemetry: AppIconSelectionTelemetry
 
-    struct UX {
+    enum UX {
         static let listPadding: CGFloat = 20
         static let cornerRadius: CGFloat = 10
         static let islandBorderWidth: CGFloat = 1
@@ -20,34 +20,45 @@ struct AppIconSelectionView: View, ThemeApplicable {
     @State private var isShowingErrorAlert = false
 
     // MARK: - Theming
-    // FIXME FXIOS-11472 Improve our SwiftUI theming
-    @Environment(\.themeManager)
-    var themeManager
-    @State private var themeColors: ThemeColourPalette = LightTheme().colors
+    let themeManager: ThemeManager
+    @State var theme: Theme
+
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
+
+    private var themeColors: ThemeColourPalette { return theme.colors }
 
     init(
         windowUUID: WindowUUID,
         gleanWrapper: GleanWrapper = DefaultGleanWrapper(),
-        logger: Logger = DefaultLogger.shared
+        logger: Logger = DefaultLogger.shared,
+        themeManager: ThemeManager = AppContainer.shared.resolve()
     ) {
         self.windowUUID = windowUUID
         self.telemetry = AppIconSelectionTelemetry(gleanWrapper: gleanWrapper)
         self.logger = logger
+        self.themeManager = themeManager
+        self.theme = themeManager.resolveTheme(for: windowUUID, privateOverride: false)
+    }
+
+    var availableAppIcons: [AppIcon] {
+        return AppIcon.allCases
     }
 
     var body: some View {
         VStack {
             List {
-                ForEach(AppIcon.allCases, id: \.imageSetAssetName) { appIcon in
+                ForEach(availableAppIcons, id: \.imageSetAssetName) { appIcon in
                     AppIconView(
                         appIcon: appIcon,
                         isSelected: appIcon == currentAppIcon,
                         windowUUID: windowUUID,
+                        themeManager: themeManager,
                         setAppIcon: setAppIcon
                     )
-                }.listRowBackground(themeColors.layer2.color)
+                }.listRowBackground(themeColors.layer5.color)
             }
-            .listStyle(.plain)
+            .modifier(ListStyle())
             .alert(isPresented: $isShowingErrorAlert) {
                 Alert(
                     title: Text(String.Settings.AppIconSelection.Errors.SelectErrorMessage),
@@ -57,19 +68,10 @@ struct AppIconSelectionView: View, ThemeApplicable {
                     )
                 )
             }
-            .onAppear {
-                applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .ThemeDidChange)) { notification in
-                guard let uuid = notification.windowUUID, uuid == windowUUID else { return }
-                applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
-            }
         }
         .background(themeColors.layer1.color)
-    }
-
-    func applyTheme(theme: Theme) {
-        self.themeColors = theme.colors
+        .modifier(ScrollContentBackgroundModifier())
+        .listenToThemeChanges(in: self, theme: $theme)
     }
 
     private func setAppIcon(to appIcon: AppIcon) {
@@ -85,11 +87,16 @@ struct AppIconSelectionView: View, ThemeApplicable {
         // If the user is resetting to the default app icon, we need to set the alternative icon to nil.
         UIApplication.shared.setAlternateIconName(appIcon.appIconAssetName) { error in
             guard error == nil else {
-                logger.log("Failed to set an alternative app icon [\(appIcon)]", level: .fatal, category: .appIcon)
-                isShowingErrorAlert = true
+                logger.log("Failed to set an alternative app icon",
+                           level: .fatal,
+                           category: .appIcon,
+                           extra: ["appIcon": "\(appIcon)"])
+                ensureMainThread {
+                    self.isShowingErrorAlert = true
 
-                // Reset the app icon in the UI since we changed it optimistically to provide UI feedback
-                self.currentAppIcon = previousIcon
+                    // Reset the app icon in the UI since we changed it optimistically to provide UI feedback
+                    self.currentAppIcon = previousIcon
+                }
 
                 return
             }

@@ -5,6 +5,7 @@
 import Shared
 import Storage
 import Common
+import UIKit
 
 extension BrowserViewController: ZoomPageBarDelegate {
     func updateZoomPageBarVisibility(visible: Bool) {
@@ -14,37 +15,38 @@ extension BrowserViewController: ZoomPageBarDelegate {
     private func setupZoomPageBar() {
         let zoomPageBar = ZoomPageBar(zoomManager: zoomManager)
         self.zoomPageBar = zoomPageBar
-        scrollController.zoomPageBar = zoomPageBar
+        if let scrollController = scrollController as? LegacyTabScrollProvider {
+            scrollController.zoomPageBar = zoomPageBar
+        }
         zoomPageBar.delegate = self
 
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            header.addArrangedViewToBottom(zoomPageBar, completion: {
-                self.view.layoutIfNeeded()
-            })
-        } else {
-            overKeyboardContainer.addArrangedViewToTop(zoomPageBar, completion: {
-                self.view.layoutIfNeeded()
-            })
-        }
+        updateZoomPageBarPlacement()
 
         zoomPageBar.heightAnchor
             .constraint(greaterThanOrEqualToConstant: UIConstants.ZoomPageBarHeight)
             .isActive = true
         zoomPageBar.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+    }
 
-        if UIDevice.current.userInterfaceIdiom != .pad {
-            updateViewConstraints()
+    func updateZoomPageBarPlacement() {
+        guard let zoomPageBar else { return }
+        let usesHeader = traitCollection.horizontalSizeClass == .regular
+        let container = usesHeader ? header : overKeyboardContainer
+        guard zoomPageBar.superview !== container else { return }
+        (zoomPageBar.superview as? UIStackView)?.removeArrangedSubview(zoomPageBar)
+        zoomPageBar.removeFromSuperview()
+        if usesHeader {
+            container.addArrangedViewToBottom(zoomPageBar, animated: false)
+        } else {
+            container.addArrangedViewToTop(zoomPageBar, animated: false)
         }
+        updateOverKeyboardContainerConstraints()
     }
 
     private func removeZoomPageBar(_ zoomPageBar: ZoomPageBar) {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            header.removeArrangedView(zoomPageBar)
-        } else {
-            overKeyboardContainer.removeArrangedView(zoomPageBar)
-        }
+        (zoomPageBar.superview as? UIStackView)?.removeArrangedView(zoomPageBar)
         self.zoomPageBar = nil
-        updateViewConstraints()
+        updateOverKeyboardContainerConstraints()
     }
 
     private func toggleZoomPageBar(_ visible: Bool) {

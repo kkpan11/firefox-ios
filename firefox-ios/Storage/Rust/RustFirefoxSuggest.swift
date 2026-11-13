@@ -3,6 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import Foundation
+import Shared
 
 @preconcurrency import class MozillaAppServices.SuggestStore
 import class MozillaAppServices.RemoteSettingsService
@@ -12,8 +13,7 @@ import enum MozillaAppServices.SuggestionProvider
 import struct MozillaAppServices.SuggestIngestionConstraints
 import struct MozillaAppServices.SuggestionQuery
 
-@preconcurrency
-public protocol RustFirefoxSuggestProtocol {
+public protocol RustFirefoxSuggestProtocol: Sendable {
     /// Downloads and stores new Firefox Suggest suggestions.
     func ingest(emptyOnly: Bool) async throws
 
@@ -33,8 +33,7 @@ public protocol RustFirefoxSuggestProtocol {
 
 /// Wraps the synchronous Rust `SuggestStore` binding to execute
 /// blocking operations on a dispatch queue.
-@preconcurrency
-public class RustFirefoxSuggest: RustFirefoxSuggestProtocol {
+public final class RustFirefoxSuggest: RustFirefoxSuggestProtocol, Sendable {
     private let store: SuggestStore
 
     // Using a pair of serial queues lets read and write operations run
@@ -58,7 +57,7 @@ public class RustFirefoxSuggest: RustFirefoxSuggestProtocol {
     public func ingest(emptyOnly: Bool) async throws {
         // Ensure that the Rust networking stack has been initialized before
         // downloading new suggestions. This is safe to call multiple times.
-        Viaduct.shared.useReqwestBackend()
+        Viaduct.shared.initialize(userAgent: UserAgent.fxaUserAgent)
 
         try await withCheckedThrowingContinuation { continuation in
             writerQueue.async(qos: .utility) {

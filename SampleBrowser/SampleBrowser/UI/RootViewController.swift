@@ -15,7 +15,7 @@ class RootViewController: UIViewController,
                           SearchSuggestionDelegate,
                           SettingsDelegate,
                           Themeable {
-    private struct UX {
+    private enum UX {
         static let addressToolbarContainerHorizontalPadding: CGFloat = 16.0
     }
 
@@ -23,6 +23,7 @@ class RootViewController: UIViewController,
     var themeManager: ThemeManager
     var themeObserver: NSObjectProtocol?
     var notificationCenter: NotificationProtocol = NotificationCenter.default
+    var themeListenerCancellable: Any?
 
     private lazy var navigationToolbar: NavigationToolbarContainer = .build { _ in }
     private lazy var addressToolbarContainer: AddressToolbarContainer =  .build { _ in }
@@ -62,7 +63,7 @@ class RootViewController: UIViewController,
         configureSearchView()
         configureNavigationToolbar()
 
-        listenForThemeChange(view)
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
     }
 
@@ -296,6 +297,11 @@ class RootViewController: UIViewController,
 
     func loadPopupWebSource() {
         let path = URL(fileURLWithPath: Bundle.main.path(forResource: "testPopUp", ofType: "html") ?? "")
+        browserVC.loadUrlOrSearch(SearchTerm(term: path.absoluteString))
+    }
+
+    func loadPrintWebSource() {
+        let path = URL(fileURLWithPath: Bundle.main.path(forResource: "testPrintPreview", ofType: "html") ?? "")
         browserVC.loadUrlOrSearch(SearchTerm(term: path.absoluteString))
     }
 

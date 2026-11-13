@@ -4,13 +4,10 @@
 
 import Foundation
 
-struct AddressLocaleFeatureValidator {
-    static let supportedRegions = ["CA", "US", "FR", "DE", "GB"]
+enum AddressLocaleFeatureValidator {
+    static let supportedRegions = ["CA", "US", "FR", "DE", "GB", "JP"]
 
-    static func isValidRegion(locale: Locale = Locale.current) -> Bool {
-        guard let regionCode = locale.regionCode else {
-            return false
-        }
+    static func isValidRegion(for regionCode: String) -> Bool {
         return supportedRegions.contains(regionCode)
     }
 }

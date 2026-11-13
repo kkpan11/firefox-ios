@@ -7,16 +7,18 @@ import Shared
 import UIKit
 import XCTest
 
+@MainActor
 class DiskImageStoreTests: XCTestCase {
-    var files: FileAccessor!
     var store: DiskImageStore!
 
-    override func setUp() {
-        super.setUp()
-        files = MockFiles()
-        store = DefaultDiskImageStore(files: files, namespace: "DiskImageStoreTests", quality: 1)
+    override func setUp() async throws {
+        try await super.setUp()
+        store = DefaultDiskImageStore(files: makeTemporaryFiles(), namespace: "DiskImageStoreTests", quality: 1)
+    }
 
-        clearStore()
+    override func tearDown() async throws {
+        store = nil
+        try await super.tearDown()
     }
 
     func testSaveImageForKey() async throws {
@@ -56,17 +58,24 @@ class DiskImageStoreTests: XCTestCase {
         }
     }
 
-// MARK: - Helper methods
+    func testSaveImageForKey_withZeroSizeImage_doesNotCrash() async throws {
+        let testKey = "zeroSizeImageKey"
+        let zeroSizeImage = UIImage()
 
-    func clearStore() {
-        Task {
-            try? await store?.clearAllScreenshotsExcluding(Set())
+        do {
+            try await store.saveImageForKey(testKey, image: zeroSizeImage)
+            XCTFail("Expected saveImageForKey to throw for a zero-size image")
+        } catch let error as DiskImageStoreErrorCase {
+            // Expected: scaling is skipped and jpegData() returns nil, surfacing as cannotWrite.
+            XCTAssertEqual(DiskImageStoreErrorCase.cannotWrite(description: "Could not write image to file"), error)
         }
     }
 
+    // MARK: - Helper methods
+
     func makeImageWithColor(_ color: UIColor, size: CGSize) -> UIImage {
         let rect = CGRect(size: size)
-        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
         color.setFill()
         UIRectFill(rect)
         let image = UIGraphicsGetImageFromCurrentImageContext()!

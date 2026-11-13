@@ -3,9 +3,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import SwiftUI
+import Common
 
 struct GenericSectionHeaderView: View {
-    private struct UX {
+    private enum UX {
         static var textPadding: CGFloat { 8 }
     }
 
@@ -23,7 +24,7 @@ struct GenericSectionHeaderView: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.caption)
+                .font(FXFontStyles.Regular.caption1.scaledSwiftUIFont())
                 .foregroundColor(sectionTitleColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -7,23 +7,24 @@ import Storage
 import Common
 @testable import Client
 
+@MainActor
 final class PasswordManagerCoordinatorTests: XCTestCase {
     private var mockRouter: MockRouter!
     private var mockParentCoordinator: PasswordManagerCoordinatorDelegateMock!
     let windowUUID: WindowUUID = .XCTestDefaultUUID
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
         self.mockRouter = MockRouter(navigationController: MockNavigationController())
         self.mockParentCoordinator = PasswordManagerCoordinatorDelegateMock()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         self.mockRouter = nil
         self.mockParentCoordinator = nil
         DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
     func testStart_withShowOnboarding() {
@@ -97,7 +98,7 @@ final class PasswordManagerCoordinatorTests: XCTestCase {
             protectionSpace: URLProtectionSpace.fromOrigin("https://test.com")
         )
         let mockModel = PasswordDetailViewControllerModel(
-            profile: MockProfile(),
+            profile: makeProfile(),
             login: mockLoginRecord,
             breachRecord: nil
         )
@@ -119,7 +120,7 @@ final class PasswordManagerCoordinatorTests: XCTestCase {
 
     func testAddPassword() {
         let subject = createSubject()
-        let passwordManagerSpy = PasswordManagerListViewControllerSpy(profile: MockProfile(), windowUUID: windowUUID)
+        let passwordManagerSpy = PasswordManagerListViewControllerSpy(profile: makeProfile(), windowUUID: windowUUID)
         subject.passwordManager = passwordManagerSpy
 
         subject.pressedAddPassword { _ in }
@@ -140,7 +141,7 @@ final class PasswordManagerCoordinatorTests: XCTestCase {
 
     // MARK: - Helper
     func createSubject() -> PasswordManagerCoordinator {
-        let subject = PasswordManagerCoordinator(router: mockRouter, profile: MockProfile(), windowUUID: windowUUID)
+        let subject = PasswordManagerCoordinator(router: mockRouter, profile: makeProfile(), windowUUID: windowUUID)
         subject.parentCoordinator = mockParentCoordinator
         trackForMemoryLeaks(subject)
         return subject

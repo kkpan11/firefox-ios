@@ -4,8 +4,10 @@
 
 import UIKit
 
+@MainActor
 public protocol ThemeManager {
     // Current theme
+    @MainActor
     func getCurrentTheme(for window: WindowUUID?) -> Theme
 
     /// Resolves the appropriate theme based on window context and privacy override logic.
@@ -19,22 +21,28 @@ public protocol ThemeManager {
     /// - Returns: The resolved theme—either the private or default user theme depending on context.
     func resolvedTheme(with shouldShowPrivateTheme: Bool) -> Theme
 
-    /// TODO(FXIOS-11655): Making this a prop of ThemeManager since it's easier to get the flag value this way
-    /// instead of having to call the nimbus API each time. This should be removed once experiment is over.
-    var isNewAppearanceMenuOn: Bool { get }
+    /// Whether `resolveTheme`'s private theme override is allowed to take effect, gated on a feature flag.
+    var isPrivateThemeOverrideEnabled: Bool { get }
 
     // System theme and brightness settings
     var systemThemeIsOn: Bool { get }
     var automaticBrightnessIsOn: Bool { get }
     var automaticBrightnessValue: Float { get }
+
+    @MainActor
     func setSystemTheme(isOn: Bool)
+    @MainActor
     func setManualTheme(to newTheme: ThemeType)
     func getUserManualTheme() -> ThemeType
+    @MainActor
     func setAutomaticBrightness(isOn: Bool)
+    @MainActor
     func setAutomaticBrightnessValue(_ value: Float)
 
     // Window management and window-specific theming
+    @MainActor
     func applyThemeUpdatesToWindows()
+    @MainActor
     func setPrivateTheme(isOn: Bool, for window: WindowUUID)
     func getPrivateThemeIsOn(for window: WindowUUID) -> Bool
     func setWindow(_ window: UIWindow, for uuid: WindowUUID)

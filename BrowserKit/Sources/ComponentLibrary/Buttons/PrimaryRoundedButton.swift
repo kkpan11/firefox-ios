@@ -6,8 +6,14 @@ import Common
 import UIKit
 
 public class PrimaryRoundedButton: ResizableButton, ThemeApplicable {
-    private struct UX {
-        static let buttonCornerRadius: CGFloat = 12
+    private enum UX {
+        static var buttonCornerRadius: CGFloat {
+            if #available(iOS 26.0, *) {
+                return 32
+            } else {
+                return 12
+            }
+        }
         static let buttonVerticalInset: CGFloat = 12
         static let buttonHorizontalInset: CGFloat = 16
 
@@ -22,7 +28,7 @@ public class PrimaryRoundedButton: ResizableButton, ThemeApplicable {
     private var backgroundColorNormal: UIColor = .clear
     private var backgroundColorHighlighted: UIColor = .clear
     private var backgroundColorDisabled: UIColor = .clear
-    private var foregroundColor: UIColor = .black
+    internal var foregroundColor: UIColor = .black
     private var foregroundColorDisabled: UIColor = .clear
 
     override init(frame: CGRect) {

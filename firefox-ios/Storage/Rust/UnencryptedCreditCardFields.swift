@@ -5,9 +5,11 @@
 import Foundation
 
 import struct MozillaAppServices.CreditCard
+import struct MozillaAppServices.UpdatableCreditCardFields
 
+// TODO: FXIOS-13161 - refactor this to ensure it's actually thread safe and remove @unchecked Sendable
 // Note: This was created in lieu of a view model
-public struct UnencryptedCreditCardFields {
+public struct UnencryptedCreditCardFields: @unchecked Sendable {
     public var ccName = ""
     public var ccNumber = ""
     public var ccNumberLast4 = ""
@@ -34,7 +36,7 @@ public struct UnencryptedCreditCardFields {
     public func convertToTempCreditCard() -> CreditCard {
         let convertedCreditCard = CreditCard(guid: "",
                                              ccName: self.ccName,
-                                             ccNumberEnc: "",
+                                             ccNumber: self.ccNumber,
                                              ccNumberLast4: self.ccNumberLast4,
                                              ccExpMonth: self.ccExpMonth,
                                              ccExpYear: self.ccExpYear,
@@ -44,6 +46,14 @@ public struct UnencryptedCreditCardFields {
                                              timeLastModified: Int64(Date().timeIntervalSince1970),
                                              timesUsed: 0)
         return convertedCreditCard
+    }
+
+    public func toUpdatableCreditCardFields() -> UpdatableCreditCardFields {
+        return UpdatableCreditCardFields(ccName: self.ccName,
+                                         ccNumber: self.ccNumber,
+                                         ccExpMonth: self.ccExpMonth,
+                                         ccExpYear: self.ccExpYear,
+                                         ccType: self.ccType)
     }
 
     public func isEqualToCreditCard(creditCard: CreditCard) -> Bool {

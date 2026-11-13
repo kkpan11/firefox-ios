@@ -6,14 +6,19 @@ import UniformTypeIdentifiers
 import XCTest
 @testable import Client
 
+@MainActor
 final class URLActivityItemProviderTests: XCTestCase {
     let testFileURL = URL(string: "file://some/file/url")!
     let testWebURL = URL(string: "https://mozilla.org")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: MockProfile())
+    }
+
+    override func tearDown() async throws {
+        DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
     func testWebURL_forMailActivity() {
@@ -123,7 +128,8 @@ final class URLActivityItemProviderTests: XCTestCase {
     func testOveridesWhatsAppShareItem_forTreatmentA() {
         setupNimbusSentFromFirefoxTesting(isEnabled: true, isTreatmentA: true)
 
-        let expectedShareContentA = "https://mozilla.org\n\nSent from Firefox 🦊 Try the mobile browser: https://mzl.la/4fOWPpd"
+        let expectedShareContentA =
+            "https://mozilla.org\n\nSent from Firefox 🦊 Try the mobile browser: https://mzl.la/4fOWPpd"
         let whatsAppActivityIdentifier = "net.whatsapp.WhatsApp.ShareExtension"
 
         let urlActivityItemProvider = URLActivityItemProvider(url: testWebURL, allowSentFromFirefoxTreatment: true)
@@ -157,7 +163,7 @@ final class URLActivityItemProviderTests: XCTestCase {
     }
 
     private func setupNimbusSentFromFirefoxTesting(isEnabled: Bool, isTreatmentA: Bool) {
-        FxNimbus.shared.features.sentFromFirefoxFeature.with { _, _ in
+        FxNimbus.shared.features.sentFromFirefoxFeature.with { _ in
             return SentFromFirefoxFeature(
                 enabled: isEnabled,
                 isTreatmentA: isTreatmentA

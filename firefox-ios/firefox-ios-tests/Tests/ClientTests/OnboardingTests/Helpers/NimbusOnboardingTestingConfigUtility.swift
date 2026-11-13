@@ -5,7 +5,7 @@
 import MozillaAppServices
 
 struct NimbusOnboardingTestingConfigUtility {
-    struct CardElementNames {
+    enum CardElementNames {
         static let name = "Name"
         static let title = "Title"
         static let body = "Body"
@@ -15,7 +15,6 @@ struct NimbusOnboardingTestingConfigUtility {
         static let popupSecondInstruction = "second instruction"
         static let popupThirdInstruction = "third instruction"
         static let a11yIDOnboarding = "onboarding."
-        static let a11yIDUpgrade = "upgrade."
         static let linkTitle = "MacRumors"
         static let linkURL = "https://www.mozilla.org/en-US/privacy/firefox/"
         static let primaryButtonTitle = "Primary Button"
@@ -28,23 +27,21 @@ struct NimbusOnboardingTestingConfigUtility {
         case welcome
         case notifications = "notificationPermissions"
         case sync = "signToSync"
-        case updateWelcome = "update.welcome"
-        case updateSync = "update.signToSync"
 
-        static let allCards: [CardOrder] = [.welcome, .notifications, .sync, .updateWelcome, .updateSync]
+        static let allCards: [CardOrder] = [.welcome, .notifications, .sync]
         static let welcomeNotificationSync: [CardOrder] = [.welcome, .notifications, .sync]
         static let welcomeSync: [CardOrder] = [.welcome, .sync]
     }
 
     // MARK: - Order-based setups
-    func setupNimbus(withOrder order: [CardOrder]) {
+    func setupNimbus(withOrder order: [CardOrder], uiVariant: OnboardingVariant? = nil) {
         var dictionary = [String: NimbusOnboardingCardData]()
 
         for (index, item) in order.enumerated() {
-            dictionary[item.rawValue] = createCard(withID: item, andOrder: index)
+            dictionary[item.rawValue] = createCard(withID: item, andOrder: index, uiVariant: uiVariant)
         }
 
-        FxNimbus.shared.features.onboardingFrameworkFeature.with(initializer: { _, _ in
+        FxNimbus.shared.features.onboardingFrameworkFeature.with(initializer: { _ in
             OnboardingFrameworkFeature(
                 cards: dictionary,
                 dismissable: true)
@@ -61,7 +58,8 @@ struct NimbusOnboardingTestingConfigUtility {
         withSecondaryButton: Bool = false,
         withPrimaryButtonAction primaryAction: [OnboardingActions] = [.forwardOneCard],
         prerequisites: [String] = ["ALWAYS"],
-        disqualifiers: [String] = []
+        disqualifiers: [String] = [],
+        uiVariant: OnboardingVariant? = nil
     ) {
         let cards = createCards(
             numbering: primaryAction.count,
@@ -72,9 +70,10 @@ struct NimbusOnboardingTestingConfigUtility {
             withSecondaryButton: withSecondaryButton,
             primaryButtonAction: primaryAction,
             prerequisites: prerequisites,
-            disqualifiers: disqualifiers)
+            disqualifiers: disqualifiers,
+            uiVariant: uiVariant)
 
-        FxNimbus.shared.features.onboardingFrameworkFeature.with(initializer: { _, _ in
+        FxNimbus.shared.features.onboardingFrameworkFeature.with(initializer: { _ in
             OnboardingFrameworkFeature(
                 cards: cards,
                 dismissable: dismissable)
@@ -91,7 +90,8 @@ struct NimbusOnboardingTestingConfigUtility {
         withSecondaryButton: Bool,
         primaryButtonAction: [OnboardingActions],
         prerequisites: [String],
-        disqualifiers: [String]
+        disqualifiers: [String],
+        uiVariant: OnboardingVariant?
     ) -> [String: NimbusOnboardingCardData] {
         var dictionary = [String: NimbusOnboardingCardData]()
 
@@ -109,7 +109,8 @@ struct NimbusOnboardingTestingConfigUtility {
                 onboardingType: onboardingType,
                 order: number,
                 prerequisites: prerequisites,
-                title: "\(CardElementNames.title) \(number)")
+                title: "\(CardElementNames.title) \(number)",
+                uiVariant: uiVariant)
         }
 
         return dictionary
@@ -117,15 +118,15 @@ struct NimbusOnboardingTestingConfigUtility {
 
     private func createCard(
         withID id: CardOrder,
-        andOrder order: Int
+        andOrder order: Int,
+        uiVariant: OnboardingVariant? = nil
     ) -> NimbusOnboardingCardData {
-        let shouldAddLink: [CardOrder] = [.welcome, .updateWelcome]
-        let isUpdate: [CardOrder] = [.updateWelcome, .updateSync]
+        let shouldAddLink: [CardOrder] = [.welcome]
         let image: NimbusOnboardingHeaderImage = {
             switch id {
             case .notifications: return .notifications
-            case .welcome, .updateWelcome: return .welcomeGlobe
-            case .sync, .updateSync: return .syncDevices
+            case .welcome: return .welcomeGlobe
+            case .sync: return .syncDevices
             }
         }()
 
@@ -137,10 +138,11 @@ struct NimbusOnboardingTestingConfigUtility {
             image: image,
             instructionsPopup: buildInfoPopup(),
             link: shouldAddLink.contains(where: { $0 == id }) ? buildLink() : nil,
-            onboardingType: isUpdate.contains(where: { $0 == id }) ? .upgrade : .freshInstall,
+            onboardingType: .freshInstall,
             order: order,
             prerequisites: ["ALWAYS"],
-            title: "title text")
+            title: "title text",
+            uiVariant: uiVariant)
     }
 
     private func createButtons(
@@ -168,7 +170,7 @@ struct NimbusOnboardingTestingConfigUtility {
 
     private func createButtons(for id: CardOrder) -> NimbusOnboardingButtons {
         switch id {
-        case .welcome, .updateWelcome:
+        case .welcome:
             return NimbusOnboardingButtons(
                 primary: NimbusOnboardingButton(
                     action: .forwardOneCard,
@@ -181,7 +183,7 @@ struct NimbusOnboardingTestingConfigUtility {
                 secondary: NimbusOnboardingButton(
                     action: .forwardOneCard,
                     title: "\(CardElementNames.secondaryButtonTitle)"))
-        case .sync, .updateSync:
+        case .sync:
             return NimbusOnboardingButtons(
                 primary: NimbusOnboardingButton(
                     action: .syncSignIn,

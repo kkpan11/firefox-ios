@@ -12,7 +12,7 @@ enum ContextualHintCopyType {
 
 /// `ContextualHintCopyProvider` exists to provide the requested description or action strings back
 /// for the specified `ContextualHintType`.
-struct ContextualHintCopyProvider: FeatureFlaggable {
+struct ContextualHintCopyProvider {
     typealias CFRStrings = String.ContextualHints
 
     /// Arrow direction infuences toolbar copy, so it exists here.
@@ -53,10 +53,7 @@ struct ContextualHintCopyProvider: FeatureFlaggable {
     private func getTitleCopyFor(_ hint: ContextualHintType) -> String {
         switch hint {
         case .mainMenu:
-            return CFRStrings.MainMenu.NewMenu.Title
-
-        case .toolbarUpdate:
-            return CFRStrings.Toolbar.ToolbarUpdateTitle
+            return CFRStrings.MainMenu.MenuRedesign.Title
 
         default: return ""
         }
@@ -66,12 +63,6 @@ struct ContextualHintCopyProvider: FeatureFlaggable {
         var descriptionCopy = ""
 
         switch hint {
-        case .dataClearance:
-            descriptionCopy = CFRStrings.FeltDeletion.Body
-
-        case .inactiveTabs:
-            descriptionCopy = CFRStrings.TabsTray.InactiveTabs.Body
-
         case .jumpBackIn:
                 descriptionCopy = CFRStrings.FirefoxHomepage.JumpBackIn.PersonalizedHome
 
@@ -79,13 +70,16 @@ struct ContextualHintCopyProvider: FeatureFlaggable {
             descriptionCopy = CFRStrings.FirefoxHomepage.JumpBackIn.SyncedTab
 
         case .mainMenu:
-            descriptionCopy = CFRStrings.MainMenu.NewMenu.Body
+            descriptionCopy = CFRStrings.MainMenu.MenuRedesign.Body
 
         case .navigation:
             descriptionCopy = CFRStrings.Toolbar.NavigationButtonsBody
 
-        case .toolbarUpdate:
-            descriptionCopy = CFRStrings.Toolbar.ToolbarUpdateBody
+        case .relay:
+            descriptionCopy = String(format: String.RelayMask.RelayEmailMaskAvailableCFR, AppName.shortName.rawValue)
+
+        case .summarizeToolbarEntry:
+            descriptionCopy = CFRStrings.Summarize.Description
         }
 
         return descriptionCopy
@@ -95,10 +89,6 @@ struct ContextualHintCopyProvider: FeatureFlaggable {
         var actionCopy: String
 
         switch hint {
-        case .dataClearance:
-            actionCopy = ""
-        case .inactiveTabs:
-            actionCopy = CFRStrings.TabsTray.InactiveTabs.Action
         case .mainMenu:
             actionCopy = ""
         case .jumpBackIn,
@@ -106,7 +96,9 @@ struct ContextualHintCopyProvider: FeatureFlaggable {
             actionCopy = ""
         case .navigation:
             actionCopy = ""
-        case .toolbarUpdate:
+        case .relay:
+            actionCopy = ""
+        case .summarizeToolbarEntry:
             actionCopy = ""
         }
 

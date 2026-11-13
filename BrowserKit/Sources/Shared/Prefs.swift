@@ -5,35 +5,66 @@
 import Foundation
 
 // New keys should follow the name: "[nameOfTheFeature]Key" written with camel case
-public struct PrefsKeys {
+public enum PrefsKeys {
     // When this pref is set (by the user) it overrides default behaviour which is just based on app locale.
     public static let KeyEnableChinaSyncService = "useChinaSyncService"
     public static let KeyLastRemoteTabSyncTime = "lastRemoteTabSyncTime"
 
+    // Long-term blocked-tracker stats (non-private), keyed by category. The
+    // in-progress week is stored separately from a single lifetime running total
+    // (the sum of all completed weeks) so the hot-path write only ever touches a
+    // small, fixed-size value. The start date marks when tracking first began.
+    public static let TrackerBlockStatsCurrentWeek = "trackerBlockStatsCurrentWeek"
+    public static let TrackerBlockStatsLifetime = "trackerBlockStatsLifetime"
+    public static let TrackerBlockStatsStartDate = "trackerBlockStatsStartDate"
+    // Highest figure-count boundary already reported to telemetry for the lifetime
+    // blocked-tracker total. Reset alongside the stats above.
+    public static let TrackerBlockStatsReportedFigures = "trackerBlockStatsReportedFigures"
+
     // Global sync state for rust sync manager
     public static let RustSyncManagerPersistedState = "rustSyncManagerPersistedStateKey"
     public static let LoginsHaveBeenVerified = "loginsHaveBeenVerified"
+    public static let CreditCardsHaveBeenVerified = "creditCardsHaveBeenVerified"
 
     public static let KeyLastSyncFinishTime = "lastSyncFinishTime"
     public static let KeyDefaultHomePageURL = "KeyDefaultHomePageURL"
     public static let KeyNoImageModeStatus = "NoImageModeStatus"
     public static let KeyMailToOption = "MailToOption"
-    public static let HasFocusInstalled = "HasFocusInstalled"
-    public static let HasPocketInstalled = "HasPocketInstalled"
     public static let IntroSeen = "IntroViewControllerSeen"
+    public static let installationProcessedKey = "installationProcessed"
+    public static let OnboardingLastCardSeen = "OnboardingLastCardSeen"
     public static let TermsOfServiceAccepted = "TermsOfServiceAccepted"
+    public static let TermsOfServiceAcceptedDate = "TermsOfServiceAcceptedDate"
+    // TermsOfUseAccepted should use same string key as before to maintain compatibility
+    public static let TermsOfUseAccepted = "termsOfUseAccepted"
+    public static let TermsOfUseAcceptedDate = "TermsOfUseAcceptedDate"
+    public static let TermsOfUseFirstShown = "TermsOfUseFirstShown"
+    public static let TermsOfUseShownRecorded = "TermsOfUseShownRecorded"
+    public static let TermsOfUseDismissedDate = "TermsOfUseDismissedDate"
+    public static let TermsOfUseImpressionCount = "TermsOfUseImpressionCount"
+    public static let TermsOfUseRemindMeLaterCount = "TermsOfUseRemindMeLaterCount"
+    public static let TermsOfUseDismissCount = "TermsOfUseDismissCount"
+    public static let TermsOfUseRemindersCount = "TermsOfUseRemindersCount"
+    public static let TermsOfUseRemindMeLaterTapDate = "TermsOfUseRemindMeLaterTapDate"
+    public static let TermsOfUseLearnMoreTapDate = "TermsOfUseLearnMoreTapDate"
+    public static let TermsOfUsePrivacyNoticeTapDate = "TermsOfUsePrivacyNoticeTapDate"
+    public static let TermsOfUseTermsLinkTapDate = "TermsOfUseTermsLinkTapDate"
+    public static let TermsOfUseExperimentKey = "TermsOfUseExperimentKey" // "<slug>|<branch>|<name>"
+    public static let TermsOfUseExperimentTrackingInitialized = "TermsOfUseExperimentTrackingInitialized"
     public static let HomePageTab = "HomePageTab"
     public static let HomeButtonHomePageURL = "HomeButtonHomepageURL"
     public static let NumberOfTopSiteRows = "NumberOfTopSiteRows"
     public static let LoginsSaveEnabled = "saveLogins"
-    public static let LoginsShowShortcutMenuItem = "showLoginsInAppMenu"
     public static let KeyInstallSession = "installSessionNumber"
     public static let KeyDefaultBrowserCardShowType = "defaultBrowserCardShowType"
     public static let DidDismissDefaultBrowserMessage = "DidDismissDefaultBrowserCard"
     public static let KeyDidShowDefaultBrowserOnboarding = "didShowDefaultBrowserOnboarding"
     public static let ContextMenuShowLinkPreviews = "showLinkPreviews"
     public static let ShowClipboardBar = "showClipboardBar"
+    public static let ShowRelayMaskSuggestions = "showRelayMaskSuggestions"
     public static let BlockOpeningExternalApps = "blockOpeningExternalApps"
+    public static let BackgroundAudio = "backgroundAudio"
+    public static let BlockAds = "blockAds"
     public static let NewTabCustomUrlPrefKey = "HomePageURLPref"
     public static let GoogleTopSiteAddedKey = "googleTopSiteAddedKey"
     public static let GoogleTopSiteHideKey = "googleTopSiteHideKey"
@@ -47,7 +78,7 @@ public struct PrefsKeys {
     // Only set if we get an actual response, no assumptions, nil otherwise
     public static let AppleConfirmedUserIsDefaultBrowser = "AppleConfirmedUserIsDefaultBrowser"
 
-    public struct Session {
+    public enum Session {
         public static let FirstAppUse = "firstAppUse"
         public static let Last = "lastSession"
         public static let Count = "sessionCount"
@@ -57,36 +88,63 @@ public struct PrefsKeys {
         public static let InternalURLUUID = "InternalURLUUID"
     }
 
-    public struct AppVersion {
+    public enum Summarizer {
+        public static let didAgreeTermsOfService = "didAgreeTermOfService"
+        public static let summarizeContentFeature = "summarizeContentFeature"
+        public static let shakeGestureEnabled = "shakeGestureEnabledKey"
+        public static let selectedLanguage = "summarizer.selectedLanguage"
+        /// Legacy pref name used to store the summarizer selected language.
+        /// It is only used to migrate to the new pref `selectedLanguage`
+        public static let legacySelectedLanguage = "selectedLanguage"
+    }
+
+    public enum AppVersion {
         public static let Latest = "latestAppVersion"
     }
 
-    public struct Wallpapers {
+    public enum Wallpapers {
         public static let MetadataLastCheckedDate = "WallpaperMetadataLastCheckedUserPrefsKey"
         public static let CurrentWallpaper = "CurrentWallpaperUserPrefsKey"
         public static let ThumbnailsAvailable = "ThumbnailsAvailableUserPrefsKey"
-        public static let OnboardingSeenKey = "WallpaperOnboardingSeenKeyUserPrefsKey"
+        public static let EngagementSheetShownMarketingSlug = "WallpaperEngagementSheetShownMarketingSlugUserPrefsKey"
 
         public static let legacyAssetMigrationCheck = "legacyAssetMigrationCheckUserPrefsKey"
         public static let v1MigrationCheck = "v1MigrationCheckUserPrefsKey"
     }
 
-    public struct Notifications {
+    public enum Notifications {
         public static let SyncNotifications = "SyncNotificationsUserPrefsKey"
         public static let TipsAndFeaturesNotifications = "TipsAndFeaturesNotificationsUserPrefsKey"
     }
 
     // For ease of use, please list keys alphabetically.
-    public struct FeatureFlags {
+    public enum FeatureFlags {
         public static let DebugSuffixKey = "DebugKey"
         public static let FirefoxSuggest = "FirefoxSuggest"
-        public static let InactiveTabs = "InactiveTabsUserPrefsKey"
+        public static let GoogleLens = "GoogleLensUserPrefsKey"
         public static let SearchBarPosition = "SearchBarPositionUsersPrefsKey"
         public static let SentFromFirefox = "SentFromFirefoxUserPrefsKey"
+        public static let SponsoredShortcuts = "SponsoredShortcutsUserPrefsKey"
         public static let StartAtHome = "StartAtHomeUserPrefsKey"
     }
 
-    public struct SearchSettings {
+    public enum HomepageSettings {
+        public static let BookmarksSection = "BookmarksSectionUserPrefsKey"
+        public static let JumpBackInSection = "JumpBackInSectionUserPrefsKey"
+        public static let TrackerBlockerSection = "TrackerBlockerSectionUserPrefsKey"
+    }
+
+    public enum QuickAnswers {
+        public static let optInCompleted = "quickAnswers.optInCompleted"
+        public static let entryPointButtonGlowCount = "quickAnswers.entryPointButtonGlowCount"
+        public static let modelOverride = "quickAnswers.modelOverride"
+    }
+
+    public enum Tips {
+        public static let shouldResetDatastore = "tips.shouldResetDatastore"
+    }
+
+    public enum SearchSettings {
         public static let showFirefoxBrowsingHistorySuggestions = "FirefoxSuggestBrowsingHistorySuggestions"
         public static let showFirefoxBookmarksSuggestions = "FirefoxSuggestBookmarksSuggestions"
         public static let showFirefoxSyncedTabsSuggestions = "FirefoxSuggestSyncedTabsSuggestions"
@@ -95,46 +153,64 @@ public struct PrefsKeys {
         public static let showPrivateModeFirefoxSuggestions = "ShowPrivateModeFirefoxSuggestionsKey"
         public static let showPrivateModeSearchSuggestions = "ShowPrivateModeSearchSuggestionsKey"
         public static let showSearchSuggestions = "FirefoxSuggestShowSearchSuggestions"
+        public static let showTrendingSearches = "trendingSearchesFeatureKey"
+        public static let showRecentSearches = "recentSearchesFeatureKey"
     }
 
-    public struct RemoteSettings {
+    public enum RemoteSettings {
         public static let lastRemoteSettingsServiceSyncTimestamp =
         "LastRemoteSettingsServiceSyncTimestamp"
-        public static let useQAStagingServerForRemoteSettings =
-        "useQAStagingServerForRemoteSettings"
+        public static let remoteSettingsEnvironment =
+        "remoteSettingsEnvironment"
     }
 
-    public struct Sync {
+    public enum Sync {
         public static let numberOfSyncedDevices = "numberOfSyncedDevicesKey"
         public static let signedInFxaAccount = "signedInFxaAccountKey"
     }
 
-    public struct UserFeatureFlagPrefs {
+    public enum MLPASettings {
+        public static let mlpaEndpointEnvironment = "mlpaEndpointEnvironment"
+        public static let lastUsedEnvironment = "mlpaLastUsedEnvironment"
+    }
+
+    public enum VPNSettings {
+        public static let endpointEnvironment = "vpnEndpointEnvironment"
+        public static let lastUsedEnvironment = "vpnLastUsedEnvironment"
+        public static let selectedCountryCode = "vpnSelectedCountryCode"
+    }
+
+    public enum UserFeatureFlagPrefs {
         public static let ASPocketStories = "ASPocketStoriesUserPrefsKey"
-        public static let BookmarksSection = "BookmarksSectionUserPrefsKey"
-        public static let JumpBackInSection = "JumpBackInSectionUserPrefsKey"
-        public static let SponsoredShortcuts = "SponsoredShortcutsUserPrefsKey"
         public static let StartAtHome = "StartAtHomeUserPrefsKey"
         public static let TopSiteSection = "TopSitesUserPrefsKey"
     }
 
     // Firefox contextual hint
     public enum ContextualHints: String, CaseIterable {
-        case dataClearanceKey = "ContextualHintDataClearance"
         case jumpBackinKey = "ContextualHintJumpBackin"
         case jumpBackInConfiguredKey = "JumpBackInConfigured"
         case jumpBackInSyncedTabKey = "ContextualHintJumpBackInSyncedTab"
         case jumpBackInSyncedTabConfiguredKey = "JumpBackInSyncedTabConfigured"
-        case inactiveTabsKey = "ContextualHintInactiveTabs"
         case mainMenuKey = "MainMenuHintKey"
+        case mainMenuRedesignKey = "mainMenuRedesignHintKey"
         case navigationKey = "ContextualHintNavigation"
-        case toolbarUpdateKey = "ContextualHintToolbarUpdate"
+        case relayMaskKey = "ContextualHintRelayMaskKey"
+        case summarizerToolbarEntryKey = "summarizerToolbarEntryKey"
     }
 
     // Firefox settings
-    public struct Settings {
+    public enum Settings {
         public static let closePrivateTabs = "ClosePrivateTabs"
         public static let sentFromFirefoxWhatsApp = "SentFromFirefoxWhatsApp"
+        public static let navigationToolbarMiddleButton = "settings.navigationToolbarMiddleButton"
+        public static let translationsFeature = "settings.translationFeature"
+        public static let translationPreferredLanguages = "settings.translationPreferredLanguages"
+        public static let translationAutoTranslate = "settings.translationAutoTranslate"
+        public static let translationAutoTranslatePromptShown = "settings.translationAutoTranslatePromptShown"
+        public static let aiKillSwitchFeature = "settings.aiKillSwitchFeature"
+        public static let quickAnswersFeature = "settings.quickAnswersFeature"
+        public static let vpnFeature = "settings.vpnFeature"
     }
 
     // Activity Stream
@@ -178,45 +254,70 @@ public struct PrefsKeys {
     // The last timestamp we polled FxA for missing send tabs
     public static let PollCommandsTimestamp = "PollCommandsTimestamp"
 
+    // The last timestamp we verified Autopush connections
+    public static let AutopushVerificationTimestamp = "AutopushVerificationTimestamp"
+
     // Representing whether or not the last user session was private
     public static let LastSessionWasPrivate = "wasLastSessionPrivate"
 
-    // Only used in unit tests to override the user's setting for nimbus features
-    public static let NimbusUserEnabledFeatureTestsOverride = "NimbusUserEnabledFeatureTestsOverride"
-
-    // Only used to force faster transition of tabs to the inactive state (10 seconds)
-    public static let FasterInactiveTabsOverride = "FasterInactiveTabsOverride"
+    // Only used to force faster Terms of Use timeout for debugging purposes
+    public static let FasterTermsOfUseTimeoutOverride = "FasterTermsOfUseTimeoutOverride"
 
     // Only used to force showing the App Store review dialog for debugging purposes
     public static let ForceShowAppReviewPromptOverride = "ForceShowAppReviewPromptOverride"
 
-    // Used to show splash screen only during first time on fresh install
-    public static let splashScreenShownKey = "splashScreenShownKey"
-
     public static let PasswordGeneratorShown = "PasswordGeneratorShown"
-
-    // Represents whether or not the user has seen the photon main menu once, at least.
-    public static let PhotonMainMenuShown = "PhotonMainMenuShown"
 
     // The guid of the bookmark folder that was most recently created or saved to by the user.
     // Used to indicate where we should save the next bookmark by default.
     public static let RecentBookmarkFolder = "RecentBookmarkFolder"
-    // Represents whether or not the bookmark refactor feature flag is enabled
-    // Used in the share extension
-    public static let IsBookmarksRefactorEnabled = "IsBookmarksRefactorEnabled"
 
     // The timestamp where the app was last opened as default browser
     public static let LastOpenedAsDefaultBrowser = "LastOpenedAsDefaultBrowser"
 
-    // Used to only show the felt deletion alert confirmation once, used for private mode
-    public static let dataClearanceAlertShown = "dataClearanceAlertShownKey"
+    // Used to only show the Default Browser Banner, in Main Menu, until is dismissed by the user
+    public static let defaultBrowserBannerShown = "defaultBrowserBannerShownKey"
 
-    public struct Usage {
+    // Count of distinct active days
+    public static let onboardingActiveDayCount = "onboardingActiveDayCount"
+
+    // The calendar day that count last advanced,
+    public static let onboardingLastActiveDate = "onboardingLastActiveDate"
+
+    // The day whose card was last shown.
+    public static let onboardingLastCardActiveDay = "onboardingLastCardActiveDay"
+
+    // Set when the user declines the notifications card and dismisses the homescreen notification card respectively
+    public static let onboardingNotificationsDeclined = "onboardingNotificationsDeclined"
+    public static let onboardingNotificationCardDismissed = "onboardingNotificationCardDismissed"
+
+    // MARK: - Apple Intelligence
+    // Used to determine if Apple Intelligence is available
+    public static let appleIntelligenceAvailable = "appleIntelligenceAvailableKey"
+    // Used to determine if cannot run the Apple Intelligence model
+    public static let cannotRunAppleIntelligence = "cannotRunAppleIntelligenceKey"
+
+    // Used for enabling test data for merino stories on non-dev builds
+    public static let useMerinoTestData = "useMerinoTestData"
+
+    // Used for showing mock breach alerts on saved logins, for testing the breach alerts UI
+    public static let useMockBreachAlerts = "useMockBreachAlerts"
+
+    public enum Usage {
         public static let profileId = "profileId"
+    }
+
+    public enum PrivacyNotice {
+        // Timestamp in milliseconds for when the privacy notice homepage card was last shown
+        public static let notifiedDate = "PrivacyNotice.NotifiedDate"
+
+        // Boolean value denoting whether to override the last privacy notice update timestamp with the current date
+        // For testing use only
+        public static let privacyNoticeUpdateDebugOverride = "PrivacyNoticeUpdateDebugOverride"
     }
 }
 
-public protocol Prefs {
+public protocol Prefs: Sendable {
     func getBranchPrefix() -> String
     func branch(_ branch: String) -> Prefs
     func setTimestamp(_ value: Timestamp, forKey defaultName: String)
@@ -241,7 +342,7 @@ public protocol Prefs {
     func clearAll()
 }
 
-open class MockProfilePrefs: Prefs {
+open class MockProfilePrefs: Prefs, @unchecked Sendable {
     let prefix: String
 
     open func getBranchPrefix() -> String {

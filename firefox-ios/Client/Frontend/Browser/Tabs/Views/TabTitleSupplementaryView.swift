@@ -7,10 +7,10 @@ import SiteImageView
 
 /// A supplementary view shown below the `ExperimentTabCell` containing the tab favicon and title
 final class TabTitleSupplementaryView: UICollectionReusableView, ThemeApplicable, ReusableCell {
-    struct UX {
+    enum UX {
         static let tabViewFooterSpacing: CGFloat = 4
         static let faviconSize = CGSize(width: 16, height: 16)
-        static let viewPosition: CGFloat = 23
+        static let bottomAnchorText: CGFloat = 8
     }
 
     private lazy var footerView: UIStackView = .build { stackView in
@@ -35,6 +35,7 @@ final class TabTitleSupplementaryView: UICollectionReusableView, ThemeApplicable
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        isUserInteractionEnabled = false
 
         addSubview(footerView)
         footerView.addArrangedSubview(faviconContainer)
@@ -42,7 +43,7 @@ final class TabTitleSupplementaryView: UICollectionReusableView, ThemeApplicable
         faviconContainer.addSubview(favicon)
 
         NSLayoutConstraint.activate([
-            footerView.topAnchor.constraint(equalTo: topAnchor, constant: UX.viewPosition),
+            footerView.topAnchor.constraint(equalTo: bottomAnchor, constant: UX.bottomAnchorText),
             footerView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor),
             footerView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
             footerView.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -67,12 +68,11 @@ final class TabTitleSupplementaryView: UICollectionReusableView, ThemeApplicable
         favicon.layer.cornerRadius = UX.faviconSize.height / 2
     }
 
-    func configure(with tabModel: TabModel, theme: Theme?) {
-        titleText.text = tabModel.tabTitle
+    func configure(with tabModel: TabModel, theme: Theme?, newTabTitle: String?) {
+        titleText.text = newTabTitle ?? tabModel.tabTitle
 
-        let identifier = StandardImageIdentifiers.Large.globe
-        if let globeFavicon = UIImage(named: identifier)?.withRenderingMode(.alwaysTemplate) {
-            favicon.manuallySetImage(globeFavicon)
+        if let firefoxFavicon = UIImage(named: ImageIdentifiers.firefoxFavicon) {
+            favicon.manuallySetImage(firefoxFavicon)
         }
 
         if !tabModel.isFxHomeTab, let tabURL = tabModel.url?.absoluteString {

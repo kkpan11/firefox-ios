@@ -13,6 +13,7 @@ import struct MozillaAppServices.LoginEntry
 enum FocusFieldType: String, Codable {
     case username
     case password
+    case email
 }
 
 struct FieldFocusMessage: Codable {
@@ -32,7 +33,8 @@ struct LoginItem: Codable {
     var hostname: String
 }
 
-class LoginsHelper: TabContentScript, FeatureFlaggable {
+// TODO: FXIOS-13180 Make LoginsHelper actually sendable
+class LoginsHelper: @unchecked Sendable, TabContentScript {
     private weak var tab: Tab?
     private let profile: Profile
     private let theme: Theme
@@ -63,8 +65,9 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
         self.theme = theme
     }
 
+    @MainActor
     func prepareForDeinit() {
-        self.loginAlertTimer = nil
+        invalidateLoginAlertTimer()
         if let loginAlert {
             self.loginAlert = nil
             tab?.removeLoginAlert(loginAlert)
@@ -146,16 +149,22 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
         if type == "clearAccessoryView" {
             tab?.webView?.accessoryView.reloadViewFor(.standard)
         }
+        let scriptEvaluator = WebKitPasswordGeneratorScriptEvaluator(webView: message.frameInfo.webView)
+        let frameContext = PasswordGeneratorFrameContext(origin: message.frameInfo.webView?.url?.origin,
+                                                         host: message.frameInfo.securityOrigin.host,
+                                                         scriptEvaluator: scriptEvaluator,
+                                                         frameInfo: message.frameInfo)
 
         if type == "generatePassword",
             let tab = self.tab,
             !tab.isPrivate,
             profile.prefs.boolForKey("saveLogins") ?? true {
             let userDefaults = UserDefaults.standard
+            let windowUUID = tab.windowUUID
             let showPasswordGeneratorClosure = {
                 let newAction = GeneralBrowserAction(
-                    frame: message.frameInfo,
-                    windowUUID: tab.windowUUID,
+                    frameContext: frameContext,
+                    windowUUID: windowUUID,
                     actionType: GeneralBrowserActionType.showPasswordGenerator)
 
                 store.dispatch(newAction)
@@ -198,6 +207,10 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
         // NOTE: This is a partial stub / placeholder
         // FXIOS-3856 will further enhance the logs into actual callback
         switch message.fieldType {
+        case .email:
+            logger.log("Parsed message email",
+                       level: .debug,
+                       category: .webview)
         case .username:
             logger.log("Parsed message username",
                        level: .debug,
@@ -253,6 +266,7 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
         }
     }
 
+    @MainActor
     private func promptSave(_ login: LoginEntry) {
         guard login.isValid.isSuccess else { return }
 
@@ -277,15 +291,19 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
         }
 
         let alert = SaveLoginAlert()
-        alert.saveAction = {
-            self.tab?.removeLoginAlert(alert)
-            self.loginAlert = nil
-            self.sendLoginsSavedTelemetry()
-            self.profile.logins.addLogin(login: login, completionHandler: { _ in })
+        alert.saveAction = { [weak self, weak alert] in
+            guard let self else { return }
+            if let alert { tab?.removeLoginAlert(alert) }
+            loginAlert = nil
+            invalidateLoginAlertTimer()
+            sendLoginsSavedTelemetry()
+            profile.logins.addLogin(login: login, completionHandler: { _ in })
         }
-        alert.notNotAction = {
-            self.tab?.removeLoginAlert(alert)
-            self.loginAlert = nil
+        alert.notNowAction = { [weak self, weak alert] in
+            guard let self else { return }
+            if let alert { tab?.removeLoginAlert(alert) }
+            loginAlert = nil
+            invalidateLoginAlertTimer()
         }
 
         let viewModel = SaveLoginAlertViewModel(
@@ -300,6 +318,7 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
         show(alert)
     }
 
+    @MainActor
     private func promptUpdateFromLogin(login old: LoginRecord, toLogin new: LoginEntry) {
         guard new.isValid.isSuccess else { return }
 
@@ -316,15 +335,19 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
         }
 
         let alert = SaveLoginAlert()
-        alert.saveAction = {
-            self.tab?.removeLoginAlert(alert)
-            self.loginAlert = nil
-            self.sendLoginsModifiedTelemetry()
-            self.profile.logins.updateLogin(id: old.id, login: new, completionHandler: { _ in })
+        alert.saveAction = { [weak self, weak alert] in
+            guard let self else { return }
+            if let alert { tab?.removeLoginAlert(alert) }
+            loginAlert = nil
+            invalidateLoginAlertTimer()
+            sendLoginsModifiedTelemetry()
+            profile.logins.updateLogin(id: old.id, login: new, completionHandler: { _ in })
         }
-        alert.notNotAction = {
-            self.tab?.removeLoginAlert(alert)
-            self.loginAlert = nil
+        alert.notNowAction = { [weak self, weak alert] in
+            guard let self else { return }
+            if let alert { tab?.removeLoginAlert(alert) }
+            loginAlert = nil
+            invalidateLoginAlertTimer()
         }
 
         let viewModel = SaveLoginAlertViewModel(
@@ -339,11 +362,19 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
         show(alert)
     }
 
+    @MainActor
+    private func invalidateLoginAlertTimer() {
+        loginAlertTimer?.invalidate()
+        loginAlertTimer = nil
+    }
+
+    @MainActor
     private func show(_ alert: SaveLoginAlert) {
         loginAlert = alert
         loginAlert?.applyTheme(theme: theme)
         tab?.addLoginAlert(alert)
 
+        invalidateLoginAlertTimer()
         let timer = Timer(
             timeInterval: loginAlertTimeout,
             target: self,
@@ -357,9 +388,11 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
     }
 
     @objc
-    func timerDone() {
-        loginAlert?.shouldPersist = false
-        loginAlertTimer = nil
+    nonisolated func timerDone() {
+        ensureMainThread {
+            self.loginAlert?.shouldPersist = false
+            self.loginAlertTimer = nil
+        }
     }
 
     private func requestLogins(_ request: [String: Any], url: URL) {
@@ -367,22 +400,24 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
             // Even though we don't currently use these two fields,
             // verify that they were received as additional confirmation
             // that this is a valid request from LoginsHelper.js.
-            request["formOrigin"] as? String != nil,
-            request["actionOrigin"] as? String != nil
+            request["formOrigin"] is String,
+            request["actionOrigin"] is String
         else { return }
 
         currentRequestId = requestId
     }
 
+    @MainActor
     private func clearStoredPasswordAfterGeneration(origin: String) {
         if let windowUUID = self.tab?.windowUUID {
             let action = PasswordGeneratorAction(windowUUID: windowUUID,
                                                  actionType: PasswordGeneratorActionType.clearGeneratedPasswordForSite,
-                                                 origin: origin)
+                                                 loginEntryOrigin: origin)
             store.dispatch(action)
         }
     }
 
+    @MainActor
     public static func fillLoginDetails(with tab: Tab,
                                         loginData: LoginInjectionData) {
         guard let data = try? JSONEncoder().encode(loginData),
@@ -395,19 +430,21 @@ class LoginsHelper: TabContentScript, FeatureFlaggable {
                                      object: .loginsAutofilled)
     }
 
+    @MainActor
     public static func yieldFocusBackToField(with tab: Tab) {
         let jsFocusCallback = "window.__firefox__.logins.yieldFocusBackToField()"
         tab.webView?.evaluateJavascriptInDefaultContentWorld(jsFocusCallback)
     }
 
+    @MainActor
     public static func setUpdatedPasswordEnabled(with tab: Tab?) {
         guard let tab = tab else { return }
-        let status = LegacyFeatureFlagsManager.shared.isFeatureEnabled(.updatedPasswordManager, checking: .buildOnly)
-        let jsUpdatedPasswordEnabled = "window.__firefox__.logins.isUpdatedPasswordManagerEnabled(\(status))"
+        let jsUpdatedPasswordEnabled = "window.__firefox__.logins.isUpdatedPasswordManagerEnabled(true)"
         tab.webView?.evaluateJavascriptInDefaultContentWorld(jsUpdatedPasswordEnabled)
     }
 
     // MARK: Theming System
+    @MainActor
     private func applyTheme(for views: UIView...) {
         views.forEach { view in
             if let view = view as? ThemeApplicable {

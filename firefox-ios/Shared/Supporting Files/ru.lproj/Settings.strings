@@ -11,7 +11,7 @@
 "Addresses.Settings.SaveToFirefox.Title.v130" = "Сохранять адреса в %@";
 
 /* Description text for the content unavailable view informing users they can create or add new addresses. */
-"Addresses.Settings.SecureSaveInfo.Description.v130" = "Надежно сохраните вашу информацию, чтобы получить к ней быстрый доступ в будущем.";
+"Addresses.Settings.SecureSaveInfo.Description.v130" = "Надёжно сохраните вашу информацию, чтобы получить к ней быстрый доступ в будущем.";
 
 /* On the autofill settings screen, a label under the title label to add additional context for user in regards to what the toggle switch that allow saving and autofilling of addresses for webpages does, letting users know that this action includes phone numbers and email addresses. */
 "Addresses.Settings.Switch.Description.v124" = "Включает номера телефонов и адреса электронной почты";
@@ -26,7 +26,7 @@
 "CreditCard.Settings.AddCard.AccessibilityLabel.v121" = "Добавить карту";
 
 /* Description label for when there are no credit cards shown in credit card list in autofill settings screen. */
-"CreditCard.Settings.EmptyListDescription.v112" = "Надежно сохраняйте информацию о картах, чтобы в следующий раз расплачиваться быстрее.";
+"CreditCard.Settings.EmptyListDescription.v112" = "Надёжно сохраняйте информацию о картах, чтобы в следующий раз расплачиваться быстрее.";
 
 /* Title label for when there are no credit cards shown in credit card list in autofill settings screen. %@ is the product name and should not be altered. */
 "CreditCard.Settings.EmptyListTitle.v122" = "Сохранять карты в %@";
@@ -61,11 +61,95 @@
 /* Settings section title for the old Firefox account */
 "FxA.FirefoxAccount.v119" = "Аккаунт";
 
+/* Label of the toggle that enables or disables the Quick Answers feature on the Quick Answers settings screen. */
+"QuickAnswers.Settings.EnableQuickAnswers.v158" = "Включить Быстрые ответы";
+
+/* Footer text on the Quick Answers settings screen explaining the feature and its privacy policy. */
+"QuickAnswers.Settings.Footer.v158" = "Задайте вопросы вслух и получите краткие ответы. Мы не сохраняем ваш голос, вопросы или ответы.";
+
+/* Link button on the Quick Answers settings screen that opens more information about the feature. */
+"QuickAnswers.Settings.LearnMore.v158" = "Подробнее";
+
+/* Status text shown next to the Quick Answers row in the general settings when the feature is disabled. */
+"QuickAnswers.Settings.StatusOff.v158" = "Откл.";
+
+/* Status text shown next to the Quick Answers row in the general settings when the feature is enabled. */
+"QuickAnswers.Settings.StatusOn.v158" = "Вкл.";
+
+/* Title shown in the navigation bar and as the toggle label on the Quick Answers settings screen. */
+"QuickAnswers.Settings.Title.v158" = "Быстрые ответы";
+
 /* Label used as an item in Settings screen. When touched, it will take user to address autofill settings page to that will allow user to add or modify saved addresses to allow for autofill in a webpage. */
 "Settings.AddressAutofill.Title.v126" = "Адреса";
 
+/* In the AI Controls settings, in the AI powered features section, this is the text that indicates the feature is turned on. */
+"Settings.AIControls.AIPoweredFeaturesSection.AvailableStatus.v151" = "Доступно";
+
+/* In the AI Controls settings, in the AI powered features section, this is the text that what the available status means. The content between the ** ** is bolded. Please do not remove these in translation. */
+"Settings.AIControls.AIPoweredFeaturesSection.AvailableStatusDescription.v151" = "**Доступно**: Вы увидите эту функцию и сможете её использовать.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the text that indicates the feature is turned off. */
+"Settings.AIControls.AIPoweredFeaturesSection.BlockedStatus.v151" = "Заблокировано";
+
+/* In the AI Controls settings, in the AI powered features section, this is the text that what the blocked status means. The content between the ** ** is bolded. Please do not remove these in translation. */
+"Settings.AIControls.AIPoweredFeaturesSection.BlockedStatusDescriptionV2.v151" = "**Заблокировано**: вы не увидите и не сможете использовать эту функцию. Для ИИ на устройстве все загруженные модели удаляются.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the message that describes the pages summaries feature */
+"Settings.AIControls.AIPoweredFeaturesSection.PageSummariesSection.Message.v151" = "Страницы и сводки никогда не сохраняются.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the title that describes the page summaries feature */
+"Settings.AIControls.AIPoweredFeaturesSection.PageSummariesSection.Title.v151" = "Резюме страниц";
+
+/* In the AI Controls settings, in the AI powered features section, this is the message that describes the Quick Answers feature */
+"Settings.AIControls.AIPoweredFeaturesSection.QuickAnswersSection.Message.v154" = "Ваш голос, вопросы и ответы никогда не сохраняются.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the title that describes the Quick Answers feature */
+"Settings.AIControls.AIPoweredFeaturesSection.QuickAnswersSection.Title.v154" = "Быстрые ответы";
+
+/* In the AI Controls settings, this is the title for the section that describes AI-powered features. This is uppercase to match the style on iOS apps. */
+"Settings.AIControls.AIPoweredFeaturesSection.Title.v151" = "ИИ-ВОЗМОЖНОСТИ";
+
+/* In the AI Controls settings, in the AI powered features section, this is the message that describes the translation feature */
+"Settings.AIControls.AIPoweredFeaturesSection.TranslationSection.Message.v151" = "Переводы остаются приватными на вашем устройстве.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the title that describes the translation feature */
+"Settings.AIControls.AIPoweredFeaturesSection.TranslationSection.Title.v151" = "Перевод";
+
+/* This is the description for the setting that toggles whether to block AI enhancements under the AI Controls settings section. %@ is the app name (e.g. Firefox). */
+"Settings.AIControls.BlockAIEnhancementsDescription.v151" = "Блокировка означает, что вы не увидите новых или текущих улучшений ИИ в %@, а также всплывающих окон о них.";
+
+/* In the AI Controls settings, this is the text for the link that takes the user more information on AI features. */
+"Settings.AIControls.BlockAIEnhancementsLink.v151" = "Посмотрите, что включено, а что не включено";
+
+/* This is the title for the setting that toggles whether to block AI enhancements under the AI Controls settings section. */
+"Settings.AIControls.BlockAIEnhancementsTitle.v151" = "Блокировать ИИ-улучшения";
+
+/* In the AI Controls settings, this is the text that appears when you have turned on the Block AI Enhancements toggle */
+"Settings.AIControls.BlockedInformation.v151" = "Новые и текущие ИИ-улучшения заблокированы по умолчанию. Разблокируйте конкретные функции ниже.";
+
+/* This is the text for the link in the Header Card under the AI Controls settings section that links to more information. */
+"Settings.AIControls.HeaderCard.Link.v151" = "Подробнее";
+
+/* This is the message for the Header Card under the AI Controls settings section. */
+"Settings.AIControls.HeaderCard.Message.v151" = "Это включает в себя, использовать ли функции, улучшенные с помощью ИИ.";
+
+/* This is the title for the Header Card under the AI Controls settings section. %@ is the app name (e.g. Firefox). */
+"Settings.AIControls.HeaderCard.Title.v151" = "У вас всегда есть выбор в %@";
+
+/* In the settings menu, in the General section, this is the title for the AI Controls settings section */
+"Settings.AIControls.Title.v150" = "Управление ИИ";
+
+/* Section description in Appearance settings for middle button configuration of the bottom toolbar. */
+"Settings.Appearance.NavigationToolbar.Description.v145" = "Сменяет кнопку в центре панели инструментов.";
+
+/* Section header title in Appearance settings that configures the middle button of the bottom toolbar. */
+"Settings.Appearance.NavigationToolbar.SectionHeader.v145" = "Кнопка панели инструментов";
+
 /* Default section header title under page zoom settings. Indicates the default value for all websites */
 "Settings.Appearance.Zoom.Default.Title.v140" = "По умолчанию";
+
+/* Button to reset specific zoom site levels back to default */
+"Settings.Appearance.Zoom.Reset.Button.v140" = "Сбросить параметры сайта";
 
 /* Page zoom section header title in Appearance settings */
 "Settings.Appearance.Zoom.SectionHeader.v140" = "Настройки масштаба";
@@ -103,6 +187,27 @@
 /* In the settings menu, this label indicates that there is an option of customizing the Autoplay behaviour. */
 "Settings.Autoplay.SettingsTitle.v137" = "Автовоспроизведение";
 
+/* VoiceOver custom action name for a settings row's Learn More link. */
+"Settings.BoolSetting.LearnMoreAction.v157" = "Подробнее";
+
+/* Description text for the Ad Blocker toggle in the Browsing settings page, explaining its purpose and a tip for troubleshooting broken sites. */
+"Settings.Browsing.AdBlocker.Description.v155" = "Уменьшает количество рекламы и связанных с рекламой трекеров. Если сайт выглядит сломанным, попробуйте отключить это.";
+
+/* Link text below the Ad Blocker toggle description that opens a support page with more information. */
+"Settings.Browsing.AdBlocker.LearnMore.v155" = "Подробнее";
+
+/* Title for the Ad Blocker toggle in the Browsing settings page. */
+"Settings.Browsing.AdBlocker.Title.v155" = "Блокировщик рекламы";
+
+/* Title for the Background Audio toggle in the Browsing settings page. When enabled, audio from web pages continues playing after the app is backgrounded. */
+"Settings.Browsing.BackgroundAudio.Title.v156" = "Фоновое аудио";
+
+/* Title for the Block Ads toggle in the Browsing settings page. When enabled, the app blocks advertisements. */
+"Settings.Browsing.BlockAds.Title.v153" = "Блокировать рекламу";
+
+/* This is the title for the Content customization section under the Browsing settings page. */
+"Settings.Browsing.Content.v153" = "Содержимое";
+
 /* This is the title for Links customization under the Browsing settings section. */
 "Settings.Browsing.Links.v137" = "Ссылки";
 
@@ -116,22 +221,13 @@
 "Settings.Browsing.Title.v137" = "Просмотр сайтов";
 
 /* Title for a link that explains how Mozilla send crash reports. */
-"Settings.CrashReports.Link.v135" = "Подробнее.";
-
-/* Title for a link that explains how Mozilla send crash reports. */
 "Settings.CrashReports.Link.v136" = "Подробнее";
-
-/* On the Settings screen, this is the subtitle text for a toggle which controls automatically sending crash reports. */
-"Settings.CrashReports.Message.v135" = "Сообщения о падении позволяют нам диагностировать и устранять проблемы с браузером.";
 
 /* On the Settings screen, this is the subtitle text for a toggle which controls automatically sending crash reports. */
 "Settings.CrashReports.Message.v136" = "Это помогает нам диагностировать и устранять проблемы с браузером.";
 
 /* On the Settings screen, this is the title text for a toggle which controls automatically sending crash reports. */
 "Settings.CrashReports.Title.v135" = "Автоматически отправлять сообщения о падениях";
-
-/* Title for a link that explains how Mozilla send daily usage ping. */
-"Settings.DailyUsagePing.Link.v135" = "Подробнее.";
 
 /* Title for a link that explains how Mozilla send daily usage ping. */
 "Settings.DailyUsagePing.Link.v136" = "Подробнее";
@@ -145,6 +241,9 @@
 /* Title displayed in header of the FxA settings panel. */
 "Settings.FxA.Title.v119" = "Аккаунт";
 
+/* In the settings menu, on the Firefox wallpaper customization screen, this is the brand title for the section containing the Wrexham AFC wallpapers. */
+"Settings.Home.Option.Wallpaper.WrexhamBrandTitle.v155" = "Wrexham A.F.C.";
+
 /* This is the description for the setting that toggles Sync related notifications in the settings menu under the Notifications section. */
 "Settings.Notifications.SyncNotificationsStatus.v112" = "Эта настройка должна быть включена, чтобы получать вкладки и уведомления при вашем входе на другом устройстве.";
 
@@ -155,7 +254,7 @@
 "Settings.Notifications.SystemNotificationsDisabledMessage.v112" = "Вы отключили все уведомления %1$@. Включите их, выбрав «Настройки» > «Уведомления» > «%2$@»";
 
 /* This is the description for the setting that toggles Tips and Features feature in the settings menu under the Notifications section. %@ is the app name (e.g. Firefox). */
-"Settings.Notifications.TipsAndFeaturesNotificationsStatus.v112" = "Узнайте о полезных функциях и о том, как максимально эффективно использовать %@.";
+"Settings.Notifications.TipsAndFeaturesNotificationsStatus.v112" = "Узнавайте о полезных функциях и о том, как максимально эффективно использовать %@.";
 
 /* This is the title for the setting that toggles Tips and Features feature in the settings menu under the Notifications section. */
 "Settings.Notifications.TipsAndFeaturesNotificationsTitle.v112" = "Советы и особенности";
@@ -171,6 +270,15 @@
 
 /* Show Firefox Browser Privacy Notice page from the Privacy section in the settings. See https://www.mozilla.org/privacy/firefox/ */
 "Settings.PrivacyNotice.Title.v137" = "Уведомление о конфиденциальности";
+
+/* Title for a link that explains what Mozilla means by Rollouts */
+"Settings.Rollouts.Link.v148" = "Подробнее";
+
+/* A short description that explains that Mozilla may change features remotely. %@ is the app name (e.g. Firefox). */
+"Settings.Rollouts.Message.v148" = "%@ улучшит работу, производительность и стабильность между обновлениями. Изменения применяются удалённо.";
+
+/* Label used as a toggle item in Settings. When this is off, the user is opting out of all rollouts. */
+"Settings.Rollouts.Title.v148" = "Разрешить удалённые улучшения";
 
 /* In the settings menu, in the General section, this is the title for the option that allows user to disable the autohide feature of the tab and address bar. */
 "Settings.ScrollToHideTabAndAddressBar.Title.v138" = "Прокрутите, чтобы скрыть вкладку и адресную строку";
@@ -189,6 +297,15 @@
 
 /* Title for the `Suggestions from Search Engines` settings section in the Search page in the Settings menu. */
 "Settings.Search.EnginesSuggestions.Title.v124" = "Предложения от поисковых систем";
+
+/* In the Search settings, this is the description that describes the Google Lens feature */
+"Settings.Search.GoogleLens.Description.v153" = "Отправлять изображения в Google для поиска.";
+
+/* In the Search settings, this is the disclaimer underneath the Google Lens settings toggle that explains the conditions required for Google Lens to be available. */
+"Settings.Search.GoogleLens.Footnote.v153" = "Доступно только тогда, когда Google выше включён и является вашей активной поисковой системой при веб-сёрфинге.";
+
+/* In the Search settings, this is the title that describes the Google Lens feature */
+"Settings.Search.GoogleLens.Title.v153" = "Google Lens";
 
 /* Navigation title for search page in the Settings menu. */
 "Settings.Search.PageTitle.v121" = "Поиск";
@@ -235,30 +352,162 @@
 /* Title for a link that explains what Mozilla means by Studies */
 "Settings.Studies.Link.v136" = "Подробнее";
 
+/* Title for a link that explains what Mozilla means by Studies */
+"Settings.Studies.Link.v148" = "Подробнее";
+
 /* A short description that explains that Mozilla is running studies */
-"Settings.Studies.Message.v136" = "Опробуйте функции и идеи перед тем, как они станут доступны для всех и каждого.";
+"Settings.Studies.Message.v136" = "Опробуйте функции и идеи до того, как они станут доступны для всех.";
+
+/* A short description that explains that Mozilla is running studies. %@ is the app name (e.g. Firefox). */
+"Settings.Studies.Message.v148" = "%@ случайным образом выбирает пользователей для тестирования функций, что повышает качество для всех и каждого.";
 
 /* Label used as a toggle item in Settings. When this is off, the user is opting out of all studies. */
 "Settings.Studies.Title.v136" = "Устанавливать и запускать исследования";
 
-/* Title for a link that explains how Mozilla send technical and interaction data. */
-"Settings.TechnicalData.Link.v135" = "Подробнее.";
+/* Label used as a toggle item in Settings. When this is off, the user is opting out of all studies. */
+"Settings.Studies.Title.v148" = "Разрешить исследование функций";
+
+/* This is the footer text for the setting that toggles the Summarize feature under the Summarize settings section. */
+"Settings.Summarize.FooterTitle.v142" = "Предоставляет доступ к сводке страниц.";
+
+/* This is the footer text for the gestures features under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.FooterTitle.v142" = "Встряхните устройство из стороны в сторону, чтобы просмотреть сводку страницы.";
+
+/* This is the title for the setting that toggles the Shake Gesture feature under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.ShakeGestureTitle.v142" = "Встряхните, чтобы получить сводку";
+
+/* This is the section title for the gestures features under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.Title.v142" = "Жесты";
+
+/* The title for the language choose section for the summarizer inside the Summarize settings. */
+"Settings.Summarize.LanguageSection.Title.v149" = "Язык";
+
+/* The label for the picker option to select the website language for the summarizer inside the Summarize settings. */
+"Settings.Summarize.LanguageSection.WebsiteLanguageLabel.v149" = "Язык веб-сайта";
+
+/* This is the title for the setting that toggles the Summarize feature under the Summarize settings section. */
+"Settings.Summarize.SummarizePagesTitle.v142" = "Резюме по страницам";
+
+/* In the settings menu, in the General section, this is the title for the Summarize settings section. */
+"Settings.Summarize.Title.v142" = "Резюме страниц";
 
 /* Title for a link that explains how Mozilla send technical and interaction data. */
 "Settings.TechnicalData.Link.v136" = "Подробнее";
 
-/* On the Settings screen, this is the subtitle text for a toggle which controls sending technical and interaction data. %1$@ is the company name (e.g. Mozilla), %2$@ is the app name (e.g. Firefox). */
-"Settings.TechnicalData.Message.v135" = "%1$@ стремится собирать только то, что нам необходимо для предоставления и улучшения %2$@ для всех.";
-
 /* On the Settings screen, this is the subtitle text for a toggle which controls sending technical and interaction data. %@ is the app name (e.g. Firefox). */
 "Settings.TechnicalData.Message.v136" = "Данные о вашем устройстве, конфигурации оборудования и использовании помогают нам улучшить функции, производительность и стабильность %@.";
-
-/* On the Settings screen, this is the title text for a toggle which controls sending technical and interaction data. */
-"Settings.TechnicalData.Title.v135" = "Технические данные и данные взаимодействия";
 
 /* On the Settings screen, this is the title text for a toggle which controls sending technical and interaction data. */
 "Settings.TechnicalData.Title.v136" = "Отправлять технические данные и данные взаимодействия";
 
 /* Terms of Use settings section title */
 "Settings.TermsOfUse.Title.v137" = "Условия использования";
+
+/* In the Appearance settings menu, in the Toolbar Button section, this label indicates that selecting this will make the home button appear in the middle of the navigation toolbar. */
+"Settings.Toolbar.Navigation.MiddleButton.Home.v145" = "Домой";
+
+/* In the Appearance settings menu, in the Toolbar Button section, this label indicates that selecting this will make the New Tab button appear in the middle of the navigation toolbar. */
+"Settings.Toolbar.Navigation.MiddleButton.NewTab.v145" = "Новая вкладка";
+
+/* Footer text below the auto-translate toggle in the Translation settings screen. */
+"Settings.Translation.AutoTranslate.Footer.v151" = "Автоматически переводит страницы на предпочитаемый язык.";
+
+/* Title for the auto-translate toggle in the Translation settings screen. */
+"Settings.Translation.AutoTranslate.Title.v151" = "Автоматический перевод";
+
+/* Navigation bar title of the language picker shown when adding a preferred translation language. */
+"Settings.Translation.LanguagePicker.NavTitle.v151" = "Выбрать язык";
+
+/* Placeholder text for the search bar in the translation language picker. */
+"Settings.Translation.LanguagePicker.SearchPlaceholder.v151" = "Поиск";
+
+/* Row label in the preferred languages list that opens the language picker to add a new preferred language for translation. */
+"Settings.Translation.PreferredLanguages.AddLanguage.v151" = "Добавить язык…";
+
+/* Subtitle on the device language row in the preferred languages list in the Translation settings screen. */
+"Settings.Translation.PreferredLanguages.DeviceLanguage.v151" = "Язык устройства";
+
+/* Footer text below the preferred languages list in the Translation settings screen. */
+"Settings.Translation.PreferredLanguages.Footer.v151" = "Выберите при переводе один из этих языков.";
+
+/* VoiceOver custom action label on a preferred language row in the Translation settings screen, used to remove that language from the list. */
+"Settings.Translation.PreferredLanguages.RemoveLanguageA11yAction.v151" = "Удалить";
+
+/* Section header for the preferred languages list in the Translation settings screen. */
+"Settings.Translation.PreferredLanguages.SectionTitle.v151" = "Предпочитаемые языки";
+
+/* This is the section title text for the the Translation feature under the Translation settings section. */
+"Settings.Translation.SectionTitle.v145" = "Настройки перевода";
+
+/* In the settings menu, in the General section, this is the text to show next to the Translation setting title and indicates if the translation feature has been disabled. */
+"Settings.Translation.SettingOff.v145" = "Откл.";
+
+/* In the settings menu, in the General section, this is the text to show next to the Translation setting title and indicates if the translation feature has been enabled. */
+"Settings.Translation.SettingOn.v145" = "Вкл.";
+
+/* In the settings menu, in the General section, this is the title for the Translation settings section. */
+"Settings.Translation.Title.v145" = "Перевод";
+
+/* Footer text below the enable toggle in the Translation settings screen. */
+"Settings.Translation.ToggleFooter.v151" = "Отключите, чтобы удалить перевод с панели инструментов и меню.";
+
+/* This is the title for the setting that toggles the Translation feature that allows users to translate web pages under the Translation settings section. */
+"Settings.Translation.ToggleTitle.v145" = "Включить переводы";
+
+/* Text displayed on the locations screen when the app loads a list of locations for the user to pick from. “Locations” here means the locations of VPN servers the user can connect to. */
+"VPN.LocationPicker.FindingLocationsText.v160" = "Поиск местоположений…";
+
+/* Option in the VPN server location list. Choosing it lets the app pick the server with the fastest connection. */
+"VPN.LocationPicker.RecommendedMainText.v160" = "Рекомендуемые";
+
+/* Description below the Recommended option in the VPN server location list. %1$@ is the app name (for example, Firefox). */
+"VPN.LocationPicker.RecommendedSubText.v160" = "%1$@ находит самое быстрое местоположение.";
+
+/* Announced by VoiceOver on the VPN settings screen when the VPN finishes connecting after the user turns on the VPN switch. */
+"VPN.Settings.Connected.v161" = "VPN подключён";
+
+/* Shown next to the VPN switch on the VPN settings screen while the VPN is connecting, right after the user turns it on. */
+"VPN.Settings.Connecting.v160" = "Соединение…";
+
+/* Read aloud by VoiceOver for the Data Limit section on the VPN settings screen. %1$@ is the amount of VPN data used this month and %2$@ is the monthly limit, both in gigabytes (for example, “1.0 of 5.0 gigabytes used”). The second sentence explains that the user’s free monthly VPN data resets on the first day of each month. */
+"VPN.Settings.DataLimit.AccessibilityValue.v161" = "%1$@ из %2$@ гигабайт использовано. Сбрасывается первого числа каждого месяца.";
+
+/* Footer below the Data Limit section on the VPN settings screen. Explains when the user's free VPN data resets. %1$@ is the monthly limit in gigabytes (for example, 5.0). “GB” stands for gigabytes. */
+"VPN.Settings.DataLimitResetFooter.v160" = "Сбрасывается на %1$@ ГБ первого числа каждого месяца";
+
+/* Title of the section on the VPN settings screen that shows how much of the user's free monthly VPN data they have used. */
+"VPN.Settings.DataLimitTitle.v160" = "Лимит данных";
+
+/* Read aloud by VoiceOver for the data usage on the VPN settings screen. Same as the visible text, but with “gigabytes” written out instead of “GB”. %1$@ is the amount of VPN data used this month and %2$@ is the monthly limit (for example, “1.0 of 5.0 gigabytes used”). */
+"VPN.Settings.DataUsage.AccessibilityLabel.v160" = "%1$@ из %2$@ гигабайт использовано";
+
+/* Shown next to the Data Limit title on the VPN settings screen. %1$@ is the amount of VPN data used this month and %2$@ is the monthly limit, both in gigabytes (for example, “1.0 of 5.0 GB used”). “GB” stands for gigabytes. */
+"VPN.Settings.DataUsage.v160" = "%1$@ из %2$@ ГБ использовано";
+
+/* Short description below the title at the top of the VPN settings screen. Explains what the VPN does. */
+"VPN.Settings.Description.v160" = "Работайте в интернете с дополнительной защитой, скрывая своё местоположение даже при подключении к общедоступной сети Wi-Fi.";
+
+/* Link below the description at the top of the VPN settings screen. Tapping it opens a support article about the VPN. */
+"VPN.Settings.LearnMore.v160" = "Подробнее…";
+
+/* Shown on the right side of the Location row on the VPN settings screen when the user lets Firefox select the location in their stead. The recommended location is the one with the fastest connection. */
+"VPN.Settings.LocationRecommended.v160" = "Рекомендуемые";
+
+/* Used in two places: as the name of a row on the VPN settings screen, and as the title of the screen that row opens. On that screen, the user picks which VPN server location (country or region) to connect through. “Location” means the VPN server’s location, not the user’s own location. */
+"VPN.Settings.LocationTitle.v160" = "Расположение";
+
+/* VPN status shown when the VPN is not connected. Used in two places: on the right side of the VPN row in the Privacy section of Settings, and on the small capsule-shaped VPN status indicator. */
+"VPN.Settings.StatusOff.v160" = "Откл.";
+
+/* VPN status shown when the VPN is connected. Used in two places: on the right side of the VPN row in the Privacy section of Settings, and on the small capsule-shaped VPN status indicator. */
+"VPN.Settings.StatusOn.v160" = "Вкл.";
+
+/* VPN status shown when the VPN is temporarily paused. Used in two places: on the right side of the VPN row in the Privacy section of Settings, and on the small capsule-shaped VPN status indicator. */
+"VPN.Settings.StatusPaused.v160" = "Приостановлен";
+
+/* Name of the VPN row in the Privacy section of Settings. Also used as the title of the VPN settings screen. */
+"VPN.Settings.Title.v160" = "Встроенный VPN";
+
+/* Used in two places: as the label for the toggle switch on the VPN settings screen that turns the VPN on or off, and as the label on the small capsule-shaped VPN status indicator, where it appears together with the current status (On, Off or Paused). */
+"VPN.Settings.ToggleTitle.v160" = "VPN";
 

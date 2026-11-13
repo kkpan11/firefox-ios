@@ -12,7 +12,7 @@ import CryptoKit
 import X509
 import SwiftASN1
 
-struct CertificateKeys {
+enum CertificateKeys {
     static let commonName = "CN"
     static let country = "C"
     static let organization = "O"
@@ -32,7 +32,7 @@ class CertificatesViewController: UIViewController,
     }
 
     // MARK: - UI
-    struct UX {
+    enum UX {
         static let titleLabelMargin = 8.0
         static let titleLabelTopMargin = 2.0
         static let titleLabelMinHeight = 60.0
@@ -65,7 +65,7 @@ class CertificatesViewController: UIViewController,
     var model: CertificatesModel
     var notificationCenter: NotificationProtocol
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { return windowUUID }
     private let logger: Logger
@@ -90,20 +90,17 @@ class CertificatesViewController: UIViewController,
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
-        notificationCenter.removeObserver(self)
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateViewDetails()
-        listenForThemeChange(view)
-        applyTheme()
     }
 
     // MARK: View Setup
@@ -118,8 +115,8 @@ class CertificatesViewController: UIViewController,
     private func setupHeaderView() {
         view.addSubview(headerView)
         NSLayoutConstraint.activate([
-            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             headerView.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor,
                 constant: TPMenuUX.UX.popoverTopDistance
@@ -131,7 +128,14 @@ class CertificatesViewController: UIViewController,
     // MARK: Header Actions
     private func setupHeaderViewActions() {
         headerView.backToMainMenuCallback = { [weak self] in
-            self?.navigationController?.popViewController(animated: true)
+            guard let self else { return }
+            let nav = self.navigationController
+            // When presented from error page we are the root of a modal nav stack; Back should dismiss.
+            if nav?.viewControllers.count == 1 {
+                nav?.dismissVC()
+            } else {
+                nav?.popViewController(animated: true)
+            }
         }
         headerView.dismissMenuCallback = { [weak self] in
             self?.navigationController?.dismissVC()
@@ -143,11 +147,11 @@ class CertificatesViewController: UIViewController,
         view.addSubview(titleLabel)
         NSLayoutConstraint.activate([
             titleLabel.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor,
                 constant: UX.titleLabelMargin
             ),
             titleLabel.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor,
                 constant: -UX.titleLabelMargin
             ),
             titleLabel.topAnchor.constraint(
@@ -167,11 +171,11 @@ class CertificatesViewController: UIViewController,
                 equalTo: titleLabel.bottomAnchor
             ),
             certificatesTableView.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor,
                 constant: UX.headerStackViewMargin
             ),
             certificatesTableView.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor,
                 constant: -UX.headerStackViewMargin
             ),
             certificatesTableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -187,9 +191,10 @@ class CertificatesViewController: UIViewController,
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
         guard let headerView = tableView.dequeueReusableHeaderFooterView(
             withIdentifier: CertificatesHeaderView.cellIdentifier) as? CertificatesHeaderView else {
-            logger.log("Failed to dequeue CertificatesHeaderView with identifier \(CertificatesHeaderView.cellIdentifier)",
+            logger.log("Failed to dequeue CertificatesHeaderView",
                        level: .fatal,
-                       category: .certificate)
+                       category: .certificate,
+                       extra: ["identifier": CertificatesHeaderView.cellIdentifier])
             return UIView()
         }
         var items: [CertificatesHeaderItem] = []
@@ -313,9 +318,21 @@ class CertificatesViewController: UIViewController,
 extension CertificatesViewController {
     func applyTheme() {
         let theme = currentTheme()
-        view.backgroundColor = theme.colors.layer3
+        overrideUserInterfaceStyle = theme.type.getInterfaceStyle()
+        let panelBackground = theme.isNova ? theme.colors.layer1 : theme.colors.layer3
+        view.backgroundColor = panelBackground
         titleLabel.textColor = theme.colors.textPrimary
         titleLabel.backgroundColor = theme.colors.layer5
         headerView.applyTheme(theme: theme)
+
+        certificatesTableView.backgroundColor = panelBackground
+        certificatesTableView.separatorColor = theme.colors.borderPrimary
+
+        for case let cell as CertificatesCell in certificatesTableView.visibleCells {
+            cell.applyTheme(theme: theme)
+        }
+        for section in 0..<certificatesTableView.numberOfSections {
+            (certificatesTableView.headerView(forSection: section) as? CertificatesHeaderView)?.applyTheme(theme: theme)
+        }
     }
 }

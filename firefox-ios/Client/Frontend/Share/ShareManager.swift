@@ -6,19 +6,15 @@ import Foundation
 import MobileCoreServices
 import WebKit
 import UniformTypeIdentifiers
+import Common
 
 class ShareManager: NSObject, FeatureFlaggable {
-    private struct ActivityIdentifiers {
-        static let pocketIconExtension = "com.ideashower.ReadItLaterPro.AddToPocketExtension"
-        static let pocketActionExtension = "com.ideashower.ReadItLaterPro.Action-Extension"
-        static let whatsApp = "net.whatsapp.WhatsApp.ShareExtension"
-    }
-
     // Black list for activities to which we don't want to share
     private static let excludingActivities: [UIActivity.ActivityType] = [
         UIActivity.ActivityType.addToReadingList
     ]
 
+    @MainActor
     static func createActivityViewController(
         shareType: ShareType,
         shareMessage: ShareMessage?,
@@ -37,33 +33,14 @@ class ShareManager: NSObject, FeatureFlaggable {
 
         activityViewController.excludedActivityTypes = excludingActivities
 
-        activityViewController.completionWithItemsHandler = { activityType, completed, returnedItems, activityError in
-            guard completed else {
-                completionHandler(completed, activityType)
-                return
-            }
-
-            // Add telemetry for Pocket extension activityTypes
-            if activityType?.rawValue == ActivityIdentifiers.pocketIconExtension {
-                TelemetryWrapper.recordEvent(category: .action,
-                                             method: .tap,
-                                             object: .shareSheet,
-                                             value: .sharePocketIcon,
-                                             extras: nil)
-            } else if activityType?.rawValue == ActivityIdentifiers.pocketActionExtension {
-                TelemetryWrapper.recordEvent(category: .action,
-                                             method: .tap,
-                                             object: .shareSheet,
-                                             value: .shareSaveToPocket,
-                                             extras: nil)
-            }
-
+        activityViewController.completionWithItemsHandler = { activityType, completed, _, _ in
             completionHandler(completed, activityType)
         }
 
         return activityViewController
     }
 
+    @MainActor
     static func getActivityItems(
         forShareType shareType: ShareType,
         withExplicitShareMessage explicitShareMessage: ShareMessage?
@@ -71,7 +48,7 @@ class ShareManager: NSObject, FeatureFlaggable {
         var activityItems: [Any] = []
 
         switch shareType {
-        case .file(let fileURL):
+        case .file(let fileURL, _):
             activityItems.append(URLActivityItemProvider(url: fileURL))
 
             if let explicitShareMessage {
@@ -88,10 +65,9 @@ class ShareManager: NSObject, FeatureFlaggable {
             }
 
         case .tab(let siteURL, let tab):
-            let isSentFromFirefoxEnabled = LegacyFeatureFlagsManager.shared.isFeatureEnabled(
-                .sentFromFirefox,
-                checking: .buildAndUser
-            )
+            let provider: FeatureFlagProviding = AppContainer.shared.resolve()
+            let prefs: UserFeaturePreferring = AppContainer.shared.resolve()
+            let isSentFromFirefoxEnabled = provider.isEnabled(.sentFromFirefox) && prefs.getPreferenceFor(.sentFromFirefox)
             activityItems.append(
                 URLActivityItemProvider(
                     url: siteURL,
@@ -104,11 +80,16 @@ class ShareManager: NSObject, FeatureFlaggable {
 
             // Only show the print activity if the tab's webview is loaded
             if tab.webView != nil {
+                let printInfo = UIPrintInfo(dictionary: nil)
+                printInfo.jobName = tab.displayTitle
+                printInfo.outputType = .general
+                let viewPrintFormatter = tab.webView?.viewPrintFormatter()
+                activityItems.append(printInfo)
                 activityItems.append(
                     TabPrintPageRenderer(
                         tabDisplayTitle: tab.displayTitle,
                         tabURL: tab.url,
-                        webView: tab.webView
+                        viewPrintFormatter: viewPrintFormatter
                     )
                 )
             }
@@ -134,16 +115,33 @@ class ShareManager: NSObject, FeatureFlaggable {
         }
 
         // For all share types, record basic telemetry
-        activityItems.append(ShareTelemetryActivityItemProvider(shareType: shareType, shareMessage: explicitShareMessage))
+        activityItems.append(
+            ShareTelemetryActivityItemProvider(
+                shareTypeName: shareType.typeName,
+                shareMessage: explicitShareMessage
+            )
+        )
 
         return activityItems
     }
 
-    private static func getApplicationActivities(forShareType shareType: ShareType) -> [UIActivity] {
+    @MainActor
+    static func getApplicationActivities(forShareType shareType: ShareType) -> [UIActivity] {
         var appActivities = [UIActivity]()
 
-        // Only acts on non-file URLs to send links to synced devices. Will ignore file URLs it can't handle.
-        appActivities.append(SendToDeviceActivity(activityType: .sendToDevice, url: shareType.wrappedURL))
+        // Set up the "Send to Device" activity, which shares URLs between a Firefox account user's synced devices. We can
+        // only share URLs to real websites, not internal `file://` URLs.
+        switch shareType {
+        case .file(_, let remoteURL):
+            // Some downloaded files may have an associated remote URL (if the file was just downloaded in the tab).
+            // Files which are shared from the Downloads Panel will NOT have any associated remote URL (we don't store that
+            // history).
+            if let remoteURL {
+                appActivities.append(SendToDeviceActivity(activityType: .sendToDevice, url: remoteURL))
+            }
+        default:
+            appActivities.append(SendToDeviceActivity(activityType: .sendToDevice, url: shareType.wrappedURL))
+        }
 
         return appActivities
     }

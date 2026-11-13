@@ -11,7 +11,7 @@ class ContextualHintViewController: UIViewController,
                                     OnViewDismissable,
                                     Themeable,
                                     UIAdaptivePresentationControllerDelegate {
-    private struct UX {
+    private enum UX {
         static let contextualHintWidth: CGFloat = 350
         static let contextualHintLandscapeExtraWidth: CGFloat = 60
     }
@@ -22,7 +22,7 @@ class ContextualHintViewController: UIViewController,
     // MARK: - Properties
     private var viewProvider: ContextualHintViewProvider
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
     private let windowUUID: WindowUUID
 
@@ -54,8 +54,6 @@ class ContextualHintViewController: UIViewController,
     override func viewDidLoad() {
         super.viewDidLoad()
         commonInit()
-        listenForThemeChange(view)
-        applyTheme()
         isPresenting = true
     }
 
@@ -65,6 +63,9 @@ class ContextualHintViewController: UIViewController,
         onViewSummoned = nil
         view.setNeedsLayout()
         view.layoutIfNeeded()
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -131,7 +132,7 @@ class ContextualHintViewController: UIViewController,
         presentedUsing presentation: (() -> Void)?,
         sourceRect: CGRect = CGRect.null,
         withActionBeforeAppearing preAction: (() -> Void)? = nil,
-        actionOnDismiss postAction: (() -> Void)? = nil,
+        actionOnDismiss postAction: (@MainActor () -> Void)? = nil,
         andActionForButton buttonAction: (() -> Void)? = nil,
         andShouldStartTimerRightAway shouldStartTimer: Bool = true,
         overlayState: OverlayStateProtocol? = nil,
@@ -201,6 +202,8 @@ class ContextualHintViewController: UIViewController,
     func applyTheme() {
         let theme = themeManager.getCurrentTheme(for: windowUUID)
         hintView.applyTheme(theme: theme)
+        let gradient = theme.isNova ? theme.colors.gradient : theme.colors.layerGradient
+        popoverPresentationController?.backgroundColor = gradient.colors.last
     }
 
     // MARK: - UIAdaptivePresentationControllerDelegate

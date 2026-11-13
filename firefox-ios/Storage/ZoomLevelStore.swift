@@ -2,15 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import Foundation
 import Common
+import Foundation
 
 public struct ZoomSettings: Codable {
     var defaultZoom: CGFloat
     var zoomLevels: [DomainZoomLevel]
 }
 
-public struct DomainZoomLevel: Codable, Equatable {
+public struct DomainZoomLevel: Codable, Equatable, Sendable {
     public let host: String
     public let zoomLevel: CGFloat
 
@@ -22,7 +22,7 @@ public struct DomainZoomLevel: Codable, Equatable {
 
 public protocol ZoomLevelStorage {
     func saveDefaultZoomLevel(defaultZoom: CGFloat)
-    func saveDomainZoom(_ domainZoomLevel: DomainZoomLevel, completion: (() -> Void)?)
+    func saveDomainZoom(_ domainZoomLevel: DomainZoomLevel, completion: (@Sendable () -> Void)?)
     func findZoomLevel(forDomain host: String) -> DomainZoomLevel?
     func getDefaultZoom() -> CGFloat
     func getDomainZoomLevel() -> [DomainZoomLevel]
@@ -30,7 +30,8 @@ public protocol ZoomLevelStorage {
     func resetDomainZoomLevel()
 }
 
-public class ZoomLevelStore: ZoomLevelStorage {
+// TODO: FXIOS-13212 Make ZoomLevelStore actually sendable
+public class ZoomLevelStore: @unchecked Sendable, ZoomLevelStorage {
     public static let shared = ZoomLevelStore()
 
     private(set) var zoomSetting = ZoomSettings(defaultZoom: ZoomLevelStore.defaultZoomLimit,
@@ -57,19 +58,17 @@ public class ZoomLevelStore: ZoomLevelStorage {
         save()
     }
 
-    public func saveDomainZoom(_ domainZoomLevel: DomainZoomLevel, completion: (() -> Void)? = nil) {
+    public func saveDomainZoom(_ domainZoomLevel: DomainZoomLevel, completion: (@Sendable () -> Void)? = nil) {
         if let index = zoomSetting.zoomLevels.firstIndex(where: {
             $0.host == domainZoomLevel.host
         }) {
             zoomSetting.zoomLevels.remove(at: index)
         }
-        if domainZoomLevel.zoomLevel != ZoomLevelStore.defaultZoomLimit {
-            zoomSetting.zoomLevels.append(domainZoomLevel)
-        }
+        zoomSetting.zoomLevels.append(domainZoomLevel)
         save(completion)
     }
 
-    private func save(_ completion: (() -> Void)? = nil) {
+    private func save(_ completion: (@Sendable () -> Void)? = nil) {
         concurrentQueue.async(flags: .barrier) { [unowned self] in
             let encoder = JSONEncoder()
             do {

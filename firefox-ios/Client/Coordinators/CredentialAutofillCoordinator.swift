@@ -15,6 +15,7 @@ class CredentialAutofillCoordinator: BaseCoordinator {
 
     typealias BottomSheetCardParentCoordinator = BrowserNavigationHandler & ParentCoordinatorDelegate
     private let profile: Profile
+    private let creditCardProvider: CreditCardProvider
     private let themeManager: ThemeManager
     private let tabManager: TabManager
     private weak var parentCoordinator: BottomSheetCardParentCoordinator?
@@ -26,10 +27,12 @@ class CredentialAutofillCoordinator: BaseCoordinator {
         profile: Profile,
         router: Router,
         parentCoordinator: BottomSheetCardParentCoordinator?,
+        creditCardProvider: CreditCardProvider? = nil,
         themeManager: ThemeManager = AppContainer.shared.resolve(),
         tabManager: TabManager
     ) {
         self.profile = profile
+        self.creditCardProvider = creditCardProvider ?? profile.autofill
         self.themeManager = themeManager
         self.tabManager = tabManager
         self.parentCoordinator = parentCoordinator
@@ -46,47 +49,106 @@ class CredentialAutofillCoordinator: BaseCoordinator {
                                 decryptedCard: UnencryptedCreditCardFields?,
                                 viewType state: CreditCardBottomSheetState,
                                 frame: WKFrameInfo?,
+                                viewController: UIViewController,
                                 alertContainer: UIView) {
-        let creditCardControllerViewModel = CreditCardBottomSheetViewModel(creditCardProvider: profile.autofill,
+        if state == .selectSavedCard {
+            creditCardProvider.listCreditCards { [weak self] cards, error in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    guard let cards, error == nil else {
+                        self.logger.log("Error fetching credit cards",
+                                        level: .warning,
+                                        category: .autofill,
+                                        description: "Error fetching saved credit cards for autofill")
+                        self.parentCoordinator?.didFinish(from: self)
+                        return
+                    }
+
+                    guard !cards.isEmpty else {
+                        self.parentCoordinator?.didFinish(from: self)
+                        return
+                    }
+
+                    self.presentCreditCardAutofill(
+                        creditCard: creditCard,
+                        decryptedCard: decryptedCard,
+                        preloadedCreditCards: cards,
+                        viewType: state,
+                        frame: frame,
+                        viewController: viewController,
+                        alertContainer: alertContainer
+                    )
+                }
+            }
+            return
+        }
+
+        presentCreditCardAutofill(
+            creditCard: creditCard,
+            decryptedCard: decryptedCard,
+            preloadedCreditCards: nil,
+            viewType: state,
+            frame: frame,
+            viewController: viewController,
+            alertContainer: alertContainer
+        )
+    }
+
+    private func presentCreditCardAutofill(creditCard: CreditCard?,
+                                           decryptedCard: UnencryptedCreditCardFields?,
+                                           preloadedCreditCards: [CreditCard]?,
+                                           viewType state: CreditCardBottomSheetState,
+                                           frame: WKFrameInfo?,
+                                           viewController: UIViewController,
+                                           alertContainer: UIView) {
+        let capturedOrigin = tabManager.selectedTab?.url?.origin
+        let creditCardControllerViewModel = CreditCardBottomSheetViewModel(creditCardProvider: creditCardProvider,
                                                                            creditCard: creditCard,
                                                                            decryptedCreditCard: decryptedCard,
+                                                                           preloadedCreditCards: preloadedCreditCards,
                                                                            state: state)
-        let viewController = CreditCardBottomSheetViewController(viewModel: creditCardControllerViewModel,
-                                                                 windowUUID: windowUUID)
-        viewController.didTapYesClosure = { [weak self] error in
+        let bottomSheetViewController = CreditCardBottomSheetViewController(viewModel: creditCardControllerViewModel,
+                                                                            windowUUID: windowUUID)
+        bottomSheetViewController.didTapYesClosure = { [weak self] error in
             guard let self = self else { return }
             if let error = error {
-                SimpleToast().showAlertWithText(error.localizedDescription,
-                                                bottomContainer: alertContainer,
-                                                theme: self.currentTheme())
+                logger.log("Error fetching credit cards",
+                           level: .warning,
+                           category: .autofill,
+                           description: "Error fetching credit card: \(error.localizedDescription)")
             } else {
                 // send telemetry
                 if state == .save {
                     sendCreditCardSavePromptCreateTelemetry()
+                    showToast(with: .CreditCard.RememberCreditCard.CreditCardSaveSuccessToastMessage,
+                              viewController: viewController,
+                              alertContainer: alertContainer)
                 } else if state == .update {
                     sendCreditCardSavePromptUpdateTelemetry()
+                    showToast(with: .CreditCard.UpdateCreditCard.CreditCardUpdateSuccessToastMessage,
+                              viewController: viewController,
+                              alertContainer: alertContainer)
                 }
 
-                // Save or update a card toast message
-                let saveSuccessMessage: String = .CreditCard.RememberCreditCard.CreditCardSaveSuccessToastMessage
-                let updateSuccessMessage: String = .CreditCard.UpdateCreditCard.CreditCardUpdateSuccessToastMessage
-                let toastMessage: String = state == .save ? saveSuccessMessage : updateSuccessMessage
-                SimpleToast().showAlertWithText(toastMessage,
-                                                bottomContainer: alertContainer,
-                                                theme: self.currentTheme())
                 self.parentCoordinator?.didFinish(from: self)
             }
         }
 
-        viewController.didTapManageCardsClosure = { [weak self] in
+        bottomSheetViewController.didTapManageCardsClosure = { [weak self] in
             guard let self = self else { return }
             self.parentCoordinator?.show(settings: .creditCard)
             self.parentCoordinator?.didFinish(from: self)
         }
 
-        viewController.didSelectCreditCardToFill = { [weak self] plainTextCard in
+        bottomSheetViewController.didSelectCreditCardToFill = { [weak self] plainTextCard in
             guard let self = self else { return }
             guard let currentTab = self.tabManager.selectedTab else {
+                self.parentCoordinator?.didFinish(from: self)
+                return
+            }
+            guard let capturedOrigin,
+                  let currentOrigin = currentTab.url?.origin,
+                  capturedOrigin == currentOrigin else {
                 self.parentCoordinator?.didFinish(from: self)
                 return
             }
@@ -104,15 +166,16 @@ class CredentialAutofillCoordinator: BaseCoordinator {
             }
         }
 
-        var bottomSheetViewModel = BottomSheetViewModel(
+        let bottomSheetViewModel = BottomSheetViewModel(
+            animatesPresentation: state != .selectSavedCard,
+            shouldDismissForTapOutside: false,
             closeButtonA11yLabel: .CloseButtonTitle,
             closeButtonA11yIdentifier: AccessibilityIdentifiers.Autofill.creditCardCloseButton
         )
-        bottomSheetViewModel.shouldDismissForTapOutside = false
 
         let bottomSheetVC = BottomSheetViewController(
             viewModel: bottomSheetViewModel,
-            childViewController: viewController,
+            childViewController: bottomSheetViewController,
             windowUUID: windowUUID
         )
         router.present(bottomSheetVC)
@@ -133,6 +196,16 @@ class CredentialAutofillCoordinator: BaseCoordinator {
             onLoginCellTap: { [weak self] login in
                 guard let self else { return }
                 guard let currentTab = self.tabManager.selectedTab else {
+                    router.dismiss(animated: true)
+                    parentCoordinator?.didFinish(from: self)
+                    return
+                }
+
+                // Bugzilla #2068171. Sheet was populated for origin of `tabURL`, do not
+                // inject if selected tab's origin no longer matches (page navigated etc).
+                guard let capturedOrigin = tabURL.origin,
+                      let currentOrigin = currentTab.url?.origin,
+                      capturedOrigin == currentOrigin else {
                     router.dismiss(animated: true)
                     parentCoordinator?.didFinish(from: self)
                     return
@@ -177,11 +250,11 @@ class CredentialAutofillCoordinator: BaseCoordinator {
             )
         }
 
-        var bottomSheetViewModel = BottomSheetViewModel(
+        let bottomSheetViewModel = BottomSheetViewModel(
+            shouldDismissForTapOutside: false,
             closeButtonA11yLabel: .CloseButtonTitle,
             closeButtonA11yIdentifier: AccessibilityIdentifiers.Autofill.loginCloseButton
         )
-        bottomSheetViewModel.shouldDismissForTapOutside = false
 
         let bottomSheetVC = BottomSheetViewController(
             viewModel: bottomSheetViewModel,
@@ -197,34 +270,53 @@ class CredentialAutofillCoordinator: BaseCoordinator {
     }
 
     func showPassCodeController() {
-        let passwordController = DevicePasscodeRequiredViewController(windowUUID: windowUUID)
+        let passwordController = DevicePasscodeRequiredViewController(windowUUID: windowUUID,
+                                                                      shouldUsePrivateOverride: false)
         passwordController.profile = profile
         passwordController.parentType = .paymentMethods
         router.present(passwordController)
     }
 
     // MARK: Telemetry
-    fileprivate func sendCreditCardSavePromptShownTelemetry() {
+    private func sendCreditCardSavePromptShownTelemetry() {
         TelemetryWrapper.recordEvent(category: .action,
                                      method: .view,
                                      object: .creditCardSavePromptShown)
     }
 
-    fileprivate func sendCreditCardSavePromptCreateTelemetry() {
+    private func sendCreditCardSavePromptCreateTelemetry() {
         TelemetryWrapper.recordEvent(category: .action,
                                      method: .tap,
                                      object: .creditCardSavePromptCreate)
     }
 
-    fileprivate func sendCreditCardSavePromptUpdateTelemetry() {
+    private func sendCreditCardSavePromptUpdateTelemetry() {
         TelemetryWrapper.recordEvent(category: .action,
                                      method: .tap,
                                      object: .creditCardSavePromptUpdate)
     }
 
-    fileprivate func sendCreditCardAutofillPromptExpandedTelemetry() {
+    private func sendCreditCardAutofillPromptExpandedTelemetry() {
         TelemetryWrapper.recordEvent(category: .action,
                                      method: .tap,
                                      object: .creditCardAutofillPromptExpanded)
+    }
+
+    private func showToast(with message: String,
+                           viewController: UIViewController,
+                           alertContainer: UIView) {
+        let viewModel = PlainToastViewModel(labelText: message)
+        let toast = PlainToast(viewModel: viewModel, theme: currentTheme())
+        toast.showToast(viewController: viewController,
+                        delay: Toast.UX.toastDelayBefore,
+                        duration: Toast.UX.toastDismissAfter) { toast in
+            [
+                toast.leadingAnchor.constraint(equalTo: viewController.view.safeAreaLayoutGuide.leadingAnchor,
+                                               constant: Toast.UX.toastSidePadding),
+                toast.trailingAnchor.constraint(equalTo: viewController.view.safeAreaLayoutGuide.trailingAnchor,
+                                                constant: -Toast.UX.toastSidePadding),
+                toast.bottomAnchor.constraint(equalTo: alertContainer.bottomAnchor)
+            ]
+        }
     }
 }

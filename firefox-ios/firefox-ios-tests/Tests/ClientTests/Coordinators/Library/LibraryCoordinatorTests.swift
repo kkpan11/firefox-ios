@@ -6,23 +6,23 @@ import XCTest
 
 @testable import Client
 
+@MainActor
 final class LibraryCoordinatorTests: XCTestCase {
     private var mockRouter: MockRouter!
     private var delegate: MockLibraryCoordinatorDelegate!
 
-    override func setUp() {
-        super.setUp()
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: MockProfile())
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
         self.mockRouter = MockRouter(navigationController: MockNavigationController())
         self.delegate = MockLibraryCoordinatorDelegate()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         self.mockRouter = nil
         self.delegate = nil
         DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
     func testEmptyChildren_whenCreated() {

@@ -4,9 +4,9 @@
 
 import UIKit
 
-private let internalSchemes: Set<String> = ["http", "https", "ftp", "file", "about", "javascript", "data"]
+private let internalSchemes: Set<String> = ["http", "https", "ftp", "file", "about", "data"]
 
-class RequestHandler {
+final class RequestHandler {
     func handle(request: URLRequest, alertCallback: (UIAlertController) -> Void) -> Bool {
         guard let url = request.url,
               let scheme = request.url?.scheme?.lowercased() else {

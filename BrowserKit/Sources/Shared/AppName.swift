@@ -28,7 +28,7 @@ public enum MozillaName: String, CustomStringConvertible {
     }
 }
 
-public enum KVOConstants: String {
+public enum KVOConstants: String, Sendable {
     case loading
     case estimatedProgress
     case URL
@@ -37,5 +37,4 @@ public enum KVOConstants: String {
     case canGoForward
     case contentSize
     case hasOnlySecureContent
-    case fullscreenState
 }

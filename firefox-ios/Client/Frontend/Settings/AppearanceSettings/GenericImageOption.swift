@@ -3,10 +3,11 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import SwiftUI
+import Common
 
 /// A view that represents a selectable option with an image and a radio button.
-struct GenericImageOption: View {
-    private struct UX {
+struct GenericImageOption: View, FeatureFlaggable {
+    private enum UX {
         static let optionWidth: CGFloat = 60
         static let optionHeight: CGFloat = 100
         static let cornerRadius: CGFloat = 12
@@ -24,10 +25,17 @@ struct GenericImageOption: View {
     }
 
     // Properties
+    let theme: Theme?
     let isSelected: Bool
     let onSelected: (() -> Void)?
     let label: String
     let imageName: String
+    let a11yIdentifier: String
+
+    private var selectedBorderColor: Color {
+        guard let theme, theme.isNova else { return UX.selectedBorderColor }
+        return Color(theme.colors.iconAccent)
+    }
 
     var body: some View {
         VStack(spacing: UX.spacing) {
@@ -39,6 +47,7 @@ struct GenericImageOption: View {
             onSelected?()
         }
         .accessibilityElement()
+        .accessibilityIdentifier(a11yIdentifier)
         .accessibilityLabel("\(label)")
         .accessibilityValue("\(isSelected ? 1 : 0)")
         .accessibilityAddTraits([.isButton])
@@ -49,7 +58,7 @@ struct GenericImageOption: View {
 
     private var selectableOptionVisual: some View {
         RoundedRectangle(cornerRadius: UX.cornerRadius)
-            .stroke(isSelected ? UX.selectedBorderColor : UX.unselectedBorderColor,
+            .stroke(isSelected ? selectedBorderColor : UX.unselectedBorderColor,
                     lineWidth: isSelected ? UX.selectedBorderWidth : UX.unselectedBorderWidth)
             .background(
                 Image(imageName)
@@ -65,13 +74,17 @@ struct GenericImageOption: View {
     /// The text label displaying the theme option's name.
     private var selectableOptionLabel: some View {
         Text(label)
-            .font(.caption)
+            .font(FXFontStyles.Regular.caption1.scaledSwiftUIFont())
             .foregroundColor(UX.textColor)
     }
 
     /// The radio button image indicating selection state.
     private var selectableOptionRadioButton: some View {
-        Image(isSelected ? ImageIdentifiers.radioButtonSelected : ImageIdentifiers.radioButtonNotSelected)
+        let isNova = featureFlagsProvider.isEnabled(.novaDesign)
+        let selectedName = isNova ? ImageIdentifiers.radioButtonSelectedNova : ImageIdentifiers.radioButtonSelected
+        let notSelectedName = isNova ? ImageIdentifiers.radioButtonNotSelectedNova
+                                     : ImageIdentifiers.radioButtonNotSelected
+        return Image(isSelected ? selectedName : notSelectedName)
             .resizable()
             .scaledToFit()
             .frame(width: UX.radioSize, height: UX.radioSize)

@@ -7,7 +7,7 @@ import Common
 
 class SettingsViewController: UIViewController, Themeable {
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
 
     weak var settingsDelegate: SettingsDelegate?
@@ -18,11 +18,19 @@ class SettingsViewController: UIViewController, Themeable {
 
     var currentWindowUUID: UUID? { return windowUUID }
 
+    var shouldUsePrivateOverride: Bool {
+        return true
+    }
+
+    var shouldBeInPrivateTheme: Bool {
+        return false
+    }
+
     init(windowUUID: WindowUUID,
          profile: Profile? = nil,
          tabManager: TabManager? = nil,
          themeManager: ThemeManager = AppContainer.shared.resolve(),
-         notificationCenter: NotificationCenter = NotificationCenter.default) {
+         notificationCenter: NotificationProtocol = NotificationCenter.default) {
         self.themeManager = themeManager
         self.notificationCenter = notificationCenter
         self.windowUUID = windowUUID
@@ -37,12 +45,15 @@ class SettingsViewController: UIViewController, Themeable {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        listenForThemeChange(view)
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
     }
 
     func applyTheme() {
-        let theme = themeManager.getCurrentTheme(for: currentWindowUUID)
+        let theme = themeManager.resolveTheme(for: currentWindowUUID,
+                                              shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                              shouldBeInPrivateTheme: shouldBeInPrivateTheme)
         view.backgroundColor = theme.colors.layer1
     }
 }

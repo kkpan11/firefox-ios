@@ -6,24 +6,6 @@
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
       buildArchitectures = "Automatic">
-      <PostActions>
-         <ExecutionAction
-            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
-            <ActionContent
-               title = "Run Script"
-               scriptText = "# Configure local web server for Fennec&#10;sh &quot;${SRCROOT}/../test-fixtures/scheme-postbuild.sh&quot; || exit 1&#10;">
-               <EnvironmentBuildable>
-                  <BuildableReference
-                     BuildableIdentifier = "primary"
-                     BlueprintIdentifier = "F84B21BD1A090F8100AAB793"
-                     BuildableName = "Client.app"
-                     BlueprintName = "Client"
-                     ReferencedContainer = "container:Client.xcodeproj">
-                  </BuildableReference>
-               </EnvironmentBuildable>
-            </ActionContent>
-         </ExecutionAction>
-      </PostActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -37,6 +19,230 @@
                BuildableName = "Client.app"
                BlueprintName = "Client"
                ReferencedContainer = "container:Client.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "ActionExtensionKit"
+               BuildableName = "ActionExtensionKit"
+               BlueprintName = "ActionExtensionKit"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "Common"
+               BuildableName = "Common"
+               BlueprintName = "Common"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "ComponentLibrary"
+               BuildableName = "ComponentLibrary"
+               BlueprintName = "ComponentLibrary"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "ContentBlockingGenerator"
+               BuildableName = "ContentBlockingGenerator"
+               BlueprintName = "ContentBlockingGenerator"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "JWTKit"
+               BuildableName = "JWTKit"
+               BlueprintName = "JWTKit"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "MenuKit"
+               BuildableName = "MenuKit"
+               BlueprintName = "MenuKit"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "OnboardingKit"
+               BuildableName = "OnboardingKit"
+               BlueprintName = "OnboardingKit"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "Redux"
+               BuildableName = "Redux"
+               BlueprintName = "Redux"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "Shared"
+               BuildableName = "Shared"
+               BlueprintName = "Shared"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "SiteImageView"
+               BuildableName = "SiteImageView"
+               BlueprintName = "SiteImageView"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "SummarizeKit"
+               BuildableName = "SummarizeKit"
+               BlueprintName = "SummarizeKit"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "TabDataStore"
+               BuildableName = "TabDataStore"
+               BlueprintName = "TabDataStore"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "ToolbarKit"
+               BuildableName = "ToolbarKit"
+               BlueprintName = "ToolbarKit"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "UnifiedSearchKit"
+               BuildableName = "UnifiedSearchKit"
+               BlueprintName = "UnifiedSearchKit"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "WebEngine"
+               BuildableName = "WebEngine"
+               BlueprintName = "WebEngine"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "WebCompatReporterKit"
+               BuildableName = "WebCompatReporterKit"
+               BlueprintName = "WebCompatReporterKit"
+               ReferencedContainer = "container:../BrowserKit">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -89,6 +295,34 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "QuickAnswersKitTests"
+               BuildableName = "QuickAnswersKitTests"
+               BlueprintName = "QuickAnswersKitTests"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "WebDataTransferTests"
+               BuildableName = "WebDataTransferTests"
+               BlueprintName = "WebDataTransferTests"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "E6F9650B1B2F1CF20034B023"
                BuildableName = "SharedTests.xctest"
                BlueprintName = "SharedTests"
@@ -131,16 +365,16 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "28F9520519D0F9FB00DCE892"
-               BuildableName = "FxATests.xctest"
-               BlueprintName = "FxATests"
-               ReferencedContainer = "container:FxA/FxA.xcodeproj">
+               BlueprintIdentifier = "MozillaAppServices"
+               BuildableName = "MozillaAppServices"
+               BlueprintName = "MozillaAppServices"
+               ReferencedContainer = "container:../MozillaRustComponents">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
-      buildConfiguration = "Fennec_Testing"
+      buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "NO"
@@ -148,24 +382,6 @@
       region = "US"
       codeCoverageEnabled = "YES"
       onlyGenerateCoverageForSpecifiedTargets = "YES">
-      <PreActions>
-         <ExecutionAction
-            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
-            <ActionContent
-               title = "Run Script"
-               scriptText = "sh &quot;${SRCROOT}/../test-fixtures/scheme-postbuild.sh&quot; || exit 1&#10;">
-               <EnvironmentBuildable>
-                  <BuildableReference
-                     BuildableIdentifier = "primary"
-                     BlueprintIdentifier = "F84B21BD1A090F8100AAB793"
-                     BuildableName = "Client.app"
-                     BlueprintName = "Client"
-                     ReferencedContainer = "container:Client.xcodeproj">
-                  </BuildableReference>
-               </EnvironmentBuildable>
-            </ActionContent>
-         </ExecutionAction>
-      </PreActions>
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
@@ -238,6 +454,146 @@
             BuildableName = "Today.appex"
             BlueprintName = "Today"
             ReferencedContainer = "container:Client.xcodeproj">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "ActionExtensionKit"
+            BuildableName = "ActionExtensionKit"
+            BlueprintName = "ActionExtensionKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "Common"
+            BuildableName = "Common"
+            BlueprintName = "Common"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "ComponentLibrary"
+            BuildableName = "ComponentLibrary"
+            BlueprintName = "ComponentLibrary"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "ContentBlockingGenerator"
+            BuildableName = "ContentBlockingGenerator"
+            BlueprintName = "ContentBlockingGenerator"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "JWTKit"
+            BuildableName = "JWTKit"
+            BlueprintName = "JWTKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "MenuKit"
+            BuildableName = "MenuKit"
+            BlueprintName = "MenuKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "OnboardingKit"
+            BuildableName = "OnboardingKit"
+            BlueprintName = "OnboardingKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "QuickAnswersKit"
+            BuildableName = "QuickAnswersKit"
+            BlueprintName = "QuickAnswersKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "WebDataTransfer"
+            BuildableName = "WebDataTransfer"
+            BlueprintName = "WebDataTransfer"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "Redux"
+            BuildableName = "Redux"
+            BlueprintName = "Redux"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "Shared"
+            BuildableName = "Shared"
+            BlueprintName = "Shared"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "SiteImageView"
+            BuildableName = "SiteImageView"
+            BlueprintName = "SiteImageView"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "SummarizeKit"
+            BuildableName = "SummarizeKit"
+            BlueprintName = "SummarizeKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "TabDataStore"
+            BuildableName = "TabDataStore"
+            BlueprintName = "TabDataStore"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "ToolbarKit"
+            BuildableName = "ToolbarKit"
+            BlueprintName = "ToolbarKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "UnifiedSearchKit"
+            BuildableName = "UnifiedSearchKit"
+            BlueprintName = "UnifiedSearchKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "VoiceSearchKit"
+            BuildableName = "VoiceSearchKit"
+            BlueprintName = "VoiceSearchKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "WebEngine"
+            BuildableName = "WebEngine"
+            BlueprintName = "WebEngine"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "WebCompatReporterKit"
+            BuildableName = "WebCompatReporterKit"
+            BlueprintName = "WebCompatReporterKit"
+            ReferencedContainer = "container:../BrowserKit">
+         </BuildableReference>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "MozillaAppServices"
+            BuildableName = "MozillaAppServices"
+            BlueprintName = "MozillaAppServices"
+            ReferencedContainer = "container:../MozillaRustComponents">
          </BuildableReference>
       </CodeCoverageTargets>
       <TestPlans>
@@ -416,26 +772,6 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "28F9520519D0F9FB00DCE892"
-               BuildableName = "FxATests.xctest"
-               BlueprintName = "FxATests"
-               ReferencedContainer = "container:FxA/FxA.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "LoggerTests"
-               BuildableName = "LoggerTests"
-               BlueprintName = "LoggerTests"
-               ReferencedContainer = "container:BrowserKit">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
                BlueprintIdentifier = "CommonTests"
                BuildableName = "CommonTests"
                BlueprintName = "CommonTests"
@@ -459,6 +795,16 @@
                BlueprintIdentifier = "WebEngineTests"
                BuildableName = "WebEngineTests"
                BlueprintName = "WebEngineTests"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "WebCompatReporterKitTests"
+               BuildableName = "WebCompatReporterKitTests"
+               BlueprintName = "WebCompatReporterKitTests"
                ReferencedContainer = "container:../BrowserKit">
             </BuildableReference>
          </TestableReference>
@@ -496,9 +842,19 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "ReduxTests"
-               BuildableName = "ReduxTests"
-               BlueprintName = "ReduxTests"
+               BlueprintIdentifier = "QuickAnswersKitTests"
+               BuildableName = "QuickAnswersKitTests"
+               BlueprintName = "QuickAnswersKitTests"
+               ReferencedContainer = "container:../BrowserKit">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "WebDataTransferTests"
+               BuildableName = "WebDataTransferTests"
+               BlueprintName = "WebDataTransferTests"
                ReferencedContainer = "container:../BrowserKit">
             </BuildableReference>
          </TestableReference>
@@ -512,10 +868,20 @@
                ReferencedContainer = "container:../BrowserKit">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "MozillaRustComponentsTests"
+               BuildableName = "MozillaRustComponentsTests"
+               BlueprintName = "MozillaRustComponentsTests"
+               ReferencedContainer = "container:../MozillaRustComponents">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Fennec"
+      buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
@@ -548,7 +914,7 @@
       </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
-      buildConfiguration = "Fennec"
+      buildConfiguration = "Debug"
       shouldUseLaunchSchemeArgsEnv = "YES"
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
@@ -565,10 +931,10 @@
       </BuildableProductRunnable>
    </ProfileAction>
    <AnalyzeAction
-      buildConfiguration = "Fennec">
+      buildConfiguration = "Debug">
    </AnalyzeAction>
    <ArchiveAction
-      buildConfiguration = "Fennec"
+      buildConfiguration = "Debug"
       revealArchiveInOrganizer = "YES">
       <PreActions>
          <ExecutionAction

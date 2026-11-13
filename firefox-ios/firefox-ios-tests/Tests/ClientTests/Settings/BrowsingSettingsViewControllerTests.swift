@@ -8,27 +8,78 @@ import XCTest
 
 @testable import Client
 
+@MainActor
 final class BrowsingSettingsViewControllerTests: XCTestCase {
     private var profile: Profile!
     private var delegate: MockSettingsDelegate!
+    private var featureFlags: MockNimbusFeatureFlags!
 
-    override func setUp() {
-        super.setUp()
-        DependencyHelperMock().bootstrapDependencies()
-        self.profile = MockProfile()
+    override func setUp() async throws {
+        try await super.setUp()
+        self.featureFlags = MockNimbusFeatureFlags()
+        DependencyHelperMock().bootstrapDependencies(injectedFeatureFlagProvider: featureFlags)
+        self.profile = makeProfile()
         self.delegate = MockSettingsDelegate()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
         self.profile = nil
         self.delegate = nil
+        self.featureFlags = nil
+        try await super.tearDown()
     }
 
-    func testHomePageSettingsLeaks_InitCall() throws {
+    func testBrowsingSettingsLeaks_InitCall() throws {
         let subject = createSubject()
-        trackForMemoryLeaks(subject)
+        // Mirrors viewWillAppear(_:), which retains the generated settings on the controller.
+        subject.settings = subject.generateSettings()
+    }
+
+    func testGenerateSettings_whenAdBlockerFlagOff_omitsAdBlockerAndUsesMediaSection() {
+        featureFlags.enabledFlags = []
+        let subject = createSubject()
+
+        let sections = subject.generateSettings()
+        let contentSection = sections.last
+        let hasAdBlocker = contentSection?.children.contains(where: { $0 is AdBlockerSetting }) ?? false
+
+        XCTAssertEqual(contentSection?.title?.string, String.Settings.Browsing.Media)
+        XCTAssertFalse(hasAdBlocker)
+    }
+
+    func testGenerateSettings_whenAdBlockerFlagOn_includesAdBlockerAndUsesContentSection() {
+        featureFlags.enabledFlags = [.adBlocker]
+        let subject = createSubject()
+
+        let sections = subject.generateSettings()
+        let contentSection = sections.last
+        let hasAdBlocker = contentSection?.children.contains(where: { $0 is AdBlockerSetting }) ?? false
+
+        XCTAssertEqual(contentSection?.title?.string, String.Settings.Browsing.Content)
+        XCTAssertTrue(hasAdBlocker)
+    }
+
+    func testGenerateSettings_whenBackgroundAudioFlagOff_omitsBackgroundAudio() {
+        featureFlags.enabledFlags = []
+        let subject = createSubject()
+
+        let sections = subject.generateSettings()
+        let contentSection = sections.last
+        let hasBackgroundAudio = contentSection?.children.contains(where: { $0 is BackgroundAudioSetting }) ?? false
+
+        XCTAssertFalse(hasBackgroundAudio)
+    }
+
+    func testGenerateSettings_whenBackgroundAudioFlagOn_includesBackgroundAudio() {
+        featureFlags.enabledFlags = [.backgroundAudio]
+        let subject = createSubject()
+
+        let sections = subject.generateSettings()
+        let contentSection = sections.last
+        let hasBackgroundAudio = contentSection?.children.contains(where: { $0 is BackgroundAudioSetting }) ?? false
+
+        XCTAssertTrue(hasBackgroundAudio)
     }
 
     // MARK: - Helper

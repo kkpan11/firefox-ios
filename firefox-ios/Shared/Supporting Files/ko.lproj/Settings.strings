@@ -61,11 +61,95 @@
 /* Settings section title for the old Firefox account */
 "FxA.FirefoxAccount.v119" = "계정";
 
+/* Label of the toggle that enables or disables the Quick Answers feature on the Quick Answers settings screen. */
+"QuickAnswers.Settings.EnableQuickAnswers.v158" = "빠른 답변 활성화";
+
+/* Footer text on the Quick Answers settings screen explaining the feature and its privacy policy. */
+"QuickAnswers.Settings.Footer.v158" = "큰 소리로 물어보고 짧은 답변을 받으세요. 사용자의 목소리나 질문, 답변을 저장하지 않습니다.";
+
+/* Link button on the Quick Answers settings screen that opens more information about the feature. */
+"QuickAnswers.Settings.LearnMore.v158" = "더 알아보기";
+
+/* Status text shown next to the Quick Answers row in the general settings when the feature is disabled. */
+"QuickAnswers.Settings.StatusOff.v158" = "끄기";
+
+/* Status text shown next to the Quick Answers row in the general settings when the feature is enabled. */
+"QuickAnswers.Settings.StatusOn.v158" = "켜기";
+
+/* Title shown in the navigation bar and as the toggle label on the Quick Answers settings screen. */
+"QuickAnswers.Settings.Title.v158" = "빠른 답변";
+
 /* Label used as an item in Settings screen. When touched, it will take user to address autofill settings page to that will allow user to add or modify saved addresses to allow for autofill in a webpage. */
 "Settings.AddressAutofill.Title.v126" = "주소";
 
+/* In the AI Controls settings, in the AI powered features section, this is the text that indicates the feature is turned on. */
+"Settings.AIControls.AIPoweredFeaturesSection.AvailableStatus.v151" = "사용 가능";
+
+/* In the AI Controls settings, in the AI powered features section, this is the text that what the available status means. The content between the ** ** is bolded. Please do not remove these in translation. */
+"Settings.AIControls.AIPoweredFeaturesSection.AvailableStatusDescription.v151" = "**사용 가능**: 기능을 보고 사용할 수 있습니다.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the text that indicates the feature is turned off. */
+"Settings.AIControls.AIPoweredFeaturesSection.BlockedStatus.v151" = "차단됨";
+
+/* In the AI Controls settings, in the AI powered features section, this is the text that what the blocked status means. The content between the ** ** is bolded. Please do not remove these in translation. */
+"Settings.AIControls.AIPoweredFeaturesSection.BlockedStatusDescriptionV2.v151" = "**차단됨**: 해당 기능을 볼 수 없으며 사용할 수 없습니다. 온디바이스 AI의 경우 다운로드 된 모델이 제거됩니다.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the message that describes the pages summaries feature */
+"Settings.AIControls.AIPoweredFeaturesSection.PageSummariesSection.Message.v151" = "페이지와 요약은 저장되지 않습니다.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the title that describes the page summaries feature */
+"Settings.AIControls.AIPoweredFeaturesSection.PageSummariesSection.Title.v151" = "페이지 요약";
+
+/* In the AI Controls settings, in the AI powered features section, this is the message that describes the Quick Answers feature */
+"Settings.AIControls.AIPoweredFeaturesSection.QuickAnswersSection.Message.v154" = "목소리나 질문, 답변은 저장되지 않습니다.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the title that describes the Quick Answers feature */
+"Settings.AIControls.AIPoweredFeaturesSection.QuickAnswersSection.Title.v154" = "빠른 답변";
+
+/* In the AI Controls settings, this is the title for the section that describes AI-powered features. This is uppercase to match the style on iOS apps. */
+"Settings.AIControls.AIPoweredFeaturesSection.Title.v151" = "AI 기반 기능";
+
+/* In the AI Controls settings, in the AI powered features section, this is the message that describes the translation feature */
+"Settings.AIControls.AIPoweredFeaturesSection.TranslationSection.Message.v151" = "번역은 사용자의 기기에서 비공개로 유지됩니다.";
+
+/* In the AI Controls settings, in the AI powered features section, this is the title that describes the translation feature */
+"Settings.AIControls.AIPoweredFeaturesSection.TranslationSection.Title.v151" = "번역";
+
+/* This is the description for the setting that toggles whether to block AI enhancements under the AI Controls settings section. %@ is the app name (e.g. Firefox). */
+"Settings.AIControls.BlockAIEnhancementsDescription.v151" = "차단은 %@에서 신규 또는 현재 AI 향상이나 이에 대한 팝업을 볼 수 없음을 의미합니다.";
+
+/* In the AI Controls settings, this is the text for the link that takes the user more information on AI features. */
+"Settings.AIControls.BlockAIEnhancementsLink.v151" = "포함된 항목과 없는 항목 확인";
+
+/* This is the title for the setting that toggles whether to block AI enhancements under the AI Controls settings section. */
+"Settings.AIControls.BlockAIEnhancementsTitle.v151" = "AI 향상 차단";
+
+/* In the AI Controls settings, this is the text that appears when you have turned on the Block AI Enhancements toggle */
+"Settings.AIControls.BlockedInformation.v151" = "신규 및 현재 AI 향상 기능은 기본적으로 차단됩니다. 아래에서 특정 기능 차단을 해제하세요.";
+
+/* This is the text for the link in the Header Card under the AI Controls settings section that links to more information. */
+"Settings.AIControls.HeaderCard.Link.v151" = "더 알아보기";
+
+/* This is the message for the Header Card under the AI Controls settings section. */
+"Settings.AIControls.HeaderCard.Message.v151" = "여기에는 AI로 향상된 기능을 사용할지 여부가 포함됩니다.";
+
+/* This is the title for the Header Card under the AI Controls settings section. %@ is the app name (e.g. Firefox). */
+"Settings.AIControls.HeaderCard.Title.v151" = "%@에서는 항상 선택권이 있습니다.";
+
+/* In the settings menu, in the General section, this is the title for the AI Controls settings section */
+"Settings.AIControls.Title.v150" = "AI 제어";
+
+/* Section description in Appearance settings for middle button configuration of the bottom toolbar. */
+"Settings.Appearance.NavigationToolbar.Description.v145" = "도구 모음 중앙에 있는 버튼을 변경합니다.";
+
+/* Section header title in Appearance settings that configures the middle button of the bottom toolbar. */
+"Settings.Appearance.NavigationToolbar.SectionHeader.v145" = "도구 모음 버튼";
+
 /* Default section header title under page zoom settings. Indicates the default value for all websites */
 "Settings.Appearance.Zoom.Default.Title.v140" = "기본";
+
+/* Button to reset specific zoom site levels back to default */
+"Settings.Appearance.Zoom.Reset.Button.v140" = "사이트 설정 초기화";
 
 /* Page zoom section header title in Appearance settings */
 "Settings.Appearance.Zoom.SectionHeader.v140" = "확대/축소 설정";
@@ -103,6 +187,27 @@
 /* In the settings menu, this label indicates that there is an option of customizing the Autoplay behaviour. */
 "Settings.Autoplay.SettingsTitle.v137" = "자동 재생";
 
+/* VoiceOver custom action name for a settings row's Learn More link. */
+"Settings.BoolSetting.LearnMoreAction.v157" = "더 알아보기";
+
+/* Description text for the Ad Blocker toggle in the Browsing settings page, explaining its purpose and a tip for troubleshooting broken sites. */
+"Settings.Browsing.AdBlocker.Description.v155" = "광고 및 광고 관련 추적기를 줄입니다. 웹사이트가 손상된 것처럼 보이면 이 기능을 꺼보세요.";
+
+/* Link text below the Ad Blocker toggle description that opens a support page with more information. */
+"Settings.Browsing.AdBlocker.LearnMore.v155" = "더 알아보기";
+
+/* Title for the Ad Blocker toggle in the Browsing settings page. */
+"Settings.Browsing.AdBlocker.Title.v155" = "광고 차단기";
+
+/* Title for the Background Audio toggle in the Browsing settings page. When enabled, audio from web pages continues playing after the app is backgrounded. */
+"Settings.Browsing.BackgroundAudio.Title.v156" = "배경 오디오";
+
+/* Title for the Block Ads toggle in the Browsing settings page. When enabled, the app blocks advertisements. */
+"Settings.Browsing.BlockAds.Title.v153" = "광고 차단";
+
+/* This is the title for the Content customization section under the Browsing settings page. */
+"Settings.Browsing.Content.v153" = "내용";
+
 /* This is the title for Links customization under the Browsing settings section. */
 "Settings.Browsing.Links.v137" = "링크";
 
@@ -116,22 +221,13 @@
 "Settings.Browsing.Title.v137" = "탐색";
 
 /* Title for a link that explains how Mozilla send crash reports. */
-"Settings.CrashReports.Link.v135" = "자세히 알아보기.";
-
-/* Title for a link that explains how Mozilla send crash reports. */
 "Settings.CrashReports.Link.v136" = "더 알아보기";
-
-/* On the Settings screen, this is the subtitle text for a toggle which controls automatically sending crash reports. */
-"Settings.CrashReports.Message.v135" = "충돌 보고서를 통해 브라우저 문제를 진단하고 해결할 수 있습니다.";
 
 /* On the Settings screen, this is the subtitle text for a toggle which controls automatically sending crash reports. */
 "Settings.CrashReports.Message.v136" = "이렇게 하면 브라우저의 문제를 진단하고 해결하는데 도움이 됩니다.";
 
 /* On the Settings screen, this is the title text for a toggle which controls automatically sending crash reports. */
 "Settings.CrashReports.Title.v135" = "자동으로 충돌 보고서 보내기";
-
-/* Title for a link that explains how Mozilla send daily usage ping. */
-"Settings.DailyUsagePing.Link.v135" = "더 알아보기.";
 
 /* Title for a link that explains how Mozilla send daily usage ping. */
 "Settings.DailyUsagePing.Link.v136" = "더 알아보기";
@@ -144,6 +240,9 @@
 
 /* Title displayed in header of the FxA settings panel. */
 "Settings.FxA.Title.v119" = "계정";
+
+/* In the settings menu, on the Firefox wallpaper customization screen, this is the brand title for the section containing the Wrexham AFC wallpapers. */
+"Settings.Home.Option.Wallpaper.WrexhamBrandTitle.v155" = "Wrexham A.F.C.";
 
 /* This is the description for the setting that toggles Sync related notifications in the settings menu under the Notifications section. */
 "Settings.Notifications.SyncNotificationsStatus.v112" = "탭을 수신하고 다른 기기에서 로그인할 때 알림을 받으려면 이 기능을 켜야 합니다.";
@@ -172,6 +271,15 @@
 /* Show Firefox Browser Privacy Notice page from the Privacy section in the settings. See https://www.mozilla.org/privacy/firefox/ */
 "Settings.PrivacyNotice.Title.v137" = "개인 정보 보호 정책";
 
+/* Title for a link that explains what Mozilla means by Rollouts */
+"Settings.Rollouts.Link.v148" = "더 알아보기";
+
+/* A short description that explains that Mozilla may change features remotely. %@ is the app name (e.g. Firefox). */
+"Settings.Rollouts.Message.v148" = "%@는 기능과 성능, 업데이트 간의 안정성을 개선합니다. 변경 사항이 원격으로 적용되었습니다.";
+
+/* Label used as a toggle item in Settings. When this is off, the user is opting out of all rollouts. */
+"Settings.Rollouts.Title.v148" = "원격 개선 허용";
+
 /* In the settings menu, in the General section, this is the title for the option that allows user to disable the autohide feature of the tab and address bar. */
 "Settings.ScrollToHideTabAndAddressBar.Title.v138" = "탭과 주소 표시줄 숨기기로 스크롤";
 
@@ -189,6 +297,15 @@
 
 /* Title for the `Suggestions from Search Engines` settings section in the Search page in the Settings menu. */
 "Settings.Search.EnginesSuggestions.Title.v124" = "검색 엔진의 제안";
+
+/* In the Search settings, this is the description that describes the Google Lens feature */
+"Settings.Search.GoogleLens.Description.v153" = "검색할 수 있도록 이미지를 Google에 보냅니다.";
+
+/* In the Search settings, this is the disclaimer underneath the Google Lens settings toggle that explains the conditions required for Google Lens to be available. */
+"Settings.Search.GoogleLens.Footnote.v153" = "위에서 Google이 활성화되고 브라우징할 때의 검색 엔진으로 설정되었을 때에만 사용할 수 있습니다.";
+
+/* In the Search settings, this is the title that describes the Google Lens feature */
+"Settings.Search.GoogleLens.Title.v153" = "Google Lens";
 
 /* Navigation title for search page in the Settings menu. */
 "Settings.Search.PageTitle.v121" = "검색";
@@ -235,30 +352,162 @@
 /* Title for a link that explains what Mozilla means by Studies */
 "Settings.Studies.Link.v136" = "더 알아보기";
 
+/* Title for a link that explains what Mozilla means by Studies */
+"Settings.Studies.Link.v148" = "더 알아보기";
+
 /* A short description that explains that Mozilla is running studies */
 "Settings.Studies.Message.v136" = "기능과 아이디어가 공개되기 전에 미리 사용해 보세요.";
+
+/* A short description that explains that Mozilla is running studies. %@ is the app name (e.g. Firefox). */
+"Settings.Studies.Message.v148" = "%@는 기능을 테스트할 사용자를 무작위로 선택하여, 모두를 위해 품질을 향상시킵니다.";
 
 /* Label used as a toggle item in Settings. When this is off, the user is opting out of all studies. */
 "Settings.Studies.Title.v136" = "연구 설치 및 실행";
 
-/* Title for a link that explains how Mozilla send technical and interaction data. */
-"Settings.TechnicalData.Link.v135" = "더 알아보기.";
+/* Label used as a toggle item in Settings. When this is off, the user is opting out of all studies. */
+"Settings.Studies.Title.v148" = "연구 기능 허용";
+
+/* This is the footer text for the setting that toggles the Summarize feature under the Summarize settings section. */
+"Settings.Summarize.FooterTitle.v142" = "요약 페이지에 대한 접근을 제공합니다.";
+
+/* This is the footer text for the gestures features under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.FooterTitle.v142" = "기기를 좌우로 흔들어 페이지를 요약할 수 있습니다.";
+
+/* This is the title for the setting that toggles the Shake Gesture feature under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.ShakeGestureTitle.v142" = "흔들어서 요약";
+
+/* This is the section title for the gestures features under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.Title.v142" = "제스처";
+
+/* The title for the language choose section for the summarizer inside the Summarize settings. */
+"Settings.Summarize.LanguageSection.Title.v149" = "언어";
+
+/* The label for the picker option to select the website language for the summarizer inside the Summarize settings. */
+"Settings.Summarize.LanguageSection.WebsiteLanguageLabel.v149" = "웹 사이트 언어";
+
+/* This is the title for the setting that toggles the Summarize feature under the Summarize settings section. */
+"Settings.Summarize.SummarizePagesTitle.v142" = "페이지 요약";
+
+/* In the settings menu, in the General section, this is the title for the Summarize settings section. */
+"Settings.Summarize.Title.v142" = "페이지 요약";
 
 /* Title for a link that explains how Mozilla send technical and interaction data. */
 "Settings.TechnicalData.Link.v136" = "더 알아보기";
 
-/* On the Settings screen, this is the subtitle text for a toggle which controls sending technical and interaction data. %1$@ is the company name (e.g. Mozilla), %2$@ is the app name (e.g. Firefox). */
-"Settings.TechnicalData.Message.v135" = "%1$@는 %2$@를 제공하고 개선하는데 필요한 정보만 수집하기 위해 노력합니다.";
-
 /* On the Settings screen, this is the subtitle text for a toggle which controls sending technical and interaction data. %@ is the app name (e.g. Firefox). */
 "Settings.TechnicalData.Message.v136" = "기기와 하드웨어 구성, 사용 현황에 대한 데이터는 %@ 기능과 성능, 안정성을 개선하는 데 도움이 됩니다.";
-
-/* On the Settings screen, this is the title text for a toggle which controls sending technical and interaction data. */
-"Settings.TechnicalData.Title.v135" = "기술과 상호 작용 데이터";
 
 /* On the Settings screen, this is the title text for a toggle which controls sending technical and interaction data. */
 "Settings.TechnicalData.Title.v136" = "기술과 상호작용 데이터 보내기";
 
 /* Terms of Use settings section title */
 "Settings.TermsOfUse.Title.v137" = "이용 약관";
+
+/* In the Appearance settings menu, in the Toolbar Button section, this label indicates that selecting this will make the home button appear in the middle of the navigation toolbar. */
+"Settings.Toolbar.Navigation.MiddleButton.Home.v145" = "홈";
+
+/* In the Appearance settings menu, in the Toolbar Button section, this label indicates that selecting this will make the New Tab button appear in the middle of the navigation toolbar. */
+"Settings.Toolbar.Navigation.MiddleButton.NewTab.v145" = "새 탭";
+
+/* Footer text below the auto-translate toggle in the Translation settings screen. */
+"Settings.Translation.AutoTranslate.Footer.v151" = "사용자가 가장 선호하는 언어로 페이지를 자동으로 번역합니다.";
+
+/* Title for the auto-translate toggle in the Translation settings screen. */
+"Settings.Translation.AutoTranslate.Title.v151" = "자동 번역";
+
+/* Navigation bar title of the language picker shown when adding a preferred translation language. */
+"Settings.Translation.LanguagePicker.NavTitle.v151" = "언어 선택";
+
+/* Placeholder text for the search bar in the translation language picker. */
+"Settings.Translation.LanguagePicker.SearchPlaceholder.v151" = "검색";
+
+/* Row label in the preferred languages list that opens the language picker to add a new preferred language for translation. */
+"Settings.Translation.PreferredLanguages.AddLanguage.v151" = "언어 추가…";
+
+/* Subtitle on the device language row in the preferred languages list in the Translation settings screen. */
+"Settings.Translation.PreferredLanguages.DeviceLanguage.v151" = "기기 언어";
+
+/* Footer text below the preferred languages list in the Translation settings screen. */
+"Settings.Translation.PreferredLanguages.Footer.v151" = "번역할 때 다음 언어 중에서 선택하세요.";
+
+/* VoiceOver custom action label on a preferred language row in the Translation settings screen, used to remove that language from the list. */
+"Settings.Translation.PreferredLanguages.RemoveLanguageA11yAction.v151" = "삭제";
+
+/* Section header for the preferred languages list in the Translation settings screen. */
+"Settings.Translation.PreferredLanguages.SectionTitle.v151" = "선호 언어";
+
+/* This is the section title text for the the Translation feature under the Translation settings section. */
+"Settings.Translation.SectionTitle.v145" = "번역 설정";
+
+/* In the settings menu, in the General section, this is the text to show next to the Translation setting title and indicates if the translation feature has been disabled. */
+"Settings.Translation.SettingOff.v145" = "꺼짐";
+
+/* In the settings menu, in the General section, this is the text to show next to the Translation setting title and indicates if the translation feature has been enabled. */
+"Settings.Translation.SettingOn.v145" = "켜짐";
+
+/* In the settings menu, in the General section, this is the title for the Translation settings section. */
+"Settings.Translation.Title.v145" = "번역";
+
+/* Footer text below the enable toggle in the Translation settings screen. */
+"Settings.Translation.ToggleFooter.v151" = "도구 모음과 메뉴에서 번역을 제거하려면 이것을 끄십시오.";
+
+/* This is the title for the setting that toggles the Translation feature that allows users to translate web pages under the Translation settings section. */
+"Settings.Translation.ToggleTitle.v145" = "번역 활성화";
+
+/* Text displayed on the locations screen when the app loads a list of locations for the user to pick from. “Locations” here means the locations of VPN servers the user can connect to. */
+"VPN.LocationPicker.FindingLocationsText.v160" = "위치를 찾는 중…";
+
+/* Option in the VPN server location list. Choosing it lets the app pick the server with the fastest connection. */
+"VPN.LocationPicker.RecommendedMainText.v160" = "추천됨";
+
+/* Description below the Recommended option in the VPN server location list. %1$@ is the app name (for example, Firefox). */
+"VPN.LocationPicker.RecommendedSubText.v160" = "%1$@는 가장 빠른 위치를 찾습니다.";
+
+/* Announced by VoiceOver on the VPN settings screen when the VPN finishes connecting after the user turns on the VPN switch. */
+"VPN.Settings.Connected.v161" = "VPN 연결됨";
+
+/* Shown next to the VPN switch on the VPN settings screen while the VPN is connecting, right after the user turns it on. */
+"VPN.Settings.Connecting.v160" = "연결 중…";
+
+/* Read aloud by VoiceOver for the Data Limit section on the VPN settings screen. %1$@ is the amount of VPN data used this month and %2$@ is the monthly limit, both in gigabytes (for example, “1.0 of 5.0 gigabytes used”). The second sentence explains that the user’s free monthly VPN data resets on the first day of each month. */
+"VPN.Settings.DataLimit.AccessibilityValue.v161" = "%2$@기가바이트 중 %1$@기가를 사용되었습니다. 매월 1일에 재설정됩니다.";
+
+/* Footer below the Data Limit section on the VPN settings screen. Explains when the user's free VPN data resets. %1$@ is the monthly limit in gigabytes (for example, 5.0). “GB” stands for gigabytes. */
+"VPN.Settings.DataLimitResetFooter.v160" = "매월 1일 %1$@ GB로 초기화됩니다";
+
+/* Title of the section on the VPN settings screen that shows how much of the user's free monthly VPN data they have used. */
+"VPN.Settings.DataLimitTitle.v160" = "데이터 제한";
+
+/* Read aloud by VoiceOver for the data usage on the VPN settings screen. Same as the visible text, but with “gigabytes” written out instead of “GB”. %1$@ is the amount of VPN data used this month and %2$@ is the monthly limit (for example, “1.0 of 5.0 gigabytes used”). */
+"VPN.Settings.DataUsage.AccessibilityLabel.v160" = "%1$@ / %2$@ GB 사용함";
+
+/* Shown next to the Data Limit title on the VPN settings screen. %1$@ is the amount of VPN data used this month and %2$@ is the monthly limit, both in gigabytes (for example, “1.0 of 5.0 GB used”). “GB” stands for gigabytes. */
+"VPN.Settings.DataUsage.v160" = "%1$@ / %2$@ GB 사용함";
+
+/* Short description below the title at the top of the VPN settings screen. Explains what the VPN does. */
+"VPN.Settings.Description.v160" = "공용 Wi-Fi에서도 위치를 숨겨 탐색을 추가 보호합니다.";
+
+/* Link below the description at the top of the VPN settings screen. Tapping it opens a support article about the VPN. */
+"VPN.Settings.LearnMore.v160" = "더 알아보기…";
+
+/* Shown on the right side of the Location row on the VPN settings screen when the user lets Firefox select the location in their stead. The recommended location is the one with the fastest connection. */
+"VPN.Settings.LocationRecommended.v160" = "추천됨";
+
+/* Used in two places: as the name of a row on the VPN settings screen, and as the title of the screen that row opens. On that screen, the user picks which VPN server location (country or region) to connect through. “Location” means the VPN server’s location, not the user’s own location. */
+"VPN.Settings.LocationTitle.v160" = "위치";
+
+/* VPN status shown when the VPN is not connected. Used in two places: on the right side of the VPN row in the Privacy section of Settings, and on the small capsule-shaped VPN status indicator. */
+"VPN.Settings.StatusOff.v160" = "꺼짐";
+
+/* VPN status shown when the VPN is connected. Used in two places: on the right side of the VPN row in the Privacy section of Settings, and on the small capsule-shaped VPN status indicator. */
+"VPN.Settings.StatusOn.v160" = "켜짐";
+
+/* VPN status shown when the VPN is temporarily paused. Used in two places: on the right side of the VPN row in the Privacy section of Settings, and on the small capsule-shaped VPN status indicator. */
+"VPN.Settings.StatusPaused.v160" = "일시 중지";
+
+/* Name of the VPN row in the Privacy section of Settings. Also used as the title of the VPN settings screen. */
+"VPN.Settings.Title.v160" = "내장 VPN";
+
+/* Used in two places: as the label for the toggle switch on the VPN settings screen that turns the VPN on or off, and as the label on the small capsule-shaped VPN status indicator, where it appears together with the current status (On, Off or Paused). */
+"VPN.Settings.ToggleTitle.v160" = "VPN";
 

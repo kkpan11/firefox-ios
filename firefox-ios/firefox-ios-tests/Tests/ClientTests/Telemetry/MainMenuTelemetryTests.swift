@@ -30,55 +30,15 @@ final class MainMenuTelemetryTests: XCTestCase {
         subject?.mainMenuOptionTapped(with: true, and: "test_option")
 
         let savedMetric = try XCTUnwrap(
-            mockGleanWrapper.savedEvents?[0] as? EventMetricType<GleanMetrics.AppMenu.MainMenuOptionSelectedExtra>
+            mockGleanWrapper.savedEvents.first as? EventMetricType<GleanMetrics.AppMenu.MainMenuOptionSelectedExtra>
         )
         let savedExtras = try XCTUnwrap(
-            mockGleanWrapper.savedExtras as? GleanMetrics.AppMenu.MainMenuOptionSelectedExtra
+            mockGleanWrapper.savedExtras.first as? GleanMetrics.AppMenu.MainMenuOptionSelectedExtra
         )
-        let expectedMetricType = type(of: GleanMetrics.AppMenu.mainMenuOptionSelected)
-        let resultMetricType = type(of: savedMetric)
-        let debugMessage = TelemetryDebugMessage(expectedMetric: expectedMetricType, resultMetric: resultMetricType)
+        let event = GleanMetrics.AppMenu.mainMenuOptionSelected
 
         XCTAssertEqual(mockGleanWrapper.recordEventCalled, 1)
-        XCTAssert(resultMetricType == expectedMetricType, debugMessage.text)
-        XCTAssertEqual(savedExtras.option, "test_option")
-        XCTAssertEqual(savedExtras.isHomepage, true)
-    }
-
-    func testRecordMainMenuWhenSaveSubmenuOptionTappedThenGleanIsCalled() throws {
-        subject?.saveSubmenuOptionTapped(with: true, and: "test_option")
-
-        let savedMetric = try XCTUnwrap(
-            mockGleanWrapper.savedEvents?[0] as? EventMetricType<GleanMetrics.AppMenu.SaveMenuOptionSelectedExtra>
-        )
-        let savedExtras = try XCTUnwrap(
-            mockGleanWrapper.savedExtras as? GleanMetrics.AppMenu.SaveMenuOptionSelectedExtra
-        )
-        let expectedMetricType = type(of: GleanMetrics.AppMenu.saveMenuOptionSelected)
-        let resultMetricType = type(of: savedMetric)
-        let debugMessage = TelemetryDebugMessage(expectedMetric: expectedMetricType, resultMetric: resultMetricType)
-
-        XCTAssertEqual(mockGleanWrapper.recordEventCalled, 1)
-        XCTAssert(resultMetricType == expectedMetricType, debugMessage.text)
-        XCTAssertEqual(savedExtras.option, "test_option")
-        XCTAssertEqual(savedExtras.isHomepage, true)
-    }
-
-    func testRecordMainMenuWhenToolsSubmenuOptionTappedThenGleanIsCalled() throws {
-        subject?.toolsSubmenuOptionTapped(with: true, and: "test_option")
-
-        let savedMetric = try XCTUnwrap(
-            mockGleanWrapper.savedEvents?[0] as? EventMetricType<GleanMetrics.AppMenu.ToolsMenuOptionSelectedExtra>
-        )
-        let savedExtras = try XCTUnwrap(
-            mockGleanWrapper.savedExtras as? GleanMetrics.AppMenu.ToolsMenuOptionSelectedExtra
-        )
-        let expectedMetricType = type(of: GleanMetrics.AppMenu.toolsMenuOptionSelected)
-        let resultMetricType = type(of: savedMetric)
-        let debugMessage = TelemetryDebugMessage(expectedMetric: expectedMetricType, resultMetric: resultMetricType)
-
-        XCTAssertEqual(mockGleanWrapper.recordEventCalled, 1)
-        XCTAssert(resultMetricType == expectedMetricType, debugMessage.text)
+        XCTAssert(savedMetric === event, "Received \(savedMetric) instead of \(event)")
         XCTAssertEqual(savedExtras.option, "test_option")
         XCTAssertEqual(savedExtras.isHomepage, true)
     }
@@ -87,17 +47,15 @@ final class MainMenuTelemetryTests: XCTestCase {
         subject?.closeButtonTapped(isHomepage: true)
 
         let savedMetric = try XCTUnwrap(
-            mockGleanWrapper.savedEvents?[0] as? EventMetricType<GleanMetrics.AppMenu.CloseButtonExtra>
+            mockGleanWrapper.savedEvents.first as? EventMetricType<GleanMetrics.AppMenu.CloseButtonExtra>
         )
         let savedExtras = try XCTUnwrap(
-            mockGleanWrapper.savedExtras as? GleanMetrics.AppMenu.CloseButtonExtra
+            mockGleanWrapper.savedExtras.first as? GleanMetrics.AppMenu.CloseButtonExtra
         )
-        let expectedMetricType = type(of: GleanMetrics.AppMenu.closeButton)
-        let resultMetricType = type(of: savedMetric)
-        let debugMessage = TelemetryDebugMessage(expectedMetric: expectedMetricType, resultMetric: resultMetricType)
+        let event = GleanMetrics.AppMenu.closeButton
 
         XCTAssertEqual(mockGleanWrapper.recordEventCalled, 1)
-        XCTAssert(resultMetricType == expectedMetricType, debugMessage.text)
+        XCTAssert(savedMetric === event, "Received \(savedMetric) instead of \(event)")
         XCTAssertEqual(savedExtras.isHomepage, true)
     }
 
@@ -105,17 +63,15 @@ final class MainMenuTelemetryTests: XCTestCase {
         subject?.menuDismissed(isHomepage: true)
 
         let savedMetric = try XCTUnwrap(
-            mockGleanWrapper.savedEvents?[0] as? EventMetricType<GleanMetrics.AppMenu.MenuDismissedExtra>
+            mockGleanWrapper.savedEvents.first as? EventMetricType<GleanMetrics.AppMenu.MenuDismissedExtra>
         )
         let savedExtras = try XCTUnwrap(
-            mockGleanWrapper.savedExtras as? GleanMetrics.AppMenu.MenuDismissedExtra
+            mockGleanWrapper.savedExtras.first as? GleanMetrics.AppMenu.MenuDismissedExtra
         )
-        let expectedMetricType = type(of: GleanMetrics.AppMenu.menuDismissed)
-        let resultMetricType = type(of: savedMetric)
-        let debugMessage = TelemetryDebugMessage(expectedMetric: expectedMetricType, resultMetric: resultMetricType)
+        let event = GleanMetrics.AppMenu.menuDismissed
 
         XCTAssertEqual(mockGleanWrapper.recordEventCalled, 1)
-        XCTAssert(resultMetricType == expectedMetricType, debugMessage.text)
+        XCTAssert(savedMetric === event, "Received \(savedMetric) instead of \(event)")
         XCTAssertEqual(savedExtras.isHomepage, true)
     }
 }

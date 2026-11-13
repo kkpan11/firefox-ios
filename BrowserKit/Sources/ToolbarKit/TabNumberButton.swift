@@ -5,17 +5,14 @@
 import UIKit
 import Common
 
-final class TabNumberButton: ToolbarButton {
+final class TabNumberButton: ToolbarButton, TabCountable {
     // MARK: - UX Constants
-    struct UX {
+    enum UX {
         static let cornerRadius: CGFloat = 2
         static let dimmedOpacity: CGFloat = 0.2
         static let titleFont = FXFontStyles.Bold.caption2.systemFont()
-
-        // Tab count related constants
+        static let infinityFont = FXFontStyles.Bold.subheadline.systemFont()
         static let defaultCountLabelText = "0"
-        static let maxTabCount = 99
-        static let infinitySymbol = "\u{221E}"
     }
 
     // MARK: - Properties
@@ -25,6 +22,13 @@ final class TabNumberButton: ToolbarButton {
         label.layer.cornerRadius = UX.cornerRadius
         label.textAlignment = .center
     }
+
+    private var isNumCountLabel: Bool {
+        guard let text = countLabel.text else { return false }
+        return Int(text) != nil
+    }
+
+    private var countLabelCenterYAnchor: NSLayoutConstraint?
 
     // MARK: - Init
     override init(frame: CGRect) {
@@ -36,13 +40,13 @@ final class TabNumberButton: ToolbarButton {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func configure(
-        element: ToolbarElement,
-        notificationCenter: NotificationProtocol = NotificationCenter.default) {
+    override func configure(element: ToolbarElement,
+                            notificationCenter: NotificationProtocol = NotificationCenter.default) {
         super.configure(element: element)
+        countLabel.text = updateTabCount(for: element)
 
-        guard let numberOfTabs = element.numberOfTabs, let largeContentTitle = element.largeContentTitle else { return }
-        updateTabCount(numberOfTabs, largeContentTitle: largeContentTitle)
+        countLabel.font = isNumCountLabel ? UX.titleFont : UX.infinityFont
+        countLabelCenterYAnchor?.constant = isNumCountLabel ? 0 : -1
     }
 
     override func tintColorDidChange() {
@@ -54,26 +58,25 @@ final class TabNumberButton: ToolbarButton {
     }
 
     override func updateConfiguration() {
-        super.updateConfiguration()
-        countLabel.textColor = configuration?.baseForegroundColor
-    }
-
-    private func updateTabCount(_ count: Int, largeContentTitle: String) {
-        let count = max(count, 1)
-        let countToBe = (count <= UX.maxTabCount) ? count.description : UX.infinitySymbol
-        countLabel.text = countToBe
-        accessibilityValue = countToBe
-        self.largeContentTitle = largeContentTitle
+        UIView.performWithoutAnimation {
+                   super.updateConfiguration()
+                   countLabel.textColor = configuration?.baseForegroundColor
+                   imageView?.tintColor = configuration?.baseForegroundColor
+        }
     }
 
     // MARK: - Layout
     private func setupLayout() {
         addSubview(countLabel)
+
+        countLabelCenterYAnchor = countLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
+        countLabelCenterYAnchor?.isActive = true
+
         NSLayoutConstraint.activate([
-            countLabel.topAnchor.constraint(equalTo: topAnchor),
+            countLabel.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
             countLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
             countLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            countLabel.bottomAnchor.constraint(equalTo: bottomAnchor)
+            countLabel.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor)
         ])
     }
 }

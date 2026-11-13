@@ -3,8 +3,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import XCTest
+import TestKit
 @testable import WebEngine
 
+@MainActor
 @available(iOS 16, *)
 class EngineSessionScriptResponderTests: XCTestCase {
     private var session: MockWKEngineSession!
@@ -14,9 +16,9 @@ class EngineSessionScriptResponderTests: XCTestCase {
         session = await MockWKEngineSession()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         session = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testContentScriptDidSendEventRespondsToTrackAdsClickedOnPage() throws {

@@ -8,29 +8,41 @@ import Common
 import ComponentLibrary
 import SiteImageView
 import Redux
+import X509
+import Storage
 
-struct TPMenuUX {
-    struct UX {
+enum TPMenuUX {
+    enum UX {
         static let popoverTopDistance: CGFloat = 16
         static let horizontalMargin: CGFloat = 16
         static let viewCornerRadius: CGFloat = 8
         static let headerLabelDistance: CGFloat = 2.0
         static let iconSize: CGFloat = 24
         static let connectionDetailsHeaderMargins: CGFloat = 8
+        static let connectionDetailsFooterMargins: CGFloat = 16
         static let faviconCornerRadius: CGFloat = 16
         static let clearDataButtonTopDistance: CGFloat = 32
-        static let clearDataButtonCornerRadius: CGFloat = 12
         static let clearDataButtonBorderWidth: CGFloat = 0
         static let settingsLinkButtonBottomSpacing: CGFloat = 16
         static let modalMenuCornerRadius: CGFloat = 12
-        struct Line {
+        static let newStyleCornerRadius: CGFloat = if #available(iOS 26.0, *) {
+            24
+        } else {
+            viewCornerRadius
+        }
+        static let backgroundAlpha: CGFloat = 0.80
+        static let novaBackgroundAlpha: CGFloat = 0.95
+        enum Line {
             static let height: CGFloat = 0.5
         }
     }
 }
 
 protocol TrackingProtectionMenuDelegate: AnyObject {
+    @MainActor
     func settingsOpenPage(settings: Route.SettingsSection)
+
+    @MainActor
     func didFinish()
 }
 
@@ -41,14 +53,16 @@ class TrackingProtectionViewController: UIViewController,
                                         UIScrollViewDelegate {
     var themeManager: ThemeManager
     var profile: Profile?
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { windowUUID }
+    private let logger: Logger
 
-    weak var enhancedTrackingProtectionMenuDelegate: TrackingProtectionMenuDelegate?
+    weak var trackingProtectionMenuDelegate: TrackingProtectionMenuDelegate?
 
     private var foxImageHeightConstraint: NSLayoutConstraint?
+    private var currentCustomMenuHeight: CGFloat = 0
 
     private lazy var scrollView: UIScrollView = .build { scrollView in
         scrollView.showsVerticalScrollIndicator = false
@@ -85,7 +99,6 @@ class TrackingProtectionViewController: UIViewController,
     private lazy var clearCookiesButton: TrackingProtectionButton = .build { button in
         button.titleLabel?.textAlignment = .left
         button.titleLabel?.numberOfLines = 0
-        button.layer.cornerRadius = TPMenuUX.UX.clearDataButtonCornerRadius
         button.layer.borderWidth = TPMenuUX.UX.clearDataButtonBorderWidth
         button.addTarget(self, action: #selector(self.didTapClearCookiesAndSiteData), for: .touchUpInside)
     }
@@ -120,19 +133,34 @@ class TrackingProtectionViewController: UIViewController,
          profile: Profile,
          windowUUID: WindowUUID,
          themeManager: ThemeManager = AppContainer.shared.resolve(),
-         notificationCenter: NotificationProtocol = NotificationCenter.default) {
+         notificationCenter: NotificationProtocol = NotificationCenter.default,
+         logger: Logger = DefaultLogger.shared) {
         self.model = viewModel
         self.profile = profile
         self.windowUUID = windowUUID
         self.themeManager = themeManager
         self.notificationCenter = notificationCenter
+        self.logger = logger
         trackingProtectionState = TrackingProtectionState(windowUUID: windowUUID)
         super.init(nibName: nil, bundle: nil)
         subscribeToRedux()
     }
 
     deinit {
-        unsubscribeFromRedux()
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits
+        guard Thread.isMainThread else {
+            logger.log(
+                "TrackingProtectionViewController was not deallocated on the main thread. Redux was not cleaned up.",
+                level: .fatal,
+                category: .lifecycle
+            )
+            assertionFailure("The view controller was not deallocated on the main thread. Redux was not cleaned up.")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            unsubscribeFromRedux()
+        }
     }
 
     @available(*, unavailable)
@@ -146,15 +174,23 @@ class TrackingProtectionViewController: UIViewController,
             addGestureRecognizer()
         }
         setupView()
-        listenForThemeChange(view)
-        setupNotifications(forObserver: self,
-                           observing: [.DynamicFontChanged])
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
+
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [UIContentSizeCategory.didChangeNotification,
+                        UIAccessibility.reduceTransparencyStatusDidChangeNotification]
+        )
         scrollView.delegate = self
         updateViewDetails()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateMenuDetent()
         self.view.invalidateIntrinsicContentSize()
         if !hasSetPointOrigin {
             hasSetPointOrigin = true
@@ -162,28 +198,56 @@ class TrackingProtectionViewController: UIViewController,
         }
     }
 
+    private func getCertificates(from serverTrust: SecTrust) -> [Certificate] {
+        guard let certificateChain = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate] else {
+            return []
+        }
+        var certificates = [Certificate]()
+        certificates.reserveCapacity(certificateChain.count)
+        for certificate in certificateChain {
+            let certificateData = SecCertificateCopyData(certificate) as Data
+            do {
+                let certificate = try Certificate(derEncoded: Array(certificateData))
+                certificates.append(certificate)
+            } catch {
+                DefaultLogger.shared.log("\(error)",
+                                         level: .warning,
+                                         category: .certificate)
+            }
+        }
+        return certificates
+    }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateBlockedTrackersCount()
         updateConnectionStatus()
         applyTheme()
-        getCertificates(for: model.url) { [weak self] certificates in
-            if let certificates {
-                ensureMainThread {
-                    self?.model.certificates = certificates
+
+        if let serverTrust = model.selectedTab?.webView?.serverTrust {
+            model.certificates = getCertificates(from: serverTrust)
+        } else if let url = model.selectedTab?.webView?.url,
+                  let internalURL = InternalURL(url),
+                  internalURL.isCertificateErrorURL,
+                  let originalURL = internalURL.originalURLFromErrorPage {
+            CertificatesFetcher().getCertificates(for: originalURL) { [weak self] certificates in
+                Task { @MainActor in
+                    self?.model.certificates = certificates ?? []
                 }
             }
         }
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        notificationCenter.post(name: .TrackingProtectionViewControllerDidAppear, withObject: windowUUID)
-    }
-
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        notificationCenter.post(name: .TrackingProtectionViewControllerDidDismiss, withObject: windowUUID)
+    private func updateMenuDetent() {
+        guard #available(iOS 16.0, *),
+              navigationController?.topViewController === self,
+              let sheet = navigationController?.sheetPresentationController ?? sheetPresentationController else { return }
+        let contentHeight = headerContainer.frame.maxY + scrollView.contentSize.height
+        guard abs(contentHeight - currentCustomMenuHeight) > 1 else { return }
+        currentCustomMenuHeight = contentHeight
+        sheet.detents = [.custom { context in
+            min(contentHeight, context.maximumDetentValue)
+        }]
     }
 
     private func setupView() {
@@ -212,7 +276,7 @@ class TrackingProtectionViewController: UIViewController,
             case .back:
                 navigationController?.popViewController(animated: true)
             case .close:
-                enhancedTrackingProtectionMenuDelegate?.didFinish()
+                trackingProtectionMenuDelegate?.didFinish()
             case .settings:
                 showSettings()
             }
@@ -239,9 +303,9 @@ class TrackingProtectionViewController: UIViewController,
     }
 
     func subscribeToRedux() {
-        let action = ScreenAction(windowUUID: windowUUID,
-                                  actionType: ScreenActionType.showScreen,
-                                  screen: .trackingProtection)
+        let action = ComponentAction(windowUUID: windowUUID,
+                                     actionType: ComponentActionType.addComponent,
+                                     component: .trackingProtection)
         store.dispatch(action)
         let uuid = windowUUID
         store.subscribe(self, transform: {
@@ -252,9 +316,9 @@ class TrackingProtectionViewController: UIViewController,
     }
 
     func unsubscribeFromRedux() {
-        let action = ScreenAction(windowUUID: windowUUID,
-                                  actionType: ScreenActionType.closeScreen,
-                                  screen: .trackingProtection)
+        let action = ComponentAction(windowUUID: self.windowUUID,
+                                     actionType: ComponentActionType.removeComponent,
+                                     component: .trackingProtection)
         store.dispatch(action)
     }
 
@@ -265,8 +329,8 @@ class TrackingProtectionViewController: UIViewController,
         let scrollViewConstraints = [
             scrollView.topAnchor.constraint(equalTo: headerContainer.bottomAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor)
         ]
 
         constraints.append(contentsOf: scrollViewConstraints)
@@ -287,8 +351,8 @@ class TrackingProtectionViewController: UIViewController,
     private func setupHeaderView() {
         view.addSubview(headerContainer)
         let headerConstraints = [
-            headerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            headerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            headerContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             headerContainer.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor,
                 constant: asPopover ? TPMenuUX.UX.popoverTopDistance : 0
@@ -296,12 +360,8 @@ class TrackingProtectionViewController: UIViewController,
         ]
         constraints.append(contentsOf: headerConstraints)
         headerContainer.closeButtonCallback = { [weak self] in
-            self?.enhancedTrackingProtectionMenuDelegate?.didFinish()
+            self?.trackingProtectionMenuDelegate?.didFinish()
         }
-        headerContainer.setupAccessibility(
-            closeButtonA11yLabel: model.closeButtonA11yLabel,
-            closeButtonA11yId: model.closeButtonA11yId
-        )
         headerContainer.updateHeaderLineView(isHidden: true)
     }
 
@@ -310,17 +370,20 @@ class TrackingProtectionViewController: UIViewController,
         baseView.addSubviews(connectionDetailsHeaderView)
         let connectionHeaderConstraints = [
             connectionDetailsHeaderView.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
+                equalTo: baseView.leadingAnchor,
                 constant: TPMenuUX.UX.horizontalMargin
             ),
             connectionDetailsHeaderView.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
+                equalTo: baseView.trailingAnchor,
                 constant: -TPMenuUX.UX.horizontalMargin
             ),
             connectionDetailsHeaderView.topAnchor.constraint(
                 equalTo: baseView.topAnchor,
                 constant: TPMenuUX.UX.connectionDetailsHeaderMargins),
         ]
+        if #available(iOS 26.0, *) {
+            connectionDetailsHeaderView.layer.cornerRadius = TPMenuUX.UX.newStyleCornerRadius
+        }
         constraints.append(contentsOf: connectionHeaderConstraints)
     }
 
@@ -334,11 +397,11 @@ class TrackingProtectionViewController: UIViewController,
             trackersView.trailingAnchor.constraint(equalTo: trackersConnectionContainer.trailingAnchor),
             connectionStatusView.trailingAnchor.constraint(equalTo: trackersConnectionContainer.trailingAnchor),
             trackersConnectionContainer.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor,
+                equalTo: baseView.leadingAnchor,
                 constant: TPMenuUX.UX.horizontalMargin
             ),
             trackersConnectionContainer.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor,
+                equalTo: baseView.trailingAnchor,
                 constant: -TPMenuUX.UX.horizontalMargin
             ),
             trackersConnectionContainer.topAnchor.constraint(equalTo: connectionDetailsHeaderView.bottomAnchor),
@@ -349,17 +412,32 @@ class TrackingProtectionViewController: UIViewController,
         ]
         constraints.append(contentsOf: trackersConnectionConstraints)
         trackersView.trackersButtonCallback = { [weak self] in
-            guard let self else { return }
+            guard let self,
+                  let trackersBlocked = model.contentBlockerStats?.total,
+                  trackersBlocked > 0 else {
+                return
+            }
             store.dispatch(
-                TrackingProtectionAction(windowUUID: windowUUID,
-                                         actionType: TrackingProtectionActionType.tappedShowBlockedTrackers)
+                TrackingProtectionAction(
+                    windowUUID: self.windowUUID,
+                    actionType: TrackingProtectionActionType.tappedShowBlockedTrackers
+                )
             )
         }
         connectionStatusView.connectionStatusButtonCallback = { [weak self] in
-            guard let self, model.connectionSecure else { return }
+            guard let self else { return }
+
+            let isCertificateErrorPage = InternalURL(model.url)?.isCertificateErrorURL ?? false
+
+            guard InternalURL(model.url) == nil || isCertificateErrorPage else {
+                return
+            }
+
             store.dispatch(
-                TrackingProtectionAction(windowUUID: windowUUID,
-                                         actionType: TrackingProtectionActionType.tappedShowTrackingProtectionDetails)
+                TrackingProtectionAction(
+                    windowUUID: self.windowUUID,
+                    actionType: TrackingProtectionActionType.tappedShowTrackingProtectionDetails
+                )
             )
         }
     }
@@ -382,6 +460,9 @@ class TrackingProtectionViewController: UIViewController,
             // site is safelisted if site ETP is disabled
             self?.model.toggleSiteSafelistStatus()
             self?.updateProtectionViewStatus()
+        }
+        if #available(iOS 26.0, *) {
+            toggleView.layer.cornerRadius = TPMenuUX.UX.newStyleCornerRadius
         }
     }
 
@@ -446,7 +527,7 @@ class TrackingProtectionViewController: UIViewController,
     }
 
     private func updateViewDetails() {
-        let headerIcon = FaviconImageViewModel(siteURLString: model.url.absoluteString,
+        let headerIcon = FaviconImageViewModel(siteURLString: model.originalURL.absoluteString,
                                                faviconCornerRadius: TPMenuUX.UX.faviconCornerRadius)
         headerContainer.setupDetails(subtitle: model.websiteTitle,
                                      title: model.displayTitle,
@@ -466,11 +547,16 @@ class TrackingProtectionViewController: UIViewController,
     }
 
     private func updateConnectionStatus() {
+        let isInternalCertErrorURL = InternalURL(model.url)?.isCertificateErrorURL ?? false
+        let origin = CertStore.origin(for: model.originalURL) ?? ""
+        let isManuallyTrusted = profile?.certStore.hasCertificate(forOrigin: origin) ?? false
         model.connectionSecure = model.selectedTab?.webView?.hasOnlySecureContent ?? false
         connectionStatusView.setConnectionStatus(image: model.getConnectionStatusImage(themeType: currentTheme().type),
                                                  text: model.connectionStatusString,
                                                  isConnectionSecure: model.connectionSecure,
-                                                 theme: currentTheme())
+                                                 theme: currentTheme(),
+                                                 isInternalCertErrorURL: isInternalCertErrorURL,
+                                                 isManuallyTrusted: isManuallyTrusted)
         connectionDetailsHeaderView.setupDetails(title: model.connectionDetailsTitle,
                                                  status: model.connectionDetailsHeader,
                                                  image: model.connectionDetailsImage)
@@ -482,16 +568,22 @@ class TrackingProtectionViewController: UIViewController,
         toggleView.setupActions()
     }
 
-    // MARK: Notifications
+    // - MARK: Notifications
     func handleNotifications(_ notification: Notification) {
         switch notification.name {
-        case .DynamicFontChanged:
-            adjustLayout()
+        case UIContentSizeCategory.didChangeNotification:
+            ensureMainThread {
+                self.adjustLayout()
+            }
+        case UIAccessibility.reduceTransparencyStatusDidChangeNotification:
+            ensureMainThread {
+                self.applyTheme()
+            }
         default: break
         }
     }
 
-    // MARK: View Transitions
+    // MARK: - View Transitions
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         adjustLayout()
@@ -504,20 +596,42 @@ class TrackingProtectionViewController: UIViewController,
         }, completion: nil)
     }
 
-    // MARK: Accessibility
+    // MARK: - Accessibility
     private func setupAccessibilityIdentifiers() {
-        connectionDetailsHeaderView.setupAccessibilityIdentifiers(foxImageA11yId: model.foxImageA11yId)
+        scrollView.accessibilityIdentifier = model.scrollViewA11yId
+        baseView.accessibilityIdentifier = model.baseViewA11yId
+        headerContainer.setupAccessibility(
+            faviconA11yId: model.faviconA11yId,
+            titleLabelA11yId: model.titleLabelA11yId,
+            subtitleLabelA11yId: model.subtitleLabelA11yId,
+            closeButtonA11yLabel: model.closeButtonA11yLabel,
+            closeButtonA11yId: model.closeButtonA11yId
+        )
+        connectionDetailsHeaderView.setupAccessibilityIdentifiers(
+            connectionDetailsContentViewA11yId: model.connectionDetailsContentViewA11yId,
+            foxImageA11yId: model.foxImageA11yId,
+            connectionDetailsLabelsContainerA11yId: model.connectionDetailsLabelsContainerA11yId,
+            connectionDetailsTitleLabelA11yId: model.connectionDetailsTitleLabelA11yId,
+            connectionDetailsStatusLabelA11yId: model.connectionDetailsStatusLabelA11yId,
+        )
         trackersView.setupAccessibilityIdentifiers(
             arrowImageA11yId: model.arrowImageA11yId,
             trackersBlockedButtonA11yId: model.trackersBlockedButtonA11yId,
-            shieldImageA11yId: model.settingsA11yId)
+            shieldImageA11yId: model.shieldImageA11yId,
+            trackersLabelA11yId: model.trackersLabelA11yId,
+            trackersHorizontalLineA11yId: model.trackersHorizontalLineA11yId)
+        trackersConnectionContainer.accessibilityIdentifier = model.trackersConnectionContainerA11yId
         connectionStatusView.setupAccessibilityIdentifiers(
+            connectionStatusImageA11yId: model.connectionStatusImageA11yId,
+            connectionStatusLabelA11yId: model.connectionStatusLabelA11yId,
             arrowImageA11yId: model.arrowImageA11yId,
             securityStatusButtonA11yId: model.securityStatusButtonA11yId)
+        connectionHorizontalLine.accessibilityIdentifier = model.connectionHorizontalLineA11yId
         toggleView.setupAccessibilityIdentifiers(
-            toggleViewLabelsContainerA11yId: model.toggleViewContainerA11yId)
-        headerContainer.setupAccessibility(closeButtonA11yLabel: model.closeButtonA11yLabel,
-                                           closeButtonA11yId: model.closeButtonA11yId)
+            toggleViewLabelsContainerA11yId: model.toggleViewContainerA11yId,
+            toggleLabelA11yId: model.toggleLabelA11yId,
+            toggleSwitchA11yId: model.toggleSwitchA11yId,
+            toggleStatusLabelA11yId: model.toggleStatusLabelA11yId)
         clearCookiesButton.accessibilityIdentifier = model.clearCookiesButtonA11yId
         settingsLinkButton.accessibilityIdentifier = model.settingsA11yId
     }
@@ -529,16 +643,6 @@ class TrackingProtectionViewController: UIViewController,
         connectionDetailsHeaderView.adjustLayout()
         toggleView.adjustLayout()
         configureProtectionSettingsView()
-
-        if #available(iOS 16.0, *), UIDevice.current.userInterfaceIdiom == .phone {
-            headerContainer.layoutIfNeeded()
-            scrollView.layoutIfNeeded()
-            let contentHeight = headerContainer.frame.height + scrollView.contentSize.height
-            let customDetent = UISheetPresentationController.Detent.custom { context in
-                return contentHeight
-            }
-            self.sheetPresentationController?.detents = [customDetent]
-        }
 
         view.setNeedsLayout()
         view.layoutIfNeeded()
@@ -556,7 +660,7 @@ class TrackingProtectionViewController: UIViewController,
     @objc
     private func didTapClearCookiesAndSiteData() {
         store.dispatch(
-            TrackingProtectionAction(windowUUID: windowUUID,
+            TrackingProtectionAction(windowUUID: self.windowUUID,
                                      actionType: TrackingProtectionActionType.tappedShowClearCookiesAlert)
         )
     }
@@ -564,7 +668,7 @@ class TrackingProtectionViewController: UIViewController,
     @objc
     func protectionSettingsTapped() {
         store.dispatch(
-            TrackingProtectionAction(windowUUID: windowUUID,
+            TrackingProtectionAction(windowUUID: self.windowUUID,
                                      actionType: TrackingProtectionActionType.tappedShowSettings)
         )
     }
@@ -574,7 +678,7 @@ class TrackingProtectionViewController: UIViewController,
         let isContentBlockingConfigEnabled = profile?.prefs.boolForKey(ContentBlockingConfig.Prefs.EnabledKey) ?? true
         if !isContentBlockingConfigEnabled {
             store.dispatch(
-                TrackingProtectionAction(windowUUID: windowUUID,
+                TrackingProtectionAction(windowUUID: self.windowUUID,
                                          actionType: TrackingProtectionActionType.tappedShowSettings)
             )
         }
@@ -627,12 +731,12 @@ class TrackingProtectionViewController: UIViewController,
         // Setting x based on window calculation because we don't want
         // users to move the frame side ways, only straight up or down
         view.frame.origin = CGPoint(x: originalXPosition,
-                                    y: self.pointOrigin!.y + translation.y)
+                                    y: (self.pointOrigin?.y ?? originalYPosition) + translation.y)
 
         if sender.state == .ended {
             let dragVelocity = sender.velocity(in: view)
             if dragVelocity.y >= 1300 {
-                enhancedTrackingProtectionMenuDelegate?.didFinish()
+                trackingProtectionMenuDelegate?.didFinish()
             } else {
                 // Set back to original position of the view controller
                 UIView.animate(withDuration: 0.3) {
@@ -667,14 +771,13 @@ class TrackingProtectionViewController: UIViewController,
                                                  image: model.connectionDetailsImage)
         adjustLayout()
     }
-}
 
-// MARK: - Themable
-extension TrackingProtectionViewController {
+    // MARK: - Themable
     func applyTheme() {
         let theme = currentTheme()
         overrideUserInterfaceStyle = theme.type.getInterfaceStyle()
-        view.backgroundColor = theme.colors.layer3
+        let panelBackground = theme.isNova ? theme.colors.layer1 : theme.colors.layer3
+        view.backgroundColor = panelBackground.withAlphaComponent(backgroundAlpha(isNova: theme.isNova))
         headerContainer.applyTheme(theme: theme)
         connectionDetailsHeaderView.applyTheme(theme: theme)
         trackersView.applyTheme(theme: theme)
@@ -684,5 +787,21 @@ extension TrackingProtectionViewController {
         clearCookiesButton.applyTheme(theme: theme)
         settingsLinkButton.applyTheme(theme: theme)
         setNeedsStatusBarAppearanceUpdate()
+    }
+
+    private func backgroundAlpha(isNova: Bool) -> CGFloat {
+        guard !UIAccessibility.isReduceTransparencyEnabled else {
+            return 1.0
+        }
+
+        if #available(iOS 26.0, *) {
+            return TPMenuUX.UX.backgroundAlpha
+        }
+
+        if isNova {
+            return TPMenuUX.UX.novaBackgroundAlpha
+        }
+
+        return 1.0
     }
 }

@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 55;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -43,7 +43,6 @@
 		4351A09C28FCB8750087C1AF /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 4351A09A28FCB8750087C1AF /* Localizable.strings */; };
 		451B81BF2BA4DB9F00CF3C50 /* RustMozillaAppServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 451B81B92BA4DB9F00CF3C50 /* RustMozillaAppServices.framework */; };
 		451B81C02BA4DB9F00CF3C50 /* RustMozillaAppServices.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 451B81B92BA4DB9F00CF3C50 /* RustMozillaAppServices.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		451B81C92BA4DBB700CF3C50 /* FocusAppServices in Frameworks */ = {isa = PBXBuildFile; productRef = 451B81C82BA4DBB700CF3C50 /* FocusAppServices */; };
 		4F1284861FC5E242001A775B /* TrackingProtectionTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1284851FC5E242001A775B /* TrackingProtectionTest.swift */; };
 		58408BA5265FC524003C4E4F /* BrowsingTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58408BA4265FC524003C4E4F /* BrowsingTest.swift */; };
 		6028814027B2C6BB00CAF588 /* OnboardingConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6028813F27B2C6BB00CAF588 /* OnboardingConstants.swift */; };
@@ -82,8 +81,11 @@
 		8C28008F2D49354400ED6D07 /* Shared in Frameworks */ = {isa = PBXBuildFile; productRef = 8C28008E2D49354400ED6D07 /* Shared */; };
 		8C2800912D49357C00ED6D07 /* Shared in Frameworks */ = {isa = PBXBuildFile; productRef = 8C2800902D49357C00ED6D07 /* Shared */; };
 		8C75DF662D3E636A00924EAB /* TelemetryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C75DF652D3E636A00924EAB /* TelemetryManager.swift */; };
+		8C84071C3061392F00EA1EB9 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C84071B3061392F00EA1EB9 /* SceneDelegate.swift */; };
 		8C8906AC2D0B3E9F003734FE /* UsageProfileManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8906AB2D0B3E9F003734FE /* UsageProfileManager.swift */; };
 		8C90C3BE2D48F0DB00DDA361 /* GleanUsageReportingMetricsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C90C3BD2D48F0DB00DDA361 /* GleanUsageReportingMetricsService.swift */; };
+		8CEA96EE2FE5300800F6E96E /* PrivacyProtectionWindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEA96ED2FE5300800F6E96E /* PrivacyProtectionWindowManager.swift */; };
+		8CEA96F02FE5305800F6E96E /* PrivacyProtectionWindowManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEA96EF2FE5305800F6E96E /* PrivacyProtectionWindowManagerTests.swift */; };
 		A89766DA1F57DCA9008183C5 /* (null) in Resources */ = {isa = PBXBuildFile; };
 		B101243E2B4EE8C20099F3CA /* URLValidationTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = B101243D2B4EE8C20099F3CA /* URLValidationTest.swift */; };
 		B3481A551FCF261900CA2EA6 /* AutocompleteCustomUrlViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3481A541FCF261900CA2EA6 /* AutocompleteCustomUrlViewController.swift */; };
@@ -94,6 +96,7 @@
 		B3F4A3171FA136E70029A6F2 /* preload.js in Resources */ = {isa = PBXBuildFile; fileRef = B3F4A3161FA136E60029A6F2 /* preload.js */; };
 		BD4B1EB629250AA500065AAD /* KeyboardType.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD4B1EB529250AA500065AAD /* KeyboardType.swift */; };
 		BDEEF249297AC0D500D43345 /* RequestHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDEEF248297AC0D500D43345 /* RequestHandlerTests.swift */; };
+		C21CC2842E5E161800F1E66E /* FocusRustComponents in Frameworks */ = {isa = PBXBuildFile; productRef = C21CC2832E5E161800F1E66E /* FocusRustComponents */; };
 		C809130E2A08F245000889B0 /* Licenses in Frameworks */ = {isa = PBXBuildFile; productRef = C809130D2A08F245000889B0 /* Licenses */; };
 		C80F901C26C554B800F5112B /* PhotonActionSheetCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80F901B26C554B800F5112B /* PhotonActionSheetCell.swift */; };
 		C817A35722CE73B4002529FF /* Deferred.swift in Sources */ = {isa = PBXBuildFile; fileRef = C817A35322CE73B4002529FF /* Deferred.swift */; };
@@ -472,6 +475,7 @@
 		4398B11A28FCB94A00CE2B19 /* ia */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ia; path = ia.lproj/Localizable.strings; sourceTree = "<group>"; };
 		4399E9F228FCB89C00639DD1 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		4399E9F328FCB89D00639DD1 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		439EFB802E5C6F170001B6F1 /* ro */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ro; path = ro.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43A1DD5A28FCB9AB008632C6 /* nl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = nl; path = nl.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43A6281D296B763500FDE9C5 /* ca */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ca; path = ca.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43A97CAB28FCB8AF0099042D /* el */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = el; path = el.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -489,8 +493,10 @@
 		43C333DA28FCBA0E00316D24 /* uk */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = uk; path = uk.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		43C333DB28FCBA0F00316D24 /* uk */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = uk; path = uk.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43C64AC628FCBA2500E64760 /* zh-CN */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-CN"; path = "zh-CN.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		43C79DBB308626EA0008C304 /* lv */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = lv; path = lv.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43CB9C1228FCB9FB0080975E /* th */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = th; path = th.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43CF447928FCB90A001C640A /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		43CF78C2307CED1700C174D6 /* fa */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fa; path = fa.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43D114EC28FCB9CE008044DB /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		43D114ED28FCB9CE008044DB /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43D302E029B54A120040A4CC /* am */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = am; path = am.lproj/Intents.strings; sourceTree = "<group>"; };
@@ -511,6 +517,12 @@
 		43E5B72B2921A38C0051BF9F /* sq */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sq; path = sq.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43EA47A928FCB8C000577290 /* eo */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = eo; path = eo.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43FAB6732934178F0034A9F1 /* cs */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = cs; path = cs.lproj/Localizable.strings; sourceTree = "<group>"; };
+		43FBEED92FBB30730099E639 /* sr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sr; path = sr.lproj/Intents.strings; sourceTree = "<group>"; };
+		43FBEEDA2FBB30730099E639 /* sr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sr; path = sr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		43FBEEDB2FBB30730099E639 /* sr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sr; path = sr.lproj/Intro.strings; sourceTree = "<group>"; };
+		43FBEEDC2FBB30730099E639 /* sr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sr; path = sr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		43FBEEDD2FBB30730099E639 /* sr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sr; path = sr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		43FBEEDE2FBB30730099E639 /* sr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sr; path = sr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43FC456828FCB95900A44605 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		43FC456928FCB95900A44605 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/Localizable.strings; sourceTree = "<group>"; };
 		43FEAB7B28FCB9B500D6465F /* pa-IN */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pa-IN"; path = "pa-IN.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -701,8 +713,11 @@
 		8C0AB2282D817EC700E88035 /* ProfileIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileIdentifier.swift; sourceTree = "<group>"; };
 		8C1B5DEC2BC43C19001B1964 /* SearchWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchWidgetView.swift; sourceTree = "<group>"; };
 		8C75DF652D3E636A00924EAB /* TelemetryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryManager.swift; sourceTree = "<group>"; };
+		8C84071B3061392F00EA1EB9 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		8C8906AB2D0B3E9F003734FE /* UsageProfileManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageProfileManager.swift; sourceTree = "<group>"; };
 		8C90C3BD2D48F0DB00DDA361 /* GleanUsageReportingMetricsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GleanUsageReportingMetricsService.swift; sourceTree = "<group>"; };
+		8CEA96ED2FE5300800F6E96E /* PrivacyProtectionWindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyProtectionWindowManager.swift; sourceTree = "<group>"; };
+		8CEA96EF2FE5305800F6E96E /* PrivacyProtectionWindowManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyProtectionWindowManagerTests.swift; sourceTree = "<group>"; };
 		A847EEFA289A4F5A002AC855 /* pa-IN */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pa-IN"; path = "pa-IN.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A847EEFC289A4F5A002AC855 /* pa-IN */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pa-IN"; path = "pa-IN.lproj/Intro.strings"; sourceTree = "<group>"; };
 		A847EEFD289A4F5A002AC855 /* pa-IN */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pa-IN"; path = "pa-IN.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -1272,7 +1287,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0AAE4B562BB45FD50078BAB2 /* Glean in Frameworks */,
-				451B81C92BA4DBB700CF3C50 /* FocusAppServices in Frameworks */,
+				C21CC2842E5E161800F1E66E /* FocusRustComponents in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1683,6 +1698,7 @@
 				7497BE6628DB2E68002E33AF /* OnboardingTelemetryHelper.swift */,
 				BD4B1EB529250AA500065AAD /* KeyboardType.swift */,
 				741FDDFA294248AD00F4FF7B /* InternalURL.swift */,
+				8CEA96ED2FE5300800F6E96E /* PrivacyProtectionWindowManager.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -1854,6 +1870,7 @@
 				F8DE0EC726CC887800A31419 /* SupportUtilsTest.swift */,
 				BDEEF248297AC0D500D43345 /* RequestHandlerTests.swift */,
 				2981645227FBD7CA0033FA0A /* URLExtensionsTests.swift */,
+				8CEA96EF2FE5305800F6E96E /* PrivacyProtectionWindowManagerTests.swift */,
 			);
 			path = ClientTests;
 			sourceTree = "<group>";
@@ -1960,6 +1977,7 @@
 				C82F45F8281A76EF000D7D84 /* ShortcutsPresenter.swift */,
 				1215EC0828D316B500AECC75 /* NavigationPath.swift */,
 				1D96A2D82BA2490D00EF7CC7 /* WebEngineRefactorFlagManager.swift */,
+				8C84071B3061392F00EA1EB9 /* SceneDelegate.swift */,
 			);
 			path = Blockzilla;
 			sourceTree = "<group>";
@@ -2064,8 +2082,8 @@
 			);
 			name = RustMozillaAppServices;
 			packageProductDependencies = (
-				451B81C82BA4DBB700CF3C50 /* FocusAppServices */,
 				0AAE4B552BB45FD50078BAB2 /* Glean */,
+				C21CC2832E5E161800F1E66E /* FocusRustComponents */,
 			);
 			productName = RustMozillaAppServices;
 			productReference = 451B81B92BA4DB9F00CF3C50 /* RustMozillaAppServices.framework */;
@@ -2147,7 +2165,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = E4BF2DE51BACE8CA00DA9D68 /* Build configuration list for PBXNativeTarget "Blockzilla" */;
 			buildPhases = (
-				5A2D1A4E2D8877150066F7C9 /* Update Version */,
 				F84AFE711DE77ACC005C4DD1 /* Run Script (Copy Wordmark) */,
 				D48C953D27FF411800FF8AEF /* Run Swiftlint */,
 				D5D067F9252F939600C35227 /* Glean */,
@@ -2219,7 +2236,6 @@
 					166E4BFF21347D150029E2A5 = {
 						CreatedOnToolsVersion = 10.0;
 						LastSwiftMigration = 1300;
-						ProvisioningStyle = Automatic;
 						SystemCapabilities = {
 							com.apple.ApplicationGroups.iOS = {
 								enabled = 1;
@@ -2238,9 +2254,7 @@
 					};
 					D8E0155B1FCF409F00CA3B9F = {
 						CreatedOnToolsVersion = 9.1;
-						DevelopmentTeam = 43AQ936H96;
 						LastSwiftMigration = 1300;
-						ProvisioningStyle = Automatic;
 						TestTargetID = E4BF2DD21BACE8CA00DA9D68;
 					};
 					E44A34661E0A18C100BFD777 = {
@@ -2367,14 +2381,15 @@
 				es,
 				nv,
 				tg,
+				sr,
 			);
 			mainGroup = E4BF2DCA1BACE8CA00DA9D68;
 			packageReferences = (
 				F8324C2D264C807C007E4BFA /* XCRemoteSwiftPackageReference "SnapKit" */,
 				F8B92FBC279EC73700183998 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				CDFA746D27ABD43D0055FE55 /* XCRemoteSwiftPackageReference "glean-swift" */,
-				45E8FFE52828DE4A0027A8F5 /* XCRemoteSwiftPackageReference "rust-components-swift" */,
 				8A0E7F2C2BA0F0E0006BC6B6 /* XCRemoteSwiftPackageReference "Fuzi" */,
+				C21CC2822E5E160B00F1E66E /* XCLocalSwiftPackageReference "../MozillaRustComponents" */,
 			);
 			productRefGroup = E4BF2DD41BACE8CA00DA9D68 /* Products */;
 			projectDirPath = "";
@@ -2523,25 +2538,6 @@
 			shellPath = /bin/sh;
 			shellScript = "if [ $ACTION != \"indexbuild\" ]; then\n   /usr/bin/env -i HOME=$HOME PROJECT=$PROJECT CONFIGURATION=$CONFIGURATION SOURCE_ROOT=$SOURCE_ROOT bash $SOURCE_ROOT/bin/nimbus-fml.sh --verbose\nfi\n";
 		};
-		5A2D1A4E2D8877150066F7C9 /* Update Version */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Update Version";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "#!/bin/sh\n\nVERSION_FILE=\"${SRCROOT}/../version.txt\"\nXCCONFIG_FILE=\"${SRCROOT}/version.xcconfig\"\n\n# Read version from file\nif [ -f \"$VERSION_FILE\" ]; then\n    VERSION_NUMBER=$(cat \"$VERSION_FILE\" | tr -d '[:space:]')\nelse\n    echo \"Error: version.txt not found!\"\n    exit 1\nfi\n\n# Update the xcconfig file with the version number\necho \"APP_VERSION = $VERSION_NUMBER\" > \"$XCCONFIG_FILE\"\n\necho \"Updated Version.xcconfig with version: $VERSION_NUMBER\"\n";
-		};
 		D48C953D27FF411800FF8AEF /* Run Swiftlint */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -2559,7 +2555,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [[ \"$(uname -m)\" == arm64 ]]; then\n    export PATH=\"/opt/homebrew/bin:$PATH\"\nfi\n\nMODIFIED_FILES=$(git diff --name-only --diff-filter=ACM | grep -e '\\.swift$')\n\nSWIFTLINT_ROOT=\"${SRCROOT}/..\"\n\nif which swiftlint > /dev/null; then\n    # Move to the location of the root Swiftlint config file in\n    # order to use nested configurations\n    cd ${SWIFTLINT_ROOT}\n\n    swiftlint lint ${MODIFIED_FILES}\nelse\n    echo \"warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint\" \nfi\n";
+			shellScript = "SWIFTLINT_ROOT=\"${SRCROOT}/..\"\n\nMODIFIED_FILES=$(git diff --name-only --diff-filter=ACM | grep -e '\\.swift$')\n\n# The version is pinned in .swiftlint-version and installed by bootstrap.sh\nSWIFTLINT=$(\"${SWIFTLINT_ROOT}/scripts/install-swiftlint.sh\" --path-only)\n\nif [ -n \"${SWIFTLINT}\" ]; then\n    # Move to the location of the root Swiftlint config file in\n    # order to use nested configurations\n    cd ${SWIFTLINT_ROOT}\n\n    \"${SWIFTLINT}\" lint ${MODIFIED_FILES}\nelse\n    echo \"warning: pinned SwiftLint not installed, run ./bootstrap.sh from the repo root\"\nfi\n";
 		};
 		D5D067F9252F939600C35227 /* Glean */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -2677,6 +2673,7 @@
 				2981645327FBD7CA0033FA0A /* URLExtensionsTests.swift in Sources */,
 				D8E0156E1FD9E40F00CA3B9F /* DomainCompletionTests.swift in Sources */,
 				D025F225218B64D600B262D8 /* SearchEngineTests.swift in Sources */,
+				8CEA96F02FE5305800F6E96E /* PrivacyProtectionWindowManagerTests.swift in Sources */,
 				748BCE7728ACC981005BC0CF /* TrackingAdsTests.swift in Sources */,
 				F8DE0EC826CC887800A31419 /* SupportUtilsTest.swift in Sources */,
 				3AEC0B3E267DE30A007B7850 /* URIFixupTests.swift in Sources */,
@@ -2717,6 +2714,7 @@
 				D3426AED1DB846310016DA5A /* DomainCompletion.swift in Sources */,
 				D3E251FB1DAF0668005918DC /* AppInfo.swift in Sources */,
 				31421EB12176492A0015F48B /* TitleActivityItemProvider.swift in Sources */,
+				8C84071C3061392F00EA1EB9 /* SceneDelegate.swift in Sources */,
 				C89AA96D271720330089838F /* SystemThemeDelegate.swift in Sources */,
 				E4BF2E111BAD8AC500DA9D68 /* Settings.swift in Sources */,
 				C8AC706427DF972B00165824 /* AuthenticationManager.swift in Sources */,
@@ -2806,6 +2804,7 @@
 				6028814027B2C6BB00CAF588 /* OnboardingConstants.swift in Sources */,
 				D35A0E021E26C94F00297884 /* ClosedRangeExtensions.swift in Sources */,
 				C88A5D3B26EF9245009A135D /* ShareTrackersViewController.swift in Sources */,
+				8CEA96EE2FE5300800F6E96E /* PrivacyProtectionWindowManager.swift in Sources */,
 				C8EADCD42742A0AB00E76AE6 /* MenuItemProvider.swift in Sources */,
 				840057562735305600E48144 /* SettingsTableViewAccessoryCell.swift in Sources */,
 				D3E2C8FA1D9F170200DEBE3D /* LocalContentBlocker.swift in Sources */,
@@ -2993,6 +2992,10 @@
 				A858FC2C2D271326008B994A /* scn */,
 				4348A97E2D75B78E00C257B0 /* es */,
 				430337D22DAD1741002BD972 /* tg */,
+				439EFB802E5C6F170001B6F1 /* ro */,
+				43FBEEDE2FBB30730099E639 /* sr */,
+				43CF78C2307CED1700C174D6 /* fa */,
+				43C79DBB308626EA0008C304 /* lv */,
 			);
 			name = Localizable.strings;
 			sourceTree = "<group>";
@@ -3089,6 +3092,7 @@
 				A858FC292D271326008B994A /* scn */,
 				4348A97B2D75B78E00C257B0 /* es */,
 				430337D02DAD1741002BD972 /* tg */,
+				43FBEEDB2FBB30730099E639 /* sr */,
 			);
 			name = Intro.strings;
 			sourceTree = "<group>";
@@ -3185,6 +3189,7 @@
 				A858FC2A2D271326008B994A /* scn */,
 				4348A97C2D75B78E00C257B0 /* es */,
 				430337D12DAD1741002BD972 /* tg */,
+				43FBEEDC2FBB30730099E639 /* sr */,
 			);
 			name = Localizable.strings;
 			sourceTree = "<group>";
@@ -3282,6 +3287,7 @@
 				4348A97A2D75B78E00C257B0 /* es */,
 				437B7FFD2DAD170900D61873 /* nv */,
 				430337CF2DAD1741002BD972 /* tg */,
+				43FBEEDA2FBB30730099E639 /* sr */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
@@ -3519,6 +3525,7 @@
 				A858FC2B2D271326008B994A /* scn */,
 				4348A97D2D75B78E00C257B0 /* es */,
 				4390AB3E2DBF940D00CA36EA /* tg */,
+				43FBEEDD2FBB30730099E639 /* sr */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
@@ -3616,6 +3623,7 @@
 				A858FC272D271326008B994A /* scn */,
 				4348A9792D75B78E00C257B0 /* es */,
 				430337CE2DAD1741002BD972 /* tg */,
+				43FBEED92FBB30730099E639 /* sr */,
 			);
 			name = Intents.intentdefinition;
 			sourceTree = "<group>";
@@ -3644,10 +3652,11 @@
 				CLANG_WARN_SUSPICIOUS_MOVES = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
@@ -3706,13 +3715,11 @@
 				CLANG_WARN_SUSPICIOUS_MOVES = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
@@ -3734,7 +3741,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Focus.XCUITest;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Focus XCUITests Dev";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "FOCUS DEBUG";
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -3770,7 +3776,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
@@ -3789,7 +3795,7 @@
 					"@loader_path/Frameworks",
 				);
 				MTL_ENABLE_DEBUG_INFO = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = mozilla.XCUITest;
+				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.XCUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -3822,11 +3828,11 @@
 				CLANG_WARN_SUSPICIOUS_MOVES = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
@@ -3845,10 +3851,9 @@
 					"@loader_path/Frameworks",
 				);
 				MTL_ENABLE_DEBUG_INFO = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = mozilla.XCUITest;
+				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.XCUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/focus-ios-tests/XCUITest/XCUITests-Bridging-Header.h";
@@ -3947,10 +3952,11 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_ENTITLEMENTS = FocusIntentExtension/FocusIntentExtension.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -3979,6 +3985,8 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Klar.FocusIntentExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Klar.FocusIntentExtension";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -4021,10 +4029,11 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_ENTITLEMENTS = FocusIntentExtension/FocusIntentExtension.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -4046,6 +4055,8 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Focus.FocusIntentExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Focus.FocusIntentExtension";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -4371,13 +4382,12 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEFINES_MODULE = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = "";
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
@@ -4899,10 +4909,11 @@
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				DISPLAY_NAME = "Firefox Klar";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -4931,6 +4942,8 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Klar.ShareExtension;
 				PRODUCT_NAME = ShareExtension;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Klar.ShareExtension";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "KLAR DEBUG";
@@ -4963,10 +4976,13 @@
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				DISPLAY_NAME = "Firefox Focus";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -4988,6 +5004,8 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Focus.ShareExtension;
 				PRODUCT_NAME = ShareExtension;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Focus.ShareExtension";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "FOCUS DEBUG";
@@ -5276,11 +5294,12 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -5312,6 +5331,8 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Klar.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Klar.Widgets";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -5356,11 +5377,13 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -5385,6 +5408,8 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Focus.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Focus.Widgets";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -6031,8 +6056,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon${BUNDLE_ID_SUFFIX}";
 				BUNDLE_ID_SUFFIX = .dev;
 				CODE_SIGN_ENTITLEMENTS = Focus.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				ENABLE_BITCODE = NO;
 				HEADER_SEARCH_PATHS = "$(SDKROOT)/usr/include/libxml2";
 				INFOPLIST_FILE = Blockzilla/Info.plist;
@@ -6043,6 +6071,8 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Focus;
 				PRODUCT_NAME = "Firefox Focus";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Focus";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "FOCUS DEBUG";
 				SWIFT_VERSION = 5.0;
 				VALID_ARCHS = "$(ARCHS_STANDARD)";
@@ -6053,8 +6083,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Focus.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				INFOPLIST_FILE = ContentBlocker/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -6064,6 +6095,8 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Focus.ContentBlocker;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Focus.ContentBlocker";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "FOCUS DEBUG";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 5.0;
@@ -6351,11 +6384,11 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -6418,11 +6451,11 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -6730,7 +6763,7 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
@@ -6780,11 +6813,11 @@
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 43AQ936H96;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
@@ -6806,7 +6839,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.blockzilla.ScreenshotTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_VERSION = 5.0;
@@ -7045,8 +7077,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon${BUNDLE_ID_SUFFIX}";
 				BUNDLE_ID_SUFFIX = .dev;
 				CODE_SIGN_ENTITLEMENTS = Klar.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				ENABLE_BITCODE = NO;
 				HEADER_SEARCH_PATHS = "$(SDKROOT)/usr/include/libxml2";
 				INFOPLIST_FILE = Blockzilla/Info.plist;
@@ -7057,6 +7090,8 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Klar;
 				PRODUCT_NAME = "Firefox Klar";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Klar";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "KLAR DEBUG";
 				SWIFT_VERSION = 5.0;
 				VALID_ARCHS = "$(ARCHS_STANDARD)";
@@ -7094,8 +7129,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Klar.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 43AQ936H96;
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 43AQ936H96;
 				INFOPLIST_FILE = ContentBlocker/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -7105,6 +7141,8 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.Klar.ContentBlocker;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "BT org.mozilla.ios.Klar.ContentBlocker";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "KLAR DEBUG";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 5.0;
@@ -7271,15 +7309,14 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		45E8FFE52828DE4A0027A8F5 /* XCRemoteSwiftPackageReference "rust-components-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/mozilla/rust-components-swift";
-			requirement = {
-				kind = exactVersion;
-				version = 141.0.20250531050318;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		C21CC2822E5E160B00F1E66E /* XCLocalSwiftPackageReference "../MozillaRustComponents" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../MozillaRustComponents;
 		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
 		8A0E7F2C2BA0F0E0006BC6B6 /* XCRemoteSwiftPackageReference "Fuzi" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/nbhasin2/Fuzi.git";
@@ -7292,8 +7329,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/mozilla/glean-swift";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 64.1.0;
+				kind = exactVersion;
+				version = 71.0.0;
 			};
 		};
 		F8324C2D264C807C007E4BFA /* XCRemoteSwiftPackageReference "SnapKit" */ = {
@@ -7309,8 +7346,10 @@
 			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
 			requirement = {
 				kind = exactVersion;
-				version = 8.36.0;
+				version = 9.32.0;
 			};
+			traits = (
+			);
 		};
 /* End XCRemoteSwiftPackageReference section */
 
@@ -7319,11 +7358,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = CDFA746D27ABD43D0055FE55 /* XCRemoteSwiftPackageReference "glean-swift" */;
 			productName = Glean;
-		};
-		451B81C82BA4DBB700CF3C50 /* FocusAppServices */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 45E8FFE52828DE4A0027A8F5 /* XCRemoteSwiftPackageReference "rust-components-swift" */;
-			productName = FocusAppServices;
 		};
 		8A0E7F2D2BA0F0EE006BC6B6 /* Fuzi */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -7337,6 +7371,11 @@
 		8C2800902D49357C00ED6D07 /* Shared */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Shared;
+		};
+		C21CC2832E5E161800F1E66E /* FocusRustComponents */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C21CC2822E5E160B00F1E66E /* XCLocalSwiftPackageReference "../MozillaRustComponents" */;
+			productName = FocusRustComponents;
 		};
 		C809130D2A08F245000889B0 /* Licenses */ = {
 			isa = XCSwiftPackageProductDependency;

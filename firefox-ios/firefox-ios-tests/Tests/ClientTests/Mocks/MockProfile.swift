@@ -7,6 +7,7 @@ import Foundation
 import Shared
 import Storage
 import XCTest
+import Common
 
 @testable import Client
 
@@ -16,7 +17,7 @@ import class MozillaAppServices.RemoteSettingsService
 
 public typealias ClientSyncManager = Client.SyncManager
 
-open class ClientSyncManagerSpy: ClientSyncManager {
+open class ClientSyncManagerSpy: ClientSyncManager, @unchecked Sendable {
     open var isSyncing = false
     open var lastSyncFinishTime: Timestamp?
     open var syncDisplayState: SyncDisplayState?
@@ -36,10 +37,15 @@ open class ClientSyncManagerSpy: ClientSyncManager {
     open func syncEverything(why: SyncReason) -> Success { return succeed() }
 
     var syncNamedCollectionsCalled = 0
-    open func syncNamedCollections(why: SyncReason, names: [String]) -> Success {
+    open func syncNamedCollections(why: SyncReason, names: [String]) -> Deferred<Maybe<SyncResult>> {
         syncNamedCollectionsCalled += 1
-        return succeed()
+        return emptySyncResult
     }
+    var syncPostSyncSettingsChangeCalled = 0
+    open func syncPostSyncSettingsChange(why: SyncReason, names: [String]) {
+        syncPostSyncSettingsChangeCalled += 1
+    }
+    open func reportOpenSyncSettingsMenuTelemetry() {}
     open func beginTimedSyncs() {}
     open func endTimedSyncs() {}
     open func applicationDidBecomeActive() {
@@ -73,71 +79,122 @@ open class ClientSyncManagerSpy: ClientSyncManager {
     }
 }
 
-final class MockTabQueue: TabQueue {
-    var queuedTabs = [ShareItem]()
-    var getQueuedTabsCalled = 0
-    var addToQueueCalled = 0
-    var clearQueuedTabsCalled = 0
+/// `getQueuedTabs` is called from a non-main executor while tests read the call
+/// counts from the main actor, so all mutable state here is lock protected.
+final class MockTabQueue: TabQueue, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _queuedTabs = [ShareItem]()
+    private var _getQueuedTabsError: Error?
+    private var _getQueuedTabsCalled = 0
+    private var _addToQueueCalled = 0
+    private var _clearQueuedTabsCalled = 0
+
+    var queuedTabs: [ShareItem] {
+        get { withLock { _queuedTabs } }
+        set { withLock { _queuedTabs = newValue } }
+    }
+
+    var getQueuedTabsError: Error? {
+        get { withLock { _getQueuedTabsError } }
+        set { withLock { _getQueuedTabsError = newValue } }
+    }
+
+    var getQueuedTabsCalled: Int { withLock { _getQueuedTabsCalled } }
+    var addToQueueCalled: Int { withLock { _addToQueueCalled } }
+    var clearQueuedTabsCalled: Int { withLock { _clearQueuedTabsCalled } }
 
     func addToQueue(_ tab: ShareItem) -> Success {
-        addToQueueCalled += 1
+        withLock { _addToQueueCalled += 1 }
         return succeed()
     }
 
-    func getQueuedTabs(completion: @escaping ([ShareItem]) -> Void) {
-        getQueuedTabsCalled += 1
-        return completion(queuedTabs)
+    func getQueuedTabs() async throws -> [ShareItem] {
+        let error: Error? = withLock {
+            _getQueuedTabsCalled += 1
+            return _getQueuedTabsError
+        }
+        if let error { throw error }
+        return withLock { _queuedTabs }
     }
 
     func clearQueuedTabs() -> Success {
-        clearQueuedTabsCalled += 1
+        withLock { _clearQueuedTabsCalled += 1 }
         return succeed()
     }
-}
 
-class MockFiles: FileAccessor {
-    init() {
-        let docPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0]
-        super.init(rootPath: (docPath as NSString).appendingPathComponent("testing"))
+    private func withLock<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
     }
 }
 
-open class MockProfile: Client.Profile {
+/// Runs `body` with a fresh profile, then shuts it down and removes its directory, so
+/// cleanup does not depend on when ARC releases the profile.
+func withMockProfile<T>(_ body: (MockProfile) async throws -> T) async throws -> T {
+    let profile = MockProfile()
+    defer {
+        profile.removeDirectory()
+    }
+    return try await body(profile)
+}
+
+extension XCTestCase {
+    /// The XCTest form of `withMockProfile`: shutdown and directory removal run in teardown.
+    func makeProfile(
+        firefoxSuggest: RustFirefoxSuggestProtocol? = nil,
+        injectedPinnedSites: MockablePinnedSites? = nil
+    ) -> MockProfile {
+        let profile = MockProfile(firefoxSuggest: firefoxSuggest, injectedPinnedSites: injectedPinnedSites)
+        addTeardownBlock {
+            profile.removeDirectory()
+        }
+        return profile
+    }
+}
+
+extension MockProfile {
+    /// Creates a profile that is not cleaned up at test teardown; it is shut down and its directory removed
+    /// only when it is released. For code that is not a test case and so cannot call `makeProfile()`.
+    static func unmanaged() -> MockProfile {
+        return MockProfile()
+    }
+}
+
+// TODO: FXIOS-12610 Profile should be refactored so it is **not** `Sendable`.
+final class MockProfile: Client.Profile, @unchecked Sendable {
     public var rustFxA: RustFirefoxAccounts {
         return RustFirefoxAccounts.shared
     }
 
     // Read/Writeable properties for mocking
 
-    public var files: FileAccessor
-    public var syncManager: ClientSyncManager?
-    public var firefoxSuggest: RustFirefoxSuggestProtocol?
-    public var remoteSettingsService: RemoteSettingsService?
+    public var files: FileAccessor { temporaryFiles }
+    public let syncManager: ClientSyncManager?
+    public let firefoxSuggest: RustFirefoxSuggestProtocol?
+    public let remoteSettingsService: RemoteSettingsService
+    public let mockNotificationCenter: NotificationProtocol = MockNotificationCenter()
 
     fileprivate let name = "mockaccount"
 
-    private let directory: String
-    private let databasePrefix: String
+    private let temporaryFiles = TemporaryFiles(ownsRoot: true)
+    private let databases = DatabaseRegistry()
     private let injectedPinnedSites: MockablePinnedSites?
 
-    init(
-        databasePrefix: String = "mock",
+    /// Private to this file so tests go through `makeProfile()`, which cleans up when the test ends.
+    fileprivate init(
         firefoxSuggest: RustFirefoxSuggestProtocol? = nil,
-        remoteSettingService: RemoteSettingsService? = nil,
+        remoteSettingsService: RemoteSettingsService = RemoteSettingsService(unsafeFromHandle: 0),
         injectedPinnedSites: MockablePinnedSites? = nil
     ) {
-        files = MockFiles()
         syncManager = ClientSyncManagerSpy()
-        self.databasePrefix = databasePrefix
         self.firefoxSuggest = firefoxSuggest
+        self.remoteSettingsService = remoteSettingsService
         self.injectedPinnedSites = injectedPinnedSites
+    }
 
-        do {
-            directory = try files.getAndEnsureDirectory()
-        } catch {
-            XCTFail("Could not create directory at root path: \(error)")
-            fatalError("Could not create directory at root path: \(error)")
-        }
+    deinit {
+        shutdown()
     }
 
     public func localName() -> String {
@@ -145,24 +202,24 @@ open class MockProfile: Client.Profile {
     }
 
     public func reopen() {
-        isShutdown = false
-
-        database.reopenIfClosed()
-        _ = logins.reopenIfClosed()
-        _ = places.reopenIfClosed()
-        _ = tabs.reopenIfClosed()
+        databases.reopen()
     }
 
     public func shutdown() {
-        isShutdown = true
-
-        database.forceClose()
-        _ = logins.forceClose()
-        _ = places.forceClose()
-        _ = tabs.forceClose()
+        databases.shutdown()
     }
 
-    public var isShutdown = false
+    public var isShutdown: Bool { databases.isShutdown }
+
+    /// Whether Places has created its database, checked without initializing the lazy `places`.
+    var hasCreatedPlacesDatabase: Bool {
+        temporaryFiles.exists("places.db")
+    }
+
+    fileprivate func removeDirectory() {
+        shutdown()
+        temporaryFiles.removeRoot()
+    }
 
     public lazy var queue: TabQueue = {
         return MockTabQueue()
@@ -180,13 +237,9 @@ open class MockProfile: Client.Profile {
         return MockProfilePrefs()
     }()
 
-    public lazy var autofill: RustAutofill = {
-        let autofillDbPath = URL(
-            fileURLWithPath: directory,
-            isDirectory: true
-        ).appendingPathComponent("autofill.db").path
-        return RustAutofill(databasePath: autofillDbPath)
-    }()
+    public lazy var autofill: RustAutofill = databases.trackLifecycle(
+        of: RustAutofill(databasePath: temporaryFiles.pathEnsuringRoot(for: "autofill.db"))
+    )
 
     public lazy var readingList: ReadingList = {
         return SQLiteReadingList(db: self.readingListDB)
@@ -196,49 +249,26 @@ open class MockProfile: Client.Profile {
         return ClosedTabsStore(prefs: self.prefs)
     }()
 
-    public lazy var logins: RustLogins = {
-        let newLoginsDatabasePath = URL(
-            fileURLWithPath: directory,
-            isDirectory: true
-        ).appendingPathComponent("\(databasePrefix)_loginsPerField.db").path
-        try? files.remove("\(databasePrefix)_loginsPerField.db")
+    public lazy var logins: RustLogins = databases.trackLifecycle(
+        of: RustLogins(databasePath: temporaryFiles.pathEnsuringRoot(for: "loginsPerField.db"))
+    )
 
-        let logins = RustLogins(databasePath: newLoginsDatabasePath)
-        _ = logins.reopenIfClosed()
+    lazy var database: BrowserDB = databases.trackLifecycle(
+        of: BrowserDB(filename: "browser.db", schema: BrowserSchema(), files: files)
+    )
 
-        return logins
-    }()
+    lazy var readingListDB: BrowserDB = databases.trackLifecycle(
+        of: BrowserDB(filename: "ReadingList.db", schema: ReadingListSchema(), files: files)
+    )
 
-    lazy var database: BrowserDB = {
-        BrowserDB(filename: "\(databasePrefix).db", schema: BrowserSchema(), files: files)
-    }()
+    public lazy var places: RustPlaces = databases.trackLifecycle(
+        of: RustPlaces(databasePath: temporaryFiles.pathEnsuringRoot(for: "places.db"),
+                       notificationCenter: mockNotificationCenter)
+    )
 
-    lazy var readingListDB: BrowserDB = {
-        BrowserDB(filename: "\(databasePrefix)_ReadingList.db", schema: ReadingListSchema(), files: files)
-    }()
-
-    public lazy var places: RustPlaces = {
-        let placesDatabasePath = URL(
-            fileURLWithPath: directory,
-            isDirectory: true
-        ).appendingPathComponent("\(databasePrefix)_places.db").path
-        try? files.remove("\(databasePrefix)_places.db")
-
-        let places = RustPlaces(databasePath: placesDatabasePath)
-        _ = places.reopenIfClosed()
-
-        return places
-    }()
-
-    public lazy var tabs: RustRemoteTabs = {
-        let tabsDbPath = URL(
-            fileURLWithPath: directory,
-            isDirectory: true
-        ).appendingPathComponent("\(databasePrefix)_tabs.db").path
-        let tabs = RustRemoteTabs(databasePath: tabsDbPath)
-
-        return tabs
-    }()
+    public lazy var tabs: RustRemoteTabs = databases.trackLifecycle(
+        of: RustRemoteTabs(databasePath: temporaryFiles.pathEnsuringRoot(for: "tabs.db"))
+    )
 
     fileprivate lazy var legacyPlaces: PinnedSites = {
         BrowserDBSQLite(database: self.database, prefs: MockProfilePrefs())
@@ -294,10 +324,6 @@ open class MockProfile: Client.Profile {
     }
 
     public func addTabToCommandQueue(_ deviceId: String, url: URL) {
-        return
-    }
-
-    public func removeTabFromCommandQueue(_ deviceId: String, url: URL) {
         return
     }
 

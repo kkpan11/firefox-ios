@@ -2,20 +2,22 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import Common
 import Redux
 import XCTest
+import SummarizeKit
 
 @testable import Client
 
 final class MainMenuStateTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
-        DependencyHelperMock().bootstrapDependencies()
+    override func setUp() async throws {
+        try await super.setUp()
+        await DependencyHelperMock().bootstrapDependencies()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testInitialization() {
@@ -27,9 +29,11 @@ final class MainMenuStateTests: XCTestCase {
         XCTAssertNil(initialState.currentTabInfo)
     }
 
+    @MainActor
     func testUpdatingCurrentTabInfo() {
         let initialState = createSubject()
         let reducer = mainMenuReducer()
+        let accountData = AccountData(title: "Test Title", subtitle: "Test Subtitle")
 
         let expectedResult = MainMenuTabInfo(
             tabID: "1234",
@@ -39,15 +43,22 @@ final class MainMenuStateTests: XCTestCase {
             isDefaultUserAgentDesktop: true,
             hasChangedUserAgent: true,
             zoomLevel: 1.0,
-            readerModeIsAvailable: false,
+            readerModeConfiguration: ReaderModeConfiguration(
+                isAvailable: false,
+                isActive: false,
+            ),
+            summaryIsAvailable: false,
+            summarizerConfig: SummarizerConfig(instructions: "Test instructions", options: [:]),
             isBookmarked: false,
             isInReadingList: false,
-            isPinned: false
+            isPinned: false,
+            accountData: accountData,
+            translationConfiguration: nil
         )
 
         XCTAssertNil(initialState.currentTabInfo)
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             MainMenuAction(
                 windowUUID: .XCTestDefaultUUID,
@@ -59,14 +70,15 @@ final class MainMenuStateTests: XCTestCase {
         XCTAssertEqual(newState.currentTabInfo, expectedResult)
     }
 
+    @MainActor
     func testNavigation_AllCases() {
         let initialState = createSubject()
         let reducer = mainMenuReducer()
 
         XCTAssertNil(initialState.navigationDestination)
 
-        MainMenuNavigationDestination.allCases.forEach { destination in
-            let newState = reducer(
+        MainMenuNavigationDestination.allCasesForTests.forEach { destination in
+            let newState = reducer.legacyReducer(
                 initialState,
                 MainMenuAction(
                     windowUUID: .XCTestDefaultUUID,
@@ -76,20 +88,21 @@ final class MainMenuStateTests: XCTestCase {
             )
 
             guard let currentDestination = newState.navigationDestination?.destination else {
-                return XCTFail("Execting to find a destination, but it was nil")
+                return XCTFail("Expecting to find a destination, but it was nil")
             }
 
             XCTAssertEqual(currentDestination, destination)
         }
     }
 
+    @MainActor
     func testToggleUserAgentAction() {
         let initialState = createSubject()
         let reducer = mainMenuReducer()
 
         XCTAssertFalse(initialState.shouldDismiss)
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             MainMenuAction(
                 windowUUID: .XCTestDefaultUUID,
@@ -100,13 +113,14 @@ final class MainMenuStateTests: XCTestCase {
         XCTAssertTrue(newState.shouldDismiss)
     }
 
+    @MainActor
     func testCloseAction() {
         let initialState = createSubject()
         let reducer = mainMenuReducer()
 
         XCTAssertFalse(initialState.shouldDismiss)
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             MainMenuAction(
                 windowUUID: .XCTestDefaultUUID,
@@ -115,6 +129,61 @@ final class MainMenuStateTests: XCTestCase {
         )
 
         XCTAssertTrue(newState.shouldDismiss)
+    }
+
+    @MainActor
+    func testNavigationDestinationIsResetAfterNextAction() {
+        let initialState = createSubject()
+        let reducer = mainMenuReducer()
+
+        let navigationState = reducer.legacyReducer(
+            initialState,
+            MainMenuAction(
+                windowUUID: .XCTestDefaultUUID,
+                actionType: MainMenuActionType.tapNavigateToDestination,
+                navigationDestination: MenuNavigationDestination(.zoom)
+            )
+        )
+
+        XCTAssertNotNil(navigationState.navigationDestination)
+
+        let newState = reducer.legacyReducer(
+            navigationState,
+            MainMenuAction(
+                windowUUID: .XCTestDefaultUUID,
+                actionType: MainMenuMiddlewareActionType.updateBannerVisibility,
+                isBrowserDefault: true
+            )
+        )
+
+        XCTAssertNil(newState.navigationDestination)
+    }
+
+    @MainActor
+    func testShouldDismissIsResetAfterNextAction() {
+        let initialState = createSubject()
+        let reducer = mainMenuReducer()
+
+        let dismissState = reducer.legacyReducer(
+            initialState,
+            MainMenuAction(
+                windowUUID: .XCTestDefaultUUID,
+                actionType: MainMenuActionType.tapCloseMenu
+            )
+        )
+
+        XCTAssertTrue(dismissState.shouldDismiss)
+
+        let newState = reducer.legacyReducer(
+            dismissState,
+            MainMenuAction(
+                windowUUID: .XCTestDefaultUUID,
+                actionType: MainMenuMiddlewareActionType.updateBannerVisibility,
+                isBrowserDefault: true
+            )
+        )
+
+        XCTAssertFalse(newState.shouldDismiss)
     }
 
     // MARK: - Private

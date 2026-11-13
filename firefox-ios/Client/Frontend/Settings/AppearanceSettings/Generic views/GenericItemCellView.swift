@@ -6,7 +6,7 @@ import SwiftUI
 import Common
 
 struct GenericItemCellView: View {
-    private struct UX {
+    private enum UX {
         static let horizontalSpacing: CGFloat = 16
         static let verticalSpacing: CGFloat = 8
         static let dividerHeight: CGFloat = 0.7
@@ -26,7 +26,7 @@ struct GenericItemCellView: View {
     }
 
     var backgroundColor: Color {
-        return Color(theme?.colors.layer2 ?? UIColor.clear)
+        return Color(theme?.colors.layer5 ?? UIColor.clear)
     }
 
     var body: some View {
@@ -34,7 +34,7 @@ struct GenericItemCellView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text(title)
-                        .font(.body)
+                        .font(FXFontStyles.Regular.body.scaledSwiftUIFont())
                         .foregroundColor(textColor)
                 }
 
@@ -44,6 +44,7 @@ struct GenericItemCellView: View {
                     Image(image)
                         .renderingMode(.template)
                         .foregroundColor(disclosureTintColor)
+                        .flipsForRightToLeftLayoutDirection(true)
                 }
             }
             .padding(.horizontal, UX.horizontalSpacing)

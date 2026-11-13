@@ -47,11 +47,11 @@ struct AddressAutofillSettingsView: View {
         }
         .onAppear {
             addressListViewModel.fetchAddresses()
-            applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            applyTheme(theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false))
         }
         .onReceive(NotificationCenter.default.publisher(for: .ThemeDidChange)) { notification in
             guard let uuid = notification.windowUUID, uuid == windowUUID else { return }
-            applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            applyTheme(theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false))
         }
     }
 
@@ -62,5 +62,39 @@ struct AddressAutofillSettingsView: View {
     func applyTheme(theme: Theme) {
         let color = theme.colors
         viewBackground = Color(color.layer1)
+    }
+}
+
+struct ListHeaderPadding: ViewModifier {
+    let isLandscape: Bool
+    let paddingSize: CGFloat
+
+    func body(content: Content) -> some View {
+        let isPad = UIDevice().userInterfaceIdiom == .pad
+        let shouldAddPadding = !isLandscape || (isPad && isLandscape)
+        if #available(iOS 26.0, *) {
+            if shouldAddPadding {
+                content.padding(.leading, paddingSize)
+            } else {
+                content
+            }
+        } else {
+            content
+        }
+    }
+}
+
+struct ListItemIconPadding: ViewModifier {
+    let isLandscape: Bool
+    let paddingSize: CGFloat
+
+    func body(content: Content) -> some View {
+        let isPad = UIDevice().userInterfaceIdiom == .pad
+        let shouldAddPadding = !isLandscape || (isPad && isLandscape)
+        if #available(iOS 26.0, *), shouldAddPadding {
+            content.padding(.leading, paddingSize)
+        } else {
+            content
+        }
     }
 }

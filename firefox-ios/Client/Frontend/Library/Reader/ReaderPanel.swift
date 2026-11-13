@@ -9,7 +9,7 @@ import Common
 
 import enum MozillaAppServices.VisitType
 
-private struct ReadingListTableViewCellUX {
+private enum ReadingListTableViewCellUX {
     static let RowHeight: CGFloat = 86
 
     static let ReadIndicatorWidth: CGFloat = 16  // image width
@@ -166,14 +166,17 @@ class ReadingListTableViewCell: UITableViewCell, ThemeApplicable {
 
 class ReadingListPanel: UITableViewController,
                         LibraryPanel,
-                        Themeable {
+                        LibraryPanelContextMenu,
+                        Themeable,
+                        Notifiable {
     weak var libraryPanelDelegate: LibraryPanelDelegate?
     weak var navigationHandler: ReadingListNavigationHandler?
     let profile: Profile
     var state: LibraryPanelMainState
+    var isTransitioning = false
     var bottomToolbarItems = [UIBarButtonItem]()
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { windowUUID }
@@ -198,18 +201,17 @@ class ReadingListPanel: UITableViewController,
         self.notificationCenter = notificationCenter
         self.logger = logger
         self.state = .readingList
-        super.init(nibName: nil, bundle: nil)
+        super.init(style: .libraryPanel)
 
-        [ Notification.Name.FirefoxAccountChanged,
-          Notification.Name.DynamicFontChanged,
-          Notification.Name.DatabaseWasReopened ].forEach {
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(notificationReceived),
-                name: $0,
-                object: nil
-            )
-        }
+        startObservingNotifications(
+            withNotificationCenter: NotificationCenter.default,
+            forObserver: self,
+            observing: [
+                Notification.Name.FirefoxAccountChanged,
+                UIContentSizeCategory.didChangeNotification,
+                Notification.Name.DatabaseWasReopened
+            ]
+        )
     }
 
     required init!(coder aDecoder: NSCoder) {
@@ -224,15 +226,6 @@ class ReadingListPanel: UITableViewController,
         tableView.accessibilityIdentifier = "ReadingTable"
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-
-        // Set reading list accessibility content size as needed
-        let size = CGSize(width: self.emptyStateViewA11YScroll.frame.size.width,
-                          height: self.emptyStateView.frame.size.height)
-        self.emptyStateViewA11YScroll.contentSize = size
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -241,29 +234,40 @@ class ReadingListPanel: UITableViewController,
         tableView.rowHeight = UITableView.automaticDimension
         tableView.cellLayoutMarginsFollowReadableWidth = false
         tableView.separatorInset = .zero
-        tableView.layoutMargins = .zero
+        if tableView.style == .plain {
+            tableView.layoutMargins = .zero
+        }
         tableView.register(ReadingListTableViewCell.self, forCellReuseIdentifier: "ReadingListTableViewCell")
 
         // Set an empty footer to prevent empty cells from appearing in the list.
         tableView.tableFooterView = UIView()
         tableView.dragDelegate = self
 
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
-        listenForThemeChange(view)
     }
+
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
 
     private func currentTheme() -> Theme {
-        return themeManager.getCurrentTheme(for: windowUUID)
+        return themeManager.resolveTheme(for: windowUUID,
+                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme)
     }
 
-    @objc
-    func notificationReceived(_ notification: Notification) {
+    // MARK: Notifiable
+    func handleNotifications(_ notification: Notification) {
         switch notification.name {
-        case .FirefoxAccountChanged, .DynamicFontChanged:
-            refreshReadingList()
+        case .FirefoxAccountChanged, UIContentSizeCategory.didChangeNotification:
+            ensureMainThread {
+                self.refreshReadingList()
+            }
         case .DatabaseWasReopened:
             if let dbName = notification.object as? String, dbName == "ReadingList.db" {
-                refreshReadingList()
+                ensureMainThread {
+                    self.refreshReadingList()
+                }
             }
         default:
             // no need to do anything at all
@@ -297,18 +301,23 @@ class ReadingListPanel: UITableViewController,
             let emptyView = self.emptyStateView
 
             if visible {
-                guard scrollView.superview == nil else { return }
+                guard scrollView.superview == nil, let containerView = self.tableView.superview else { return }
                 scrollView.addSubview(emptyView)
                 NSLayoutConstraint.activate([
-                    emptyView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-                    emptyView.topAnchor.constraint(equalTo: scrollView.topAnchor),
-                    emptyView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
-                    emptyView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.heightAnchor)
+                    emptyView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+                    emptyView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+                    emptyView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+                    emptyView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+                    emptyView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+                    emptyView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor)
                 ])
-                self.tableView.superview?.insertSubview(scrollView, aboveSubview: self.tableView)
-                scrollView.frame = self.tableView.bounds
-                scrollView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-                scrollView.translatesAutoresizingMaskIntoConstraints = true
+                containerView.insertSubview(scrollView, aboveSubview: self.tableView)
+                NSLayoutConstraint.activate([
+                    scrollView.leadingAnchor.constraint(equalTo: self.tableView.safeAreaLayoutGuide.leadingAnchor),
+                    scrollView.trailingAnchor.constraint(equalTo: self.tableView.safeAreaLayoutGuide.trailingAnchor),
+                    scrollView.topAnchor.constraint(equalTo: self.tableView.safeAreaLayoutGuide.topAnchor),
+                    scrollView.bottomAnchor.constraint(equalTo: self.tableView.safeAreaLayoutGuide.bottomAnchor)
+                ])
                 scrollView.isScrollEnabled = true
             } else {
                 scrollView.subviews.forEach { $0.removeFromSuperview() }
@@ -328,7 +337,7 @@ class ReadingListPanel: UITableViewController,
         return scrollView
     }()
 
-    private lazy var emptyStateView: UIView = {
+    private lazy var emptyStateView: ReaderPanelEmptyStateView = {
         return ReaderPanelEmptyStateView(windowUUID: self.windowUUID)
     }()
 
@@ -353,16 +362,19 @@ class ReadingListPanel: UITableViewController,
             withIdentifier: "ReadingListTableViewCell",
             for: indexPath
         ) as? ReadingListTableViewCell else {
-            logger.log("Failed to dequeue ReadingListTableViewCell at indexPath: \(indexPath)",
+            logger.log("Failed to dequeue ReadingListTableViewCell",
                        level: .fatal,
-                       category: .library)
+                       category: .library,
+                       extra: ["indexPath": "\(indexPath)"])
             return UITableViewCell()
         }
         if let record = records?[indexPath.row] {
             cell.title = record.title
             cell.url = URL(string: record.url)!
             cell.unread = record.unread
-            cell.applyTheme(theme: currentTheme())
+            let theme = currentTheme()
+            cell.applyTheme(theme: theme)
+            cell.applyGroupedBackground(theme: theme, in: tableView)
         }
         return cell
     }
@@ -405,7 +417,7 @@ class ReadingListPanel: UITableViewController,
         tableView.deselectRow(at: indexPath, animated: false)
         if let record = records?[indexPath.row],
             let url = URL(string: record.url),
-            let encodedURL = url.encodeReaderModeURL(WebServer.sharedInstance.baseReaderModeURL()) {
+            let encodedURL = url.encodeReaderModeURL(ReaderModeSchemeHandler.currentBaseURL) {
             // Mark the item as read
             profile.readingList.updateRecord(record, unread: false)
             // Reading list items are closest in concept to bookmarks.
@@ -429,9 +441,8 @@ class ReadingListPanel: UITableViewController,
             )
             profile.readingList.deleteRecord(record, completion: { success in
                 guard success else { return }
-                self.records?.remove(at: indexPath.row)
-
                 DispatchQueue.main.async {
+                    self.records?.remove(at: indexPath.row)
                     self.tableView.deleteRows(at: [indexPath], with: .automatic)
                     // reshow empty state if no records left
                     if let records = self.records, records.isEmpty {
@@ -465,11 +476,12 @@ class ReadingListPanel: UITableViewController,
         tableView.separatorColor = currentTheme().colors.borderPrimary
         view.backgroundColor = currentTheme().colors.layer1
         tableView.backgroundColor = currentTheme().colors.layer1
+        emptyStateView.applyTheme(theme: currentTheme())
         refreshReadingList()
     }
-}
 
-extension ReadingListPanel: LibraryPanelContextMenu {
+    // MARK: - LibraryPanelContextMenu
+
     func presentContextMenu(
         for site: Site,
         with indexPath: IndexPath,

@@ -7,21 +7,11 @@ import Foundation
 import UserNotifications
 import Shared
 
-protocol NotificationManagerProtocol {
-    func requestAuthorization(completion: @escaping (Bool, Error?) -> Void)
-    func requestAuthorization(completion: @escaping (Result<Bool, Error>) -> Void)
+protocol NotificationManagerProtocol: Sendable {
+    func requestAuthorization(completion: @escaping @Sendable (Bool, Error?) -> Void)
     func requestAuthorization() async throws -> Bool
-    func getNotificationSettings(sendTelemetry: Bool, completion: @escaping (UNNotificationSettings) -> Void)
     func getNotificationSettings(sendTelemetry: Bool) async -> UNNotificationSettings
-    func hasPermission(completion: @escaping (Bool) -> Void)
     func hasPermission() async -> Bool
-    func schedule(title: String,
-                  body: String,
-                  id: String,
-                  userInfo: [AnyHashable: Any]?,
-                  categoryIdentifier: String,
-                  date: Date,
-                  repeats: Bool)
     func schedule(title: String,
                   body: String,
                   id: String,
@@ -29,125 +19,86 @@ protocol NotificationManagerProtocol {
                   categoryIdentifier: String,
                   interval: TimeInterval,
                   repeats: Bool)
-    func findDeliveredNotifications(completion: @escaping ([UNNotification]) -> Void)
-    func findDeliveredNotificationForId(id: String, completion: @escaping (UNNotification?) -> Void)
-    func removeAllPendingNotifications()
-    func removePendingNotificationsWithId(ids: [String])
+    func findDeliveredNotificationForId(id: String) async -> UNNotification?
 }
 
-class NotificationManager: NotificationManagerProtocol {
-    private var center: UserNotificationCenterProtocol
+extension NotificationManagerProtocol {
+    /// Requests notification authorization and, when granted, enables the default notification
+    /// categories and registers for push notifications.
+    func enableNotifications(
+        userDefaults: UserDefaultsInterface = UserDefaults.standard,
+        notificationCenter: NotificationProtocol = NotificationCenter.default
+    ) {
+        requestAuthorization { granted, error in
+            guard error == nil, granted else { return }
 
-    init(center: UserNotificationCenterProtocol = UNUserNotificationCenter.current()) {
+            if userDefaults.object(forKey: PrefsKeys.Notifications.SyncNotifications) == nil {
+                userDefaults.set(true, forKey: PrefsKeys.Notifications.SyncNotifications)
+            }
+            if userDefaults.object(forKey: PrefsKeys.Notifications.TipsAndFeaturesNotifications) == nil {
+                userDefaults.set(true, forKey: PrefsKeys.Notifications.TipsAndFeaturesNotifications)
+            }
+            notificationCenter.post(name: .RegisterForPushNotifications)
+        }
+    }
+}
+
+// TODO: FXIOS-14114 - NotificationManager @unchecked Sendable
+final class NotificationManager: NotificationManagerProtocol, @unchecked Sendable {
+    private let telemetry: NotificationManagerTelemetry
+    private let center: UserNotificationCenterProtocol
+
+    init(center: UserNotificationCenterProtocol = UNUserNotificationCenter.current(),
+         telemetry: NotificationManagerTelemetry = NotificationManagerTelemetry()) {
         self.center = center
+        self.telemetry = telemetry
     }
 
     // Requests the user’s authorization to allow local and remote notifications and sends Telemetry
-    func requestAuthorization(completion: @escaping (Bool, Error?) -> Void) {
+    func requestAuthorization(completion: @escaping @Sendable (Bool, Error?) -> Void) {
         center.requestAuthorization(options: [.alert, .badge, .sound]) { (granted, error) in
             completion(granted, error)
 
-            guard !AppConstants.isRunningUnitTest else { return }
-
-            let extras = [TelemetryWrapper.EventExtraKey.notificationPermissionIsGranted.rawValue:
-                            granted]
-            TelemetryWrapper.recordEvent(category: .prompt,
-                                         method: .tap,
-                                         object: .notificationPermission,
-                                         extras: extras)
-        }
-    }
-
-    @available(*, renamed: "requestAuthorization()")
-    func requestAuthorization(completion: @escaping (Result<Bool, Error>) -> Void) {
-        self.requestAuthorization { granted, error in
-            if let error = error {
-                completion(.failure(error))
-            } else {
-                completion(.success(granted))
-            }
+            self.telemetry.sendNotificationPermissionPrompt(isPermissionGranted: granted)
         }
     }
 
     func requestAuthorization() async throws -> Bool {
         return try await withCheckedThrowingContinuation { continuation in
-            requestAuthorization { result in
-                continuation.resume(with: result)
+            requestAuthorization { granted, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: granted)
+                }
             }
         }
     }
 
     // Retrieves the authorization and feature-related notification settings and sends Telemetry
-    func getNotificationSettings(sendTelemetry: Bool = false,
-                                 completion: @escaping (UNNotificationSettings) -> Void) {
-        center.getNotificationSettings { settings in
-            completion(settings)
-
-            guard sendTelemetry else { return }
-            self.sendTelemetry(settings: settings)
-        }
-    }
-
     func getNotificationSettings(sendTelemetry: Bool = false) async -> UNNotificationSettings {
-        return await withCheckedContinuation { continuation in
-            getNotificationSettings(sendTelemetry: sendTelemetry) { result in
-                continuation.resume(returning: result)
-            }
-        }
-    }
+        let settings = await center.notificationSettings()
 
-    // Determines if the user has allowed notifications
-    func hasPermission(completion: @escaping (Bool) -> Void) {
-        getNotificationSettings { settings in
-            var hasPermission = false
-            switch settings.authorizationStatus {
-            case .authorized, .ephemeral, .provisional:
-                hasPermission = true
-            case .notDetermined, .denied:
-                fallthrough
-            @unknown default:
-                hasPermission = false
-            }
-            completion(hasPermission)
+        if sendTelemetry {
+            telemetry.sendNotificationPermission(settings: settings)
         }
+
+        return settings
     }
 
     // Determines if the user has allowed notifications
     func hasPermission() async -> Bool {
-        // FXIOS-11895 Temporary test for reverting continuation workaround we put in place for iOS 18.0 (beta?) users
-        if ContinuationsChecker.shouldUseCheckedContinuation {
-            await withCheckedContinuation { continuation in
-                hasPermission { hasPermission in
-                    continuation.resume(returning: hasPermission)
-                }
-            }
-        } else {
-            await withUnsafeContinuation { continuation in
-                hasPermission { hasPermission in
-                    continuation.resume(returning: hasPermission)
-                }
-            }
+        let settings = await getNotificationSettings()
+        var hasPermission = false
+        switch settings.authorizationStatus {
+        case .authorized, .ephemeral, .provisional:
+            hasPermission = true
+        case .notDetermined, .denied:
+            fallthrough
+        @unknown default:
+            hasPermission = false
         }
-    }
-
-    // Scheduling push notification based on the Date trigger (Ex 25 December at 10:00PM)
-    func schedule(title: String,
-                  body: String,
-                  id: String,
-                  userInfo: [AnyHashable: Any]? = nil,
-                  categoryIdentifier: String = "",
-                  date: Date,
-                  repeats: Bool = false) {
-        let units: Set<Calendar.Component> = [.minute, .hour, .day, .month, .year]
-        let dateComponents = Calendar.current.dateComponents(units, from: date)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents,
-                                                    repeats: repeats)
-        schedule(title: title,
-                 body: body,
-                 id: id,
-                 userInfo: userInfo,
-                 categoryIdentifier: categoryIdentifier,
-                 trigger: trigger)
+        return hasPermission
     }
 
     // Scheduling push notification based on the time interval trigger (Ex 2 sec, 10min)
@@ -168,37 +119,18 @@ class NotificationManager: NotificationManagerProtocol {
                  trigger: trigger)
     }
 
-    // Fetches all delivered notifications that are still present in Notification Center.
-    func findDeliveredNotifications(completion: @escaping ([UNNotification]) -> Void) {
-        center.getDeliveredNotifications { notificationList in
-            completion(notificationList)
-        }
-    }
-
     // Fetches all delivered notifications that are still present in Notification Center by id
-    func findDeliveredNotificationForId(id: String,
-                                        completion: @escaping (UNNotification?) -> Void) {
-        findDeliveredNotifications { notificationList in
-            let notification = notificationList.first(where: { notification -> Bool in
-                notification.request.identifier == id
-            })
-            completion(notification)
-        }
-    }
-
-    // Remove all pending notifications
-    func removeAllPendingNotifications() {
-        center.removeAllPendingNotificationRequests()
-    }
-
-    // Remove pending notifications with id
-    func removePendingNotificationsWithId(ids: [String]) {
-        center.removePendingNotificationRequests(withIdentifiers: ids)
+    func findDeliveredNotificationForId(id: String) async -> UNNotification? {
+        let notificationList: [UNNotification] = await center.deliveredNotifications()
+        let notification = notificationList.first(where: { notification -> Bool in
+            notification.request.identifier == id
+        })
+        return notification
     }
 
     // MARK: - Private
 
-    // Helper method that takes trigger based on date or time interval
+    // Helper method that takes a time interval trigger
     private func schedule(title: String,
                           body: String,
                           id: String,
@@ -220,35 +152,5 @@ class NotificationManager: NotificationManagerProtocol {
                                             content: notificationContent,
                                             trigger: trigger)
         center.add(request, withCompletionHandler: nil)
-    }
-
-    private func sendTelemetry(settings: UNNotificationSettings) {
-        guard !AppConstants.isRunningUnitTest else { return }
-
-        var authorizationStatus = ""
-        switch settings.authorizationStatus {
-        case .authorized: authorizationStatus = "authorized"
-        case .denied: authorizationStatus = "denied"
-        case .ephemeral: authorizationStatus = "ephemeral"
-        case .provisional: authorizationStatus = "provisional"
-        case .notDetermined: authorizationStatus = "notDetermined"
-        @unknown default: authorizationStatus = "notDetermined"
-        }
-
-        var alertSetting = ""
-        switch settings.alertSetting {
-        case .enabled: alertSetting = "enabled"
-        case .disabled: alertSetting = "disabled"
-        case .notSupported: alertSetting = "notSupported"
-        @unknown default: alertSetting = "notSupported"
-        }
-
-        let extras = [TelemetryWrapper.EventExtraKey.notificationPermissionStatus.rawValue: authorizationStatus,
-                      TelemetryWrapper.EventExtraKey.notificationPermissionAlertSetting.rawValue: alertSetting]
-
-        TelemetryWrapper.recordEvent(category: .action,
-                                     method: .view,
-                                     object: .notificationPermission,
-                                     extras: extras)
     }
 }

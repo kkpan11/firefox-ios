@@ -5,6 +5,7 @@
 import XCTest
 @testable import Client
 
+@MainActor
 final class HistoryCoordinatorTests: XCTestCase {
     private var router: MockRouter!
     private var profile: MockProfile!
@@ -12,24 +13,24 @@ final class HistoryCoordinatorTests: XCTestCase {
     private var notificationCenter: MockNotificationCenter!
     private var navigationHandler: MockLibraryNavigationHandler!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
         router = MockRouter(navigationController: UINavigationController())
-        profile = MockProfile()
+        profile = makeProfile()
         notificationCenter = MockNotificationCenter()
         parentCoordinator = MockLibraryCoordinatorDelegate()
         navigationHandler = MockLibraryNavigationHandler()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
         router = nil
         profile = nil
         parentCoordinator = nil
         notificationCenter = nil
         navigationHandler = nil
+        try await super.tearDown()
     }
 
     func testShowRecentlyClosedTabs() {

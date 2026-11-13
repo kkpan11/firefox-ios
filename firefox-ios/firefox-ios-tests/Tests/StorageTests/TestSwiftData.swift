@@ -16,48 +16,24 @@ class TestSwiftData: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        let files = MockFiles()
-        do {
-            try files.remove("testSwiftData.db")
-        } catch _ {
-        }
-        testDB = (try (files.getAndEnsureDirectory() as NSString)).appendingPathComponent("testSwiftData.db")
+        let files = makeTemporaryFiles()
+        testDB = files.pathEnsuringRoot(for: "testSwiftData.db")
         swiftData = SwiftData(filename: testDB, schema: BrowserSchema(), files: files)
         let table = BrowserSchema()
-
-        // Ensure static flags match expected values.
-        XCTAssert(SwiftData.EnableWAL, "WAL enabled")
 
         XCTAssertNil(addSite(table, url: "http://url0", title: "title0"), "Added url0.")
     }
 
-    override func tearDown() {
-        super.tearDown()
-        // Restore static flags to their default values.
-        SwiftData.EnableWAL = true
-    }
-
-    func testNoWAL() {
-        SwiftData.EnableWAL = false
-        let error = writeDuringRead()
-        XCTAssertNil(error, "Insertion succeeded")
+    override func tearDownWithError() throws {
+        swiftData = nil
+        testDB = nil
+        urlCounter = 1
+        try super.tearDownWithError()
     }
 
     func testDefaultSettings() {
-        SwiftData.EnableWAL = true
         let error = writeDuringRead()
         XCTAssertNil(error, "Insertion succeeded")
-    }
-
-    func testBusyTimeout() {
-        SwiftData.EnableWAL = false
-        let error = writeDuringRead(closeTimeout: 1)
-        XCTAssertNil(error, "Insertion succeeded")
-    }
-
-    func testFilledCursor() {
-        SwiftData.EnableWAL = false
-        XCTAssertNil(writeDuringRead(true), "Insertion succeeded")
     }
 
     fileprivate func writeDuringRead(
@@ -65,7 +41,7 @@ class TestSwiftData: XCTestCase {
         closeTimeout: UInt64? = nil
     ) -> MaybeErrorType? {
         // Query the database and hold the cursor.
-        var c: Cursor<SDRow>!
+        nonisolated(unsafe) var c: Cursor<SDRow>!
         let result = swiftData!.withConnection(SwiftData.Flags.readOnly) { db in
             if safeQuery {
                 c = db.executeQuery("SELECT * FROM history", factory: { $0 })

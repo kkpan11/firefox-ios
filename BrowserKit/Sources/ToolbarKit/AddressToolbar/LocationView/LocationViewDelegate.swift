@@ -7,6 +7,7 @@ import UIKit
 
 /// `LocationViewDelegate` protocol defines the delegate methods that respond
 /// to user interactions with a location view.
+@MainActor
 protocol LocationViewDelegate: AnyObject {
     /// Called when the user enters text into the location view.
     ///
@@ -43,4 +44,8 @@ protocol LocationViewDelegate: AnyObject {
     /// Called when the user types over the old highlighted text immediately after
     /// focusing the text field.
     func locationTextFieldNeedsSearchReset()
+
+    /// Called when the editing accessory button becomes visible in the location view.
+    func locationViewDidDisplayEditingAccessoryButton(_ button: UIButton, contextualHintType: String)
+    func locationViewDidHideEditingAccessoryButton()
 }

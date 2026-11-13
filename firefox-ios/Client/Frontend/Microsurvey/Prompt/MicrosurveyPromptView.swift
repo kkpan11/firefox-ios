@@ -17,7 +17,7 @@ import Shared
  */
 
 final class MicrosurveyPromptView: UIView, ThemeApplicable, Notifiable {
-    private struct UX {
+    private enum UX {
         static let headerStackSpacing: CGFloat = 8
         static let stackSpacing: CGFloat = 17
         static let borderThickness = 1.0
@@ -118,8 +118,11 @@ final class MicrosurveyPromptView: UIView, ThemeApplicable, Notifiable {
         self.windowUUID = windowUUID
         self.notificationCenter = notificationCenter
         super.init(frame: .zero)
-        setupNotifications(forObserver: self,
-                           observing: [.DynamicFontChanged])
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [UIContentSizeCategory.didChangeNotification]
+        )
         configure(with: state)
         setupView()
         guard !inOverlayMode else { return }
@@ -155,8 +158,8 @@ final class MicrosurveyPromptView: UIView, ThemeApplicable, Notifiable {
 
         addSubview(topBorderView)
         addSubview(toastView)
-        leadingConstraint = toastView.leadingAnchor.constraint(equalTo: leadingAnchor)
-        trailingConstraint = toastView.trailingAnchor.constraint(equalTo: trailingAnchor)
+        leadingConstraint = toastView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor)
+        trailingConstraint = toastView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor)
         logoWidthConstraint = logoImage.widthAnchor.constraint(equalToConstant: logoSizeScaled)
         logoHeightConstraint = logoImage.heightAnchor.constraint(equalToConstant: logoSizeScaled)
 
@@ -173,9 +176,6 @@ final class MicrosurveyPromptView: UIView, ThemeApplicable, Notifiable {
 
             toastView.topAnchor.constraint(equalTo: topBorderView.bottomAnchor, constant: UX.padding.top),
             toastView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: UX.padding.bottom),
-
-            headerView.widthAnchor.constraint(equalTo: toastView.widthAnchor),
-            titleLabel.heightAnchor.constraint(equalTo: headerView.heightAnchor),
         ])
     }
 
@@ -184,12 +184,19 @@ final class MicrosurveyPromptView: UIView, ThemeApplicable, Notifiable {
         updatePadding()
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updatePadding()
+        titleLabel.preferredMaxLayoutWidth = titleLabel.bounds.width
+    }
+
     private func updatePadding() {
         var paddingConstant: NSDirectionalEdgeInsets = UX.padding
 
-        if UIDevice.current.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular {
-            paddingConstant = UIWindow.isLandscape ? UX.largePadding : UX.mediumPadding
-        } else if UIDevice.current.userInterfaceIdiom == .phone && UIWindow.isLandscape {
+        if traitCollection.horizontalSizeClass == .regular {
+            let availableBounds = window?.bounds ?? bounds
+            paddingConstant = availableBounds.width > availableBounds.height ? UX.largePadding : UX.mediumPadding
+        } else if traitCollection.verticalSizeClass == .compact {
             paddingConstant = UX.mediumPadding
         }
 
@@ -214,8 +221,10 @@ final class MicrosurveyPromptView: UIView, ThemeApplicable, Notifiable {
     // MARK: Notifiable
     func handleNotifications(_ notification: Notification) {
         switch notification.name {
-        case .DynamicFontChanged:
-            adjustIconSize()
+        case UIContentSizeCategory.didChangeNotification:
+            ensureMainThread {
+                self.adjustIconSize()
+            }
         default: break
         }
     }

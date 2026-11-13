@@ -8,11 +8,14 @@ import Redux
 import UIKit
 
 protocol NavigationToolbarContainerDelegate: AnyObject {
+    @MainActor
     func configureContextualHint(for: UIButton, with contextualHintType: String)
+    @MainActor
+    func contextMenu(for actionType: ToolbarActionConfiguration.ActionType) -> UIMenu?
 }
 
 final class NavigationToolbarContainer: UIView, ThemeApplicable, StoreSubscriber {
-    typealias SubscriberStateType = ToolbarState
+    typealias SubscriberStateType = AddressToolbarContainerLens
 
     private enum UX {
         static let toolbarHeight: CGFloat = 48
@@ -43,6 +46,23 @@ final class NavigationToolbarContainer: UIView, ThemeApplicable, StoreSubscriber
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits
+        guard Thread.isMainThread else {
+            DefaultLogger.shared.log(
+                "NavigationToolbarContainer was not deallocated on the main thread. Redux was not cleaned up.",
+                level: .fatal,
+                category: .lifecycle
+            )
+            assertionFailure("The view was not deallocated on the main thread. Redux was not cleaned up.")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            unsubscribeFromRedux()
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
 
@@ -57,7 +77,7 @@ final class NavigationToolbarContainer: UIView, ThemeApplicable, StoreSubscriber
 
         store.subscribe(self, transform: {
             $0.select({ appState in
-                return ToolbarState(appState: appState, uuid: windowUUID)
+                return AddressToolbarContainerLens(appState: appState, uuid: windowUUID)
             })
         })
     }
@@ -66,13 +86,19 @@ final class NavigationToolbarContainer: UIView, ThemeApplicable, StoreSubscriber
         store.unsubscribe(self)
     }
 
-    func newState(state: ToolbarState) {
-        updateModel(toolbarState: state)
+    func newState(state: AddressToolbarContainerLens) {
+        updateModel(lens: state)
     }
 
-    private func updateModel(toolbarState: ToolbarState) {
+    private func updateModel(lens: AddressToolbarContainerLens) {
         guard let windowUUID else { return }
-        let model = NavigationToolbarContainerModel(state: toolbarState, windowUUID: windowUUID)
+        let model = NavigationToolbarContainerModel(
+            lens: lens,
+            longPressMenuProvider: { [weak self] actionType in
+                self?.toolbarDelegate?.contextMenu(for: actionType)
+            },
+            windowUUID: windowUUID
+        )
 
         if self.model != model {
             self.model = model
@@ -100,19 +126,22 @@ final class NavigationToolbarContainer: UIView, ThemeApplicable, StoreSubscriber
     // MARK: - ThemeApplicable
     func applyTheme(theme: Theme) {
         toolbar.applyTheme(theme: theme)
-
-        let isTranslucent = model?.isTranslucent ?? false
-        let backgroundAlpha: CGFloat = isTranslucent ? toolbarHelper.backgroundAlpha() : 1.0
-        backgroundColor = theme.colors.layer3.withAlphaComponent(backgroundAlpha)
+        let backgroundAlpha: CGFloat = toolbarHelper.glassEffectAlpha
+        backgroundColor = theme.colors.layerSurfaceLow.withAlphaComponent(backgroundAlpha)
     }
 }
 
 extension NavigationToolbarContainer: BrowserNavigationToolbarDelegate {
     func configureContextualHint(for button: UIButton, with contextualHintType: String) {
-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID)
+        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID)
         else { return }
 
-        if contextualHintType == ContextualHintType.navigation.rawValue && !toolbarState.canShowNavigationHint { return }
+        // On iPad the bottom navigation toolbar is hidden; the CFR must be anchored
+        // by AddressToolbarContainer in that case, not here.
+        guard contextualHintType != ContextualHintType.navigation.rawValue
+            || (toolbarState.canShowNavigationHint &&
+                toolbarState.isShowingNavigationToolbar)
+        else { return }
 
         toolbarDelegate?.configureContextualHint(for: button, with: contextualHintType)
     }

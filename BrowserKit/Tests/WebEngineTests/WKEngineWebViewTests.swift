@@ -6,30 +6,33 @@ import XCTest
 @testable import WebEngine
 import WebKit
 
-final class WKEngineWebViewTests: XCTestCase {
+@MainActor
+final class WKEngineWebViewTests: XCTestCase, @unchecked Sendable {
     private var delegate: MockWKEngineWebViewDelegate!
     private let testURL = URL(string: "https://www.example.com/")!
+    /// Served locally via `loadSimulatedRequest` so the load tests don't depend on network or DNS.
+    private static let testPageHTML = """
+    <html><head><title>Test Page</title></head><body><h1>Test Page</h1><p>Content</p></body></html>
+    """
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         delegate = MockWKEngineWebViewDelegate()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         delegate = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
-    @MainActor
     func testNoLeaks() {
         let subject = createSubject()
         subject.close()
 
-        // Wait for Webview to fully deallocate
+        // Wait for webView to fully deallocate
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
     func testLoad_callsObservers() {
         let subject = createSubject()
         let loadingExpectation = expectation(that: \WKWebView.isLoading, on: subject) { _, change in
@@ -56,7 +59,7 @@ final class WKEngineWebViewTests: XCTestCase {
         }
         let hasOnlySecureContentExpectation = expectation(that: \WKWebView.hasOnlySecureContent, on: subject)
 
-        subject.load(URLRequest(url: testURL))
+        _ = subject.loadSimulatedRequest(URLRequest(url: testURL), responseHTML: Self.testPageHTML)
 
         wait(
             for: [
@@ -68,36 +71,26 @@ final class WKEngineWebViewTests: XCTestCase {
                 canGoForwardExpectation,
                 contentSizeExpectation,
                 hasOnlySecureContentExpectation
-            ]
+            ],
+            timeout: 30
         )
-
-        if #available(iOS 16.0, *) {
-            let fullscreenExpectation = expectation(that: \WKWebView.fullscreenState, on: subject)
-            wait(
-                for: [
-                    fullscreenExpectation
-                ]
-            )
-        }
 
         XCTAssertGreaterThan(delegate.webViewPropertyChangedCalled, 0)
         XCTAssertNotNil(delegate.lastWebViewPropertyChanged)
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
     func testLoad_callsBeginRefreshing_onUIRefreshControl() throws {
         let subject = createSubject(pullRefreshViewType: MockUIRefreshControl.self)
         let pullRefresh = try XCTUnwrap(subject.scrollView.refreshControl as? MockUIRefreshControl)
 
-        subject.load(URLRequest(url: testURL))
+        _ = subject.loadSimulatedRequest(URLRequest(url: testURL), responseHTML: Self.testPageHTML)
 
         XCTAssertEqual(pullRefresh.beginRefreshingCalled, 1)
         XCTAssertEqual(pullRefresh.endRefreshingCalled, 0)
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
     func testInit_setupsPullRefresh() throws {
         let subject = createSubject()
 
@@ -111,7 +104,6 @@ final class WKEngineWebViewTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
     func testInit_withUIRefreshControl_setupsCorrectlyPullRefresh() {
         let subject = createSubject(pullRefreshViewType: UIRefreshControl.self)
 
@@ -119,7 +111,23 @@ final class WKEngineWebViewTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
+    func testInit_withUIRefreshControlSubclass_doesntConstrainPullRefreshAsSubview() throws {
+        let subject = createSubject(pullRefreshViewType: MockUIRefreshControl.self)
+
+        let pullRefresh = try XCTUnwrap(subject.scrollView.refreshControl as? MockUIRefreshControl)
+        XCTAssertTrue(pullRefresh.translatesAutoresizingMaskIntoConstraints)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+
+    func testScrollWillBeginZooming_withUIRefreshControl_removesRefreshControl() {
+        let subject = createSubject(pullRefreshViewType: MockUIRefreshControl.self)
+
+        subject.scrollViewWillBeginZooming(UIScrollView(), with: nil)
+
+        XCTAssertNil(subject.scrollView.refreshControl)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+
     func testScrollWillBeginZooming_removesPullRefresh() {
         let subject = createSubject()
 
@@ -130,7 +138,6 @@ final class WKEngineWebViewTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
     func testScrollDidEndZooming_setupsPullRefresh() {
         let subject = createSubject()
 
@@ -144,7 +151,6 @@ final class WKEngineWebViewTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
     func testScrollDidEndZooming_doesntSetupPullRefreshAgain() {
         let subject = createSubject()
 
@@ -157,7 +163,6 @@ final class WKEngineWebViewTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
     func testTriggerPullRefresh_callsDelegate() throws {
         let subject = createSubject()
         let pullRefresh = try XCTUnwrap(subject.scrollView.subviews.first { $0 is EnginePullRefreshView }
@@ -169,29 +174,8 @@ final class WKEngineWebViewTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
 
-    @MainActor
-    func testCurrentHistoryItemSetAfterVisitingPage() {
-        let subject = createSubject()
-        let testURL = URL(string: "https://www.example.com/")!
-
-        let expectation = expectation(description: "Wait for the decision handler to be called")
-
-        XCTAssertNil(subject.currentBackForwardListItem())
-        delegate.webViewPropertyChangedCallback = { webEngineViewProperty in
-            guard webEngineViewProperty == .loading(false) else {return}
-            XCTAssertNotNil(subject.currentBackForwardListItem())
-            self.delegate.webViewPropertyChangedCallback = nil
-            expectation.fulfill()
-        }
-
-        subject.load(URLRequest(url: testURL))
-
-        wait(for: [expectation], timeout: 10)
-    }
-
-    @MainActor
     func createSubject(pullRefreshViewType: EnginePullRefreshViewType = MockEnginePullRefreshView.self,
-                       file: StaticString = #file,
+                       file: StaticString = #filePath,
                        line: UInt = #line) -> DefaultWKEngineWebView {
         let parameters = WKWebViewParameters(blockPopups: true,
                                              isPrivate: false,

@@ -5,6 +5,7 @@
 import Foundation
 
 /// Child settings pages debug actions
+@MainActor
 protocol DebugSettingsDelegate: AnyObject, SharedSettingsDelegate {
     func pressedVersion()
     func pressedShowTour()
@@ -12,4 +13,6 @@ protocol DebugSettingsDelegate: AnyObject, SharedSettingsDelegate {
     func pressedFirefoxSuggest()
     func pressedOpenFiftyTabs()
     func pressedDebugFeatureFlags()
+    func pressedAddShortcuts()
+    func pressedOffloadBackgroundWebViews()
 }

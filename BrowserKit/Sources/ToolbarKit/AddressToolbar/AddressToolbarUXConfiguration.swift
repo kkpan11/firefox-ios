@@ -6,47 +6,83 @@ import Common
 import UIKit
 
 public struct AddressToolbarUXConfiguration {
-    let toolbarCornerRadius: CGFloat
+    private(set) var toolbarCornerRadius: CGFloat = if #available(iOS 26, *) { 22 } else { 12 }
     let browserActionsAddressBarDividerWidth: CGFloat
     let isLocationTextCentered: Bool
+    let hasAlternativeLocationColor: Bool
     let locationTextFieldTrailingPadding: CGFloat
     let shouldBlur: Bool
     let backgroundAlpha: CGFloat
+    let isAddressBarMinimized: Bool
 
     public static func experiment(backgroundAlpha: CGFloat = 1.0,
-                                  shouldBlur: Bool = false) -> AddressToolbarUXConfiguration {
+                                  isAddressBarMinimized: Bool = false,
+                                  shouldBlur: Bool = false,
+                                  hasAlternativeLocationColor: Bool = false) -> AddressToolbarUXConfiguration {
         AddressToolbarUXConfiguration(
-            toolbarCornerRadius: 12.0,
             browserActionsAddressBarDividerWidth: 0.0,
             isLocationTextCentered: true,
+            hasAlternativeLocationColor: hasAlternativeLocationColor,
             locationTextFieldTrailingPadding: 0,
             shouldBlur: shouldBlur,
-            backgroundAlpha: backgroundAlpha
+            backgroundAlpha: backgroundAlpha,
+            isAddressBarMinimized: isAddressBarMinimized
         )
     }
 
     public static func `default`(backgroundAlpha: CGFloat = 1.0,
-                                 shouldBlur: Bool = false) -> AddressToolbarUXConfiguration {
+                                 isAddressBarMinimized: Bool = false,
+                                 shouldBlur: Bool = false,
+                                 hasAlternativeLocationColor: Bool = false) -> AddressToolbarUXConfiguration {
         AddressToolbarUXConfiguration(
             toolbarCornerRadius: 8.0,
             browserActionsAddressBarDividerWidth: 4.0,
             isLocationTextCentered: false,
+            hasAlternativeLocationColor: hasAlternativeLocationColor,
             locationTextFieldTrailingPadding: 8.0,
             shouldBlur: shouldBlur,
-            backgroundAlpha: backgroundAlpha
+            backgroundAlpha: backgroundAlpha,
+            isAddressBarMinimized: isAddressBarMinimized
         )
     }
 
-    func addressToolbarBackgroundColor(theme: any Theme) -> UIColor {
-        var backgroundColor = isLocationTextCentered ? theme.colors.layer3 : theme.colors.layer1
+    func addressToolbarBackgroundColor(theme: some Theme) -> UIColor {
+        guard !isAddressBarMinimized else { return .clear }
+
+        let backgroundColor = isLocationTextCentered ? theme.colors.layerSurfaceLow : theme.colors.layer1
         if shouldBlur {
-            backgroundColor = backgroundColor.withAlphaComponent(backgroundAlpha)
+            return backgroundColor.withAlphaComponent(backgroundAlpha)
         }
 
         return backgroundColor
     }
 
-    func locationContainerBackgroundColor(theme: any Theme) -> UIColor {
-        return isLocationTextCentered ? theme.colors.layer2 : theme.colors.layerSearch
+    func locationContainerBackgroundColor(theme: some Theme) -> UIColor {
+        guard !isAddressBarMinimized else { return .clear }
+        guard isLocationTextCentered else { return theme.colors.layerEmphasis }
+
+        if #available(iOS 26, *) {
+            if theme.isNova {
+                return theme.colors.layerSurfaceMediumAltGlass
+            }
+
+            return hasAlternativeLocationColor
+                ? theme.colors.layerSurfaceMediumAlt
+                : theme.colors.layerSurfaceMedium
+        }
+
+        // On iOS 18, Nova always uses the alternative color.
+        return (theme.isNova || hasAlternativeLocationColor)
+            ? theme.colors.layerSurfaceMediumAlt
+            : theme.colors.layerSurfaceMedium
+    }
+
+    public func locationViewVerticalPaddings(addressBarPosition: AddressToolbarPosition) -> (top: CGFloat, bottom: CGFloat) {
+        return switch addressBarPosition {
+        case .top:
+            (top: 8, bottom: 8)
+        case .bottom:
+            (top: 8, bottom: 8)
+        }
     }
 }

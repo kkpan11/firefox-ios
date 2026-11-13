@@ -7,15 +7,17 @@ import Foundation
 import Redux
 
 /// Actions that are related to navigation from the user perspective
-class NavigationBrowserAction: Action {
+struct NavigationBrowserAction: Action {
+    let windowUUID: WindowUUID
+    let actionType: ActionType
     let navigationDestination: NavigationDestination
 
     init(navigationDestination: NavigationDestination,
          windowUUID: WindowUUID,
          actionType: ActionType) {
+        self.windowUUID = windowUUID
+        self.actionType = actionType
         self.navigationDestination = navigationDestination
-        super.init(windowUUID: windowUUID,
-                   actionType: actionType)
     }
 }
 
@@ -23,8 +25,8 @@ enum NavigationBrowserActionType: ActionType {
     // Native views
     case tapOnTrackingProtection
     case tapOnShareSheet
-    case tapOnCustomizeHomepageButton
     case tapOnSettingsSection
+    case tapOnReaderMode
 
     // link related
     case tapOnLink
@@ -35,4 +37,11 @@ enum NavigationBrowserActionType: ActionType {
     case longPressOnCell
     case tapOnJumpBackInShowAllButton
     case tapOnBookmarksShowMoreButton
+    case tapOnHomepageSearchBar
+    case tapOnShortcutsShowAllButton
+    case tapOnQuickAnswersButton
+    case tapOnPrivacyNoticeLink
+    case tapOnShowCertificatesFromErrorPage
+    case tapOnNativeErrorPageLearnMore
+    case navigationDestinationHandled
 }

@@ -6,17 +6,19 @@ import Common
 import Foundation
 
 protocol SearchEngineSelectionCoordinatorDelegate: AnyObject {
+    @MainActor
     func showSettings(at destination: Route.SettingsSection)
 }
 
 protocol SearchEngineSelectionCoordinator: AnyObject {
+    @MainActor
     func navigateToSearchSettings(animated: Bool)
+
+    @MainActor
     func dismissModal(animated: Bool)
 }
 
-class DefaultSearchEngineSelectionCoordinator: BaseCoordinator,
-                                               FeatureFlaggable,
-                                               SearchEngineSelectionCoordinator {
+class DefaultSearchEngineSelectionCoordinator: BaseCoordinator, SearchEngineSelectionCoordinator {
     weak var parentCoordinator: ParentCoordinatorDelegate?
     weak var navigationHandler: SearchEngineSelectionCoordinatorDelegate?
 

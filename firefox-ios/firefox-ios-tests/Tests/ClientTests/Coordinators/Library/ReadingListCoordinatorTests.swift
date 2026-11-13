@@ -7,23 +7,24 @@ import XCTest
 
 @testable import Client
 
+@MainActor
 final class ReadingListCoordinatorTests: XCTestCase {
     var router: MockRouter!
     var parentCoordinator: MockLibraryCoordinatorDelegate!
     private var navigationHandler: MockLibraryNavigationHandler!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         router = MockRouter(navigationController: UINavigationController())
         parentCoordinator = MockLibraryCoordinatorDelegate()
         navigationHandler = MockLibraryNavigationHandler()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         router = nil
         parentCoordinator = nil
         navigationHandler = nil
+        try await super.tearDown()
     }
 
     func testOpenUrl() {

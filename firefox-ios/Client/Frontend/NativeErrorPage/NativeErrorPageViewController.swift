@@ -6,33 +6,38 @@ import Foundation
 import Common
 import ComponentLibrary
 import Redux
+import Shared
 
 final class NativeErrorPageViewController: UIViewController,
                                            Themeable,
                                            ContentContainable,
-                                           StoreSubscriber {
+                                           StoreSubscriber,
+                                           NativeErrorRegularContentViewDelegate,
+                                           NativeErrorBadCertContentViewDelegate {
     typealias SubscriberStateType = NativeErrorPageState
     private let windowUUID: WindowUUID
 
-    // MARK: Themable Variables
+    // MARK: Themeable Variables
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
     var currentWindowUUID: UUID? {
         windowUUID
     }
 
     private var overlayManager: OverlayModeManager
+    private let tabManager: TabManager
+    private let logger: Logger
     var contentType: ContentType = .nativeErrorPage
     private var nativeErrorPageState: NativeErrorPageState
+    private var model: ErrorPageModel?
 
     // MARK: UI Elements
-    private struct UX {
+    private enum UX {
         static let logoSizeWidth: CGFloat = 221
         static let logoSizeWidthiPad: CGFloat = 240
         static let mainStackSpacing: CGFloat = 24
         static let textStackSpacing: CGFloat = 16
-        static let reloadButtonIpadMultiplier = 0.7146
         static let portraitPadding = NSDirectionalEdgeInsets(
             top: 120,
             leading: 32,
@@ -45,12 +50,11 @@ final class NativeErrorPageViewController: UIViewController,
             bottom: -16,
             trailing: -64
         )
-        static let iPadPadding = NSDirectionalEdgeInsets(
-            top: 100,
-            leading: 166,
-            bottom: -16,
-            trailing: -166
-        )
+        static let badCertContentWidth: CGFloat = 311
+        static let badCertContentGap: CGFloat = 16
+        static let badCertImageSize: CGFloat = 160
+        static let badCertGapBetweenImageAndContent: CGFloat = 40
+        static let waybackTopPaddingReduction: CGFloat = 40
     }
 
     private lazy var scrollView: UIScrollView = .build()
@@ -59,15 +63,11 @@ final class NativeErrorPageViewController: UIViewController,
         stackView.spacing = UX.mainStackSpacing
     }
 
-    private lazy var textStack: UIStackView = .build { stackView in
+    private lazy var contentStack: UIStackView = .build { stackView in
         stackView.axis = .vertical
+        stackView.alignment = .fill
+        stackView.distribution = .equalSpacing
         stackView.spacing = UX.textStackSpacing
-    }
-
-    private lazy var commonContainer: UIStackView = .build { stackView in
-        stackView.axis = .vertical
-        stackView.spacing = UX.mainStackSpacing
-        stackView.distribution = .fill
     }
 
     private lazy var foxImage: UIImageView = .build { imageView in
@@ -83,7 +83,7 @@ final class NativeErrorPageViewController: UIViewController,
         label.adjustsFontForContentSizeCategory = true
         label.font = FXFontStyles.Bold.title2.scaledFont()
         label.numberOfLines = 0
-        label.textAlignment = .natural
+        label.textAlignment = .left
         label.text = .NativeErrorPage.NoInternetConnection.TitleLabel
         label.accessibilityIdentifier = AccessibilityIdentifiers.NativeErrorPage.titleLabel
         label.accessibilityTraits = .header
@@ -93,30 +93,83 @@ final class NativeErrorPageViewController: UIViewController,
         label.adjustsFontForContentSizeCategory = true
         label.font = FXFontStyles.Regular.subheadline.scaledFont()
         label.numberOfLines = 0
-        label.textAlignment = .natural
+        label.textAlignment = .left
         label.text = .NativeErrorPage.NoInternetConnection.Description
         label.accessibilityIdentifier = AccessibilityIdentifiers.NativeErrorPage.errorDescriptionLabel
     }
 
-    private lazy var reloadButton: PrimaryRoundedButton = .build { button in
-        button.addTarget(self, action: #selector(self.didTapReload), for: .touchUpInside)
-        button.isEnabled = true
+    // MARK: Content Views
+
+    private var currentActionView: UIView?
+
+    private lazy var regularContentView: NativeErrorRegularContentView = .build { view in
+        view.delegate = self
+        view.configure()
     }
 
-    private var commonContraintsList = [NSLayoutConstraint]()
-    private var iPhoneContraintsList = [NSLayoutConstraint]()
-    private var iPadContraintsList = [NSLayoutConstraint]()
+    private lazy var badCertContentView: NativeErrorBadCertContentView = .build { view in
+        view.delegate = self
+    }
+
+    // MARK: Constraints
+
+    private var commonConstraintsList = [NSLayoutConstraint]()
+    private var portraitConstraintsList = [NSLayoutConstraint]()
+    private var landscapeConstraintsList = [NSLayoutConstraint]()
+    private var contentStackWidthConstraint: NSLayoutConstraint?
+    private var foxImageWidthConstraint: NSLayoutConstraint?
+    private var foxImageHeightConstraint: NSLayoutConstraint?
+
+    private var isLandscape: Bool {
+        return UIDevice.current.isIphoneLandscape
+    }
+
+    private var isLargeContentSizeCategory: Bool {
+        switch traitCollection.preferredContentSizeCategory {
+        case .accessibilityExtraLarge, .accessibilityExtraExtraLarge, .accessibilityExtraExtraExtraLarge:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Determines whether the layout should use a horizontal axis based on
+    /// the current device type, orientation, and Dynamic Type settings.
+    /// - If the **content size category** is large, the layout always uses a **vertical** axis
+    /// - Otherwise, if the device is an **iPad**, the layout uses a **horizontal** axis,
+    ///   as there is sufficient screen space for side-by-side elements.
+    /// - On **iPhone**, the layout is horizontal only when in **landscape** orientation.
+    ///
+    /// - Returns: `true` if a horizontal layout should be used; `false` if vertical.
+    private var shouldUseHorizontalLayout: Bool {
+        guard !isLargeContentSizeCategory else { return false }
+
+        if shouldUseiPadSetup() {
+            return true
+        } else {
+            return isLandscape
+        }
+    }
+
+    private let searchEnginesManager: SearchEnginesManagerProvider
+    private let telemetry = WaybackTelemetry()
 
     init(
         windowUUID: WindowUUID,
+        tabManager: TabManager,
         themeManager: ThemeManager = AppContainer.shared.resolve(),
         overlayManager: OverlayModeManager,
-        notificationCenter: NotificationProtocol = NotificationCenter.default
+        searchEnginesManager: SearchEnginesManagerProvider = AppContainer.shared.resolve(SearchEnginesManager.self),
+        notificationCenter: NotificationProtocol = NotificationCenter.default,
+        logger: Logger = DefaultLogger.shared
     ) {
         self.windowUUID = windowUUID
+        self.tabManager = tabManager
         self.themeManager = themeManager
         self.overlayManager = overlayManager
+        self.searchEnginesManager = searchEnginesManager
         self.notificationCenter = notificationCenter
+        self.logger = logger
         nativeErrorPageState = NativeErrorPageState(windowUUID: windowUUID)
 
         super.init(
@@ -125,38 +178,87 @@ final class NativeErrorPageViewController: UIViewController,
         )
 
         subscribeToRedux()
-        configureUI()
         setupLayout()
         adjustConstraints()
         showViewForCurrentOrientation()
     }
 
     // MARK: Redux
+
     func newState(state: NativeErrorPageState) {
         nativeErrorPageState = state
+        guard let model = state.model else { return }
+        self.model = model
 
-        if !state.title.isEmpty {
-            titleLabel.text = state.title
-            foxImage.image = UIImage(named: nativeErrorPageState.foxImage)
-
-            if let validURL = state.url {
-                let errorDescription = getDescriptionWithHostName(
-                    errorURL: validURL,
-                    description: state.description
-                )
-                errorDescriptionLabel.attributedText = errorDescription
-            } else {
-                errorDescriptionLabel.text = state.description
-            }
+        if model.isRegularUI {
+            showRegularUI()
         } else {
-            return
+            showBadCertUI()
         }
     }
 
+    private func showRegularUI() {
+        guard let model else { return }
+        setActionView(regularContentView)
+        scrollContainer.spacing = UX.mainStackSpacing
+        contentStack.spacing = UX.textStackSpacing
+        contentStackWidthConstraint?.isActive = false
+        foxImageWidthConstraint?.constant = UX.logoSizeWidth
+        foxImageHeightConstraint?.isActive = false
+
+        titleLabel.text = model.title
+        foxImage.image = UIImage(named: model.foxImageName)
+        if let validURL = model.url {
+            errorDescriptionLabel.attributedText = getDescriptionWithHostName(
+                errorURL: validURL,
+                description: model.description
+            )
+        } else {
+            errorDescriptionLabel.text = model.description
+        }
+        regularContentView.configure(showWaybackButton: model.isWayback)
+        applyTheme()
+    }
+
+    private func showBadCertUI() {
+        guard let model else { return }
+        setActionView(badCertContentView)
+        scrollContainer.spacing = UX.badCertGapBetweenImageAndContent
+        contentStack.spacing = UX.badCertContentGap
+        contentStack.setCustomSpacing(UX.badCertContentGap, after: errorDescriptionLabel)
+        contentStackWidthConstraint?.constant = UX.badCertContentWidth
+        contentStackWidthConstraint?.isActive = true
+        foxImageWidthConstraint?.constant = UX.badCertImageSize
+        foxImageHeightConstraint?.isActive = true
+
+        foxImage.image = UIImage(named: model.foxImageName)
+
+        titleLabel.text = model.title
+        titleLabel.font = FXFontStyles.Bold.title2.scaledFont()
+        errorDescriptionLabel.text = model.description
+        errorDescriptionLabel.font = FXFontStyles.Regular.body.scaledFont()
+
+        applyTheme()
+
+        if let advancedSection = model.advancedSection {
+            badCertContentView.configure(
+                advancedSection: advancedSection,
+                url: model.url,
+                goBackTitle: String.NativeErrorPage.GoBackButton
+            )
+        }
+    }
+
+    private func setActionView(_ view: UIView) {
+        currentActionView?.removeFromSuperview()
+        currentActionView = view
+        contentStack.addArrangedSubview(view)
+    }
+
     func subscribeToRedux() {
-        let action = ScreenAction(windowUUID: windowUUID,
-                                  actionType: ScreenActionType.showScreen,
-                                  screen: .nativeErrorPage)
+        let action = ComponentAction(windowUUID: windowUUID,
+                                     actionType: ComponentActionType.addComponent,
+                                     component: .nativeErrorPage)
         store.dispatch(action)
         let uuid = windowUUID
         store.subscribe(self, transform: {
@@ -167,9 +269,9 @@ final class NativeErrorPageViewController: UIViewController,
     }
 
     func unsubscribeFromRedux() {
-        let action = ScreenAction(windowUUID: windowUUID,
-                                  actionType: ScreenActionType.closeScreen,
-                                  screen: .nativeErrorPage)
+        let action = ComponentAction(windowUUID: self.windowUUID,
+                                     actionType: ComponentActionType.removeComponent,
+                                     component: .nativeErrorPage)
         store.dispatch(action)
     }
 
@@ -178,15 +280,31 @@ final class NativeErrorPageViewController: UIViewController,
     }
 
     deinit {
-        unsubscribeFromRedux()
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits
+        guard Thread.isMainThread else {
+            assertionFailure("TabSwipeGestureHandler was not deallocated on the main thread. Observer was not removed")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            unsubscribeFromRedux()
+        }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        listenForThemeChange(view)
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
+
+        // TODO: Refactor to dispatch errorPageLoaded from middleware (or equivalent) per Redux best practices
         store.dispatch(NativeErrorPageAction(windowUUID: windowUUID,
                                              actionType: NativeErrorPageActionType.errorPageLoaded))
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        view.accessibilityViewIsModal = true
     }
 
     override func viewWillTransition(
@@ -201,36 +319,34 @@ final class NativeErrorPageViewController: UIViewController,
         showViewForCurrentOrientation()
     }
 
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        adjustConstraints()
-        showViewForCurrentOrientation()
-    }
-
-    private func configureUI() {
-        let viewModel = PrimaryRoundedButtonViewModel(
-            title: .NativeErrorPage.ButtonLabel,
-            a11yIdentifier: AccessibilityIdentifiers.NativeErrorPage.reloadButton
-        )
-        reloadButton.configure(
-            viewModel: viewModel
-        )
-    }
-
     private func setupLayout() {
-        textStack.addArrangedSubview(titleLabel)
-        textStack.addArrangedSubview(errorDescriptionLabel)
-        commonContainer.addArrangedSubview(textStack)
-        commonContainer.addArrangedSubview(reloadButton)
+        contentStack.addArrangedSubview(titleLabel)
+        contentStack.addArrangedSubview(errorDescriptionLabel)
+        contentStack.setCustomSpacing(UX.mainStackSpacing, after: errorDescriptionLabel)
         scrollContainer.addArrangedSubview(foxImage)
-        scrollContainer.addArrangedSubview(commonContainer)
+        scrollContainer.addArrangedSubview(contentStack)
         scrollView.addSubview(scrollContainer)
         view.addSubview(scrollView)
+
+        contentStackWidthConstraint = contentStack.widthAnchor.constraint(
+            equalToConstant: UX.badCertContentWidth
+        )
+        contentStackWidthConstraint?.isActive = false
+
+        foxImageWidthConstraint = foxImage.widthAnchor.constraint(
+            equalToConstant: UX.logoSizeWidth
+        )
+        foxImageWidthConstraint?.isActive = true
+
+        foxImageHeightConstraint = foxImage.heightAnchor.constraint(
+            equalToConstant: UX.badCertImageSize
+        )
+        foxImageHeightConstraint?.isActive = false
     }
 
     func adjustConstraints() {
-        NSLayoutConstraint.deactivate(iPhoneContraintsList + iPadContraintsList + commonContraintsList)
-        commonContraintsList = [
+        NSLayoutConstraint.deactivate(portraitConstraintsList + landscapeConstraintsList + commonConstraintsList)
+        commonConstraintsList = [
             scrollView.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor
             ),
@@ -242,91 +358,189 @@ final class NativeErrorPageViewController: UIViewController,
             ),
             scrollView.bottomAnchor.constraint(
                 equalTo: view.bottomAnchor
-            )
-        ]
+            ),
 
-        iPhoneContraintsList = [
             scrollContainer.topAnchor.constraint(
                 equalTo: scrollView.topAnchor,
-                constant: self.isLandscape ? UX.landscapePadding.top : UX.portraitPadding.top
+                constant: (isLandscape ? UX.landscapePadding.top : UX.portraitPadding.top) -
+                          (model?.isWayback == true ? UX.waybackTopPaddingReduction : 0)
             ),
             scrollContainer.leadingAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.leadingAnchor,
-                constant: self.isLandscape ? UX.landscapePadding.leading : UX.portraitPadding.leading
+                constant: isLandscape ? UX.landscapePadding.leading : UX.portraitPadding.leading
             ),
             scrollContainer.trailingAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.trailingAnchor,
-                constant: self.isLandscape ? UX.landscapePadding.trailing : UX.portraitPadding.trailing
+                constant: isLandscape ? UX.landscapePadding.trailing : UX.portraitPadding.trailing
             ),
             scrollContainer.bottomAnchor.constraint(
                 equalTo: scrollView.bottomAnchor,
-                constant: self.isLandscape ? UX.landscapePadding.bottom : UX.portraitPadding.bottom
+                constant: isLandscape ? UX.landscapePadding.bottom : UX.portraitPadding.bottom
             ),
-            foxImage.widthAnchor.constraint(equalToConstant: UX.logoSizeWidth)
         ]
 
-        iPadContraintsList = [
-            scrollContainer.topAnchor.constraint(
-                equalTo: scrollView.topAnchor,
-                constant: UX.iPadPadding.top
-            ),
-            scrollContainer.leadingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.leadingAnchor,
-                constant: UX.iPadPadding.leading
-            ),
-            scrollContainer.trailingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.trailingAnchor,
-                constant: UX.iPadPadding.trailing
-            ),
-            scrollContainer.bottomAnchor.constraint(
-                equalTo: scrollView.bottomAnchor,
-                constant: UX.iPadPadding.bottom
-            ),
+        landscapeConstraintsList = [
             foxImage.widthAnchor.constraint(equalToConstant: UX.logoSizeWidthiPad),
-            reloadButton.widthAnchor.constraint(
-                equalTo: commonContainer.widthAnchor,
-                multiplier: UX.reloadButtonIpadMultiplier
-            )
         ]
 
-        NSLayoutConstraint.activate(commonContraintsList)
+        NSLayoutConstraint.activate(commonConstraintsList)
+        foxImageWidthConstraint?.isActive = !shouldUseHorizontalLayout
 
-        if shouldUseiPadSetup() {
-            NSLayoutConstraint.activate(iPadContraintsList)
-        } else {
-            NSLayoutConstraint.activate(iPhoneContraintsList)
+        if shouldUseHorizontalLayout {
+            NSLayoutConstraint.activate(landscapeConstraintsList)
         }
-    }
-
-    private var isLandscape: Bool {
-        return UIDevice.current.isIphoneLandscape
     }
 
     private func showViewForCurrentOrientation() {
-        commonContainer.distribution = .equalCentering
-        if shouldUseiPadSetup() {
-            scrollContainer.axis = .horizontal // Use horizontal layout for iPad setup
-        } else {
-            scrollContainer.axis = self.isLandscape ? .horizontal : .vertical // For non-iPad or compact size classes
-        }
+        scrollContainer.axis = shouldUseHorizontalLayout ? .horizontal : .vertical
     }
 
     // MARK: ThemeApplicable
+
     func applyTheme() {
         let theme = themeManager.getCurrentTheme(for: windowUUID)
         view.backgroundColor = theme.colors.layer1
         titleLabel.textColor = theme.colors.textPrimary
         errorDescriptionLabel.textColor = theme.colors.textPrimary
-        reloadButton.applyTheme(theme: theme)
+        (currentActionView as? ThemeApplicable)?.applyTheme(theme: theme)
     }
 
-    @objc
-    private func didTapReload() {
+    private func dispatchBrowserAction(
+        actionType: GeneralBrowserActionType,
+        isNativeErrorPage: Bool = false
+    ) {
+        ensureMainThread {
+            store.dispatch(
+                GeneralBrowserAction(
+                    isNativeErrorPage: isNativeErrorPage,
+                    windowUUID: self.windowUUID,
+                    actionType: actionType
+                )
+            )
+        }
+    }
+
+    // MARK: - NativeErrorRegularContentViewDelegate
+
+    func regularContentViewDidTapReload() {
+        dispatchBrowserAction(actionType: .reloadWebsite, isNativeErrorPage: true)
+    }
+
+    func regularContentViewDidTapSearchWayback() {
+        telemetry.checkArchiveButtonTapped()
+        guard let failingURL = model?.url?.baseURLWithPath else { return }
+        regularContentView.configureWaybackButton(state: .loading)
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let snapshot = try await WaybackService.fetchSnapshot(for: failingURL.absoluteString)
+                guard let snapshot, snapshot.available, let archivedURL = URL(string: snapshot.url) else {
+                    await MainActor.run { self.regularContentView.configureWaybackButton(state: .failed(.notFound)) }
+                    return
+                }
+                telemetry.foundArchive()
+                await MainActor.run {
+                    store.dispatch(
+                        GeneralBrowserAction(
+                            destinationURL: archivedURL,
+                            isNativeErrorPage: true,
+                            windowUUID: self.windowUUID,
+                            actionType: GeneralBrowserActionType.loadWaybackURL
+                        )
+                    )
+                }
+            } catch {
+                await MainActor.run { self.regularContentView.configureWaybackButton(state: .failed(.networkError)) }
+            }
+        }
+    }
+
+    func regularContentViewDidTapWaybackLink() {
+        guard let waybackURL = URL(string: "https://web.archive.org") else { return }
+
         store.dispatch(
             GeneralBrowserAction(
+                destinationURL: waybackURL,
                 isNativeErrorPage: true,
+                windowUUID: self.windowUUID,
+                actionType: GeneralBrowserActionType.loadWaybackURL
+            )
+        )
+    }
+
+    func regularContentViewDidTapSearchWeb() {
+        telemetry.searchTheWebButtonTapped()
+        guard let failingURL = model?.url?.baseURLWithPath,
+              let defaultEngine = searchEnginesManager.defaultEngine else { return }
+
+        let query = "\"\(failingURL.absoluteString)\""
+        guard let searchURL = defaultEngine.searchURLForQuery(query) else { return }
+
+        store.dispatch(
+            GeneralBrowserAction(
+                destinationURL: searchURL,
+                isNativeErrorPage: true,
+                windowUUID: self.windowUUID,
+                actionType: GeneralBrowserActionType.loadWaybackURL
+            )
+        )
+    }
+
+    // MARK: - NativeErrorBadCertContentViewDelegate
+
+    func badCertContentViewDidTapGoBack() {
+        dispatchBrowserAction(actionType: .navigateBack, isNativeErrorPage: true)
+    }
+
+    func badCertContentViewDidTapProceed() {
+        store.dispatch(
+            NativeErrorPageAction(
                 windowUUID: windowUUID,
-                actionType: GeneralBrowserActionType.reloadWebsite
+                actionType: NativeErrorPageActionType.bypassCertificateWarning
+            )
+        )
+    }
+
+    func badCertContentViewDidTapViewCertificate() {
+        guard let selectedTab = tabManager.selectedTab,
+              let errorURL = selectedTab.webView?.url,
+              let internalURL = InternalURL(errorURL),
+              internalURL.isErrorPage else { return }
+        let originalURL = model?.url ?? internalURL.originalURLFromErrorPage ?? errorURL
+        guard !CertificateHelper.certificatesFromErrorURL(errorURL, logger: logger).isEmpty else { return }
+
+        let destination = NavigationDestination(
+            .certificatesFromErrorPage,
+            url: originalURL,
+            errorPageURL: errorURL,
+            certificateTitle: model?.title ?? ""
+        )
+        store.dispatch(
+            NavigationBrowserAction(
+                navigationDestination: destination,
+                windowUUID: windowUUID,
+                actionType: NavigationBrowserActionType.tapOnShowCertificatesFromErrorPage
+            )
+        )
+    }
+
+    func badCertContentViewDidTapLearnMore() {
+        guard let url = SupportUtils.URLForConnectionNotSecureLearnMore else {
+            logger.log(
+                "NativeErrorPage: Unable to create Learn More support URL",
+                level: .warning,
+                category: .lifecycle
+            )
+            return
+        }
+
+        let destination = NavigationDestination(.nativeErrorPageLearnMore, url: url)
+        store.dispatch(
+            NavigationBrowserAction(
+                navigationDestination: destination,
+                windowUUID: windowUUID,
+                actionType: NavigationBrowserActionType.tapOnNativeErrorPageLearnMore
             )
         )
     }
@@ -336,7 +550,7 @@ final class NativeErrorPageViewController: UIViewController,
 
         let errDescription = String(format: description, validHostName)
         let attributedString = errDescription.attributedText(
-            style: [.font: FXFontStyles.Regular.subheadline.scaledFont()],
+            style: [.font: FXFontStyles.Regular.body.scaledFont()],
             highlightedText: validHostName,
             highlightedTextStyle: [.font: FXFontStyles.Bold.body.scaledFont()]
         )

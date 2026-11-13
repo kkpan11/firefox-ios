@@ -4,8 +4,8 @@
 
 import UIKit
 
-struct UIConstants {
-    struct layout {
+enum UIConstants {
+    enum layout {
         static let browserToolbarDisabledOpacity: CGFloat = 0.4
         static let browserToolbarHeight: CGFloat = 44
         static let deleteAnimationDuration: TimeInterval = 0.25
@@ -153,7 +153,7 @@ struct UIConstants {
         static let toastLabelOffset: CGFloat = 20
     }
 
-    struct strings {
+    enum strings {
         static let aboutLearnMoreButton = NSLocalizedString("About.learnMoreButton", value: "Learn more", comment: "Button on About screen")
         static let aboutMissionLabel = NSLocalizedString("About.missionLabel", value: "%@ is produced by Mozilla. Our mission is to foster a healthy, open Internet.", comment: "Label on About screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”).")
         static let aboutPrivateBulletHeader = NSLocalizedString("About.privateBulletHeader", value: "Use it as a private browser:", comment: "Label on About screen")
@@ -199,9 +199,10 @@ struct UIConstants {
         static let labelBlockOther = NSLocalizedString("Settings.toggleBlockOther2", value: "Content", comment: "Label for the checkbox to toggle Other trackers")
         static let labelBlockFonts = NSLocalizedString("Settings.toggleBlockFonts", value: "Block web fonts", comment: "Label for toggle on main screen")
         static let labelSendAnonymousUsageData = NSLocalizedString("Settings.toggleSendUsageData", value: "Send usage data", comment: "Label for Send Usage Data toggle on main screen")
-        static let detailTextSendUsageData = NSLocalizedString("Settings.detailTextSendUsageData", value: "Mozilla strives to collect only what we need to provide and improve %@ for everyone.", comment: "Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”).")
-        static let labelStudies = NSLocalizedString("Settings.toggleStudies", value: "Studies", comment: "Label for Studies toggle on the settings screen")
-        static let detailTextStudies = NSLocalizedString("Settings.detailTextStudies", value: "%@ may install and run studies from time to time.", comment: "Description associated to the Studies toggle on the settings screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”).")
+        static let detailTextSendUsageData = NSLocalizedString("Settings.detailTextSendUsageData", value: "Mozilla strives to collect only what we need to provide and improve %@ for everyone.", comment: "Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example \"Firefox Focus\" or \"Firefox Klar\").")
+        static let detailTextSendUsageDataV2 = NSLocalizedString("Settings.detailTextSendUsageData.v2", value: "Mozilla strives to collect only what we need to provide and improve %@ for everyone.", comment: "Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example \"Firefox Focus\" or \"Firefox Klar\").")
+        static let labelRollouts = NSLocalizedString("Settings.toggleRollouts", value: "Allow Remote Improvements", comment: "Label for Rollouts toggle on the settings screen")
+        static let detailTextRollouts = NSLocalizedString("Settings.detailTextRollouts", value: "%@ will improve features, performance, and stability between updates. Changes applied remotely.", comment: "Description associated to the Rollouts toggle on the settings screen. %@ is the app name (for example \"Firefox Focus\" or \"Firefox Klar\").")
         static let labelCrashReports = NSLocalizedString(
             "Settings.toggleCrashReports",
             value: "Automatically Send Crash Reports",

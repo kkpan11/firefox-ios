@@ -13,43 +13,48 @@ protocol TabTrayController: UIViewController,
                             UIAdaptivePresentationControllerDelegate,
                             UIPopoverPresentationControllerDelegate,
                             Themeable {
+    @MainActor
     var openInNewTab: ((_ url: URL, _ isPrivate: Bool) -> Void)? { get set }
+    @MainActor
     var didSelectUrl: ((_ url: URL, _ visitType: VisitType) -> Void)? { get set }
 }
 
 protocol TabTrayViewControllerDelegate: AnyObject {
+    @MainActor
     func didFinish()
 }
 
-class TabTrayViewController: UIViewController,
-                             TabTrayController,
-                             UIToolbarDelegate,
-                             UIPageViewControllerDataSource,
-                             UIPageViewControllerDelegate,
-                             UIScrollViewDelegate,
-                             StoreSubscriber,
-                             FeatureFlaggable,
-                             TabTraySelectorDelegate,
-                             TabTrayAnimationDelegate {
+final class TabTrayViewController: UIViewController,
+                                   TabTrayController,
+                                   UIToolbarDelegate,
+                                   UIPageViewControllerDataSource,
+                                   UIPageViewControllerDelegate,
+                                   UIScrollViewDelegate,
+                                   StoreSubscriber,
+                                   TabTraySelectorDelegate,
+                                   TabTrayAnimationDelegate,
+                                   TabDisplayViewDragAndDropInteraction,
+                                   Notifiable {
     typealias SubscriberStateType = TabTrayState
-    private struct UX {
-        struct NavigationMenu {
+    private enum UX {
+        enum NavigationMenu {
             static let width: CGFloat = 343
+            static let iPadWidth: CGFloat = 500
         }
 
-        struct Toast {
-            static let undoDelay = DispatchTimeInterval.seconds(0)
-            static let undoDuration = DispatchTimeInterval.seconds(3)
-        }
         static let fixedSpaceWidth: CGFloat = 32
-        static let segmentedControlTopSpacing: CGFloat = 8
         static let segmentedControlHorizontalSpacing: CGFloat = 16
-        static let segmentedControlMinHeight: CGFloat = 45
+        static let verticalBarSegmentedControlBottomSpacing: CGFloat = 18
+        /// UIKit places vertical bar items 8pt lower than Safari does on iPhone Duo, so Safari most likely
+        /// uses a custom bottom spacing as well. This matches its position.
+        static let verticalBarItemsBottomSpacing: CGFloat = 8
+        static let titleFont: UIFont = FXFontStyles.Bold.caption2.systemFont()
+        static let cornerRadius: CGFloat = 2
     }
 
     // MARK: Theme
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
 
     // MARK: Child panel and navigation
@@ -61,19 +66,20 @@ class TabTrayViewController: UIViewController,
     var childPanelThemes: [Theme]?
     weak var delegate: TabTrayViewControllerDelegate?
     weak var navigationHandler: TabTrayNavigationHandler?
+    private var tabTrayUtils: TabTrayUtils
 
     private lazy var panelContainer: UIView = .build { _ in }
     private var pageViewController: UIPageViewController?
+    private weak var pageScrollView: UIScrollView?
     private var swipeFromIndex: Int?
     private lazy var themeAnimator = TabTrayThemeAnimator()
 
+    private let blurView: UIVisualEffectView = .build { view in
+        view.effect = UIBlurEffect(style: .systemUltraThinMaterial)
+    }
+
     var openInNewTab: ((URL, Bool) -> Void)?
     var didSelectUrl: ((URL, VisitType) -> Void)?
-
-    private var isTabTrayUIExperimentsEnabled: Bool {
-        return featureFlags.isFeatureEnabled(.tabTrayUIExperiments, checking: .buildOnly)
-        && UIDevice.current.userInterfaceIdiom != .pad
-    }
 
     // MARK: - Redux state
     var tabTrayState: TabTrayState
@@ -105,11 +111,11 @@ class TabTrayViewController: UIViewController,
         return childPanelControllers[index]
     }
 
-    var shownToast: Toast?
     var logger: Logger
 
     // MARK: - UI
     private var titleWidthConstraint: NSLayoutConstraint?
+    private var experimentSegmentControlBottomConstraint: NSLayoutConstraint?
     private var containerView: UIView = .build()
     private lazy var navigationToolbar: UIToolbar = .build { [self] toolbar in
         toolbar.delegate = self
@@ -124,16 +130,37 @@ class TabTrayViewController: UIViewController,
 
     private lazy var experimentSegmentControl: TabTraySelectorView = {
         let selectedIndex = experimentConvertSelectedIndex()
-        let selector = TabTraySelectorView(selectedIndex: selectedIndex, theme: retrieveTheme())
+        let titles = [TabTrayPanelType.privateTabs.label,
+                      TabTrayPanelType.tabs.label,
+                      TabTrayPanelType.syncedTabs.label]
+        let selector = TabTraySelectorView(selectedIndex: selectedIndex,
+                                           theme: retrieveTheme(),
+                                           buttonTitles: titles)
         selector.delegate = self
-        selector.items = [TabTrayPanelType.privateTabs.label,
-                          TabTrayPanelType.tabs.label,
-                          TabTrayPanelType.syncedTabs.label]
         selector.accessibilityIdentifier = AccessibilityIdentifiers.TabTray.navBarSegmentedControl
 
         didSelectSection(panelType: tabTrayState.selectedPanel)
         return selector
     }()
+
+    private lazy var experimentiPadSegmentControl: TabTrayiPadSelectorView = {
+        let selectedIndex = experimentConvertSelectedIndex()
+        let titles = [TabTrayPanelType.privateTabs.label,
+                      TabTrayPanelType.tabs.label,
+                      TabTrayPanelType.syncedTabs.label]
+        let selector = TabTrayiPadSelectorView(selectedIndex: selectedIndex,
+                                               theme: retrieveTheme(),
+                                               buttonTitles: titles)
+        selector.delegate = self
+        selector.accessibilityIdentifier = AccessibilityIdentifiers.TabTray.navBarSegmentedControl
+
+        didSelectSection(panelType: tabTrayState.selectedPanel)
+        return selector
+    }()
+
+    private var activeExperimentSegmentControl: TabTraySelectorView {
+        shouldUseiPadSetup() ? experimentiPadSegmentControl : experimentSegmentControl
+    }
 
     private func experimentConvertSelectedIndex() -> Int {
         // Temporary offset of numbers to account for the different order in the experiment - tabTrayUIExperiments
@@ -143,8 +170,8 @@ class TabTrayViewController: UIViewController,
 
     lazy var countLabel: UILabel = {
         let label = UILabel(frame: CGRect(width: 24, height: 24))
-        label.font = TabsButton.UX.titleFont
-        label.layer.cornerRadius = TabsButton.UX.cornerRadius
+        label.font = UX.titleFont
+        label.layer.cornerRadius = UX.cornerRadius
         label.textAlignment = .center
         label.text = "0"
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -165,6 +192,41 @@ class TabTrayViewController: UIViewController,
         ]
 
         return isRegularLayout ? regularLayoutItems : iPhoneItems
+    }
+
+    private var isNovaDesignEnabled: Bool {
+        (AppContainer.shared.resolve() as FeatureFlagProviding).isEnabled(.novaDesign)
+    }
+
+    private var usesNovaGlassToolbarButtons: Bool {
+        guard #available(iOS 26.0, *) else { return false }
+        return isNovaDesignEnabled
+    }
+
+    @available(iOS 26.0, *)
+    private func applyToolbarGlassButtonTints(theme: Theme) {
+        guard theme.isNova else { return }
+        let glassTint = theme.colors.layerGlassTintNova
+        setProminentGlass(deleteButton,
+                          StandardImageIdentifiers.Large.delete,
+                          background: glassTint,
+                          glyph: theme.colors.iconPrimary)
+        setProminentGlass(newTabButton,
+                          StandardImageIdentifiers.Large.plus,
+                          background: glassTint,
+                          glyph: theme.colors.iconPrimary)
+        setProminentGlass(doneButton,
+                          StandardImageIdentifiers.Large.checkmark,
+                          background: theme.colors.actionPrimary,
+                          glyph: theme.colors.iconInverted)
+        syncTabButton.tintColor = theme.colors.iconPrimary
+    }
+
+    @available(iOS 26.0, *)
+    private func setProminentGlass(_ button: UIBarButtonItem, _ imageName: String, background: UIColor, glyph: UIColor) {
+        button.style = .prominent
+        button.tintColor = background
+        button.image = UIImage(named: imageName)?.withTintColor(glyph, renderingMode: .alwaysOriginal)
     }
 
     private lazy var deleteButton: UIBarButtonItem = {
@@ -188,6 +250,15 @@ class TabTrayViewController: UIViewController,
     }()
 
     private lazy var doneButton: UIBarButtonItem = {
+        if usesNovaGlassToolbarButtons {
+            let button = UIBarButtonItem(image: UIImage.templateImageNamed(StandardImageIdentifiers.Large.checkmark),
+                                         style: .plain,
+                                         target: self,
+                                         action: #selector(doneButtonTapped))
+            button.accessibilityIdentifier = AccessibilityIdentifiers.TabTray.doneButton
+            button.accessibilityLabel = .SettingsSearchDoneButton
+            return button
+        }
         let button = UIBarButtonItem(barButtonSystemItem: .done,
                                      target: self,
                                      action: #selector(doneButtonTapped))
@@ -227,6 +298,8 @@ class TabTrayViewController: UIViewController,
         return fixedSpace
     }()
 
+    private lazy var verticalBarBottomSpace: UIBarButtonItem = .fixedSpace(UX.verticalBarItemsBottomSpacing)
+
     private lazy var bottomToolbarItems: [UIBarButtonItem] = {
         return [deleteButton, flexibleSpace, newTabButton]
     }()
@@ -255,15 +328,21 @@ class TabTrayViewController: UIViewController,
         }
     }
 
+    public var isReduceTransparencyEnabled: Bool {
+        UIAccessibility.isReduceTransparencyEnabled
+    }
+
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { windowUUID }
 
     init(panelType: TabTrayPanelType,
+         tabTrayUtils: TabTrayUtils = DefaultTabTrayUtils(),
          themeManager: ThemeManager = AppContainer.shared.resolve(),
          logger: Logger = DefaultLogger.shared,
          windowUUID: WindowUUID,
          and notificationCenter: NotificationProtocol = NotificationCenter.default) {
         self.tabTrayState = TabTrayState(windowUUID: windowUUID, panelType: panelType)
+        self.tabTrayUtils = tabTrayUtils
         self.themeManager = themeManager
         self.logger = logger
         self.notificationCenter = notificationCenter
@@ -282,8 +361,16 @@ class TabTrayViewController: UIViewController,
         super.viewDidLoad()
         setupView()
         subscribeToRedux()
-        listenForThemeChange(view)
         updateToolbarItems()
+
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [UIAccessibility.reduceTransparencyStatusDidChangeNotification]
+        )
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewDidLayoutSubviews() {
@@ -299,11 +386,21 @@ class TabTrayViewController: UIViewController,
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        applyTheme()
+
+        // Changing the interface style triggers a trait change, so we end up back here on the transition's first
+        // frame. Re-theming now would flash the destination colors before the animation gets a chance to start.
+        if !themeAnimator.isAnimating && swipeFromIndex == nil {
+            applyTheme()
+        }
 
         if previousTraitCollection?.horizontalSizeClass != traitCollection.horizontalSizeClass
             || previousTraitCollection?.verticalSizeClass != traitCollection.verticalSizeClass {
             updateLayout()
+        }
+
+        if previousTraitCollection?.hasVerticalSystemBar != traitCollection.hasVerticalSystemBar {
+            updateExperimentSegmentControlBottomConstraint()
+            updateToolbarItems()
         }
     }
 
@@ -321,25 +418,32 @@ class TabTrayViewController: UIViewController,
         case .compact:
             navigationItem.leftBarButtonItem = nil
             navigationItem.titleView = nil
-            if isTabTrayUIExperimentsEnabled {
+            if tabTrayUtils.shouldDisplayExperimentUI() {
                 navigationController?.setNavigationBarHidden(true, animated: false)
                 navigationItem.rightBarButtonItems = nil
             } else {
                 navigationItem.rightBarButtonItems = [doneButton]
             }
         case .regular:
-            navigationItem.titleView = segmentedControl
+
+            navigationItem.titleView = getSegmentedControl()
         }
         updateToolbarItems()
+    }
+
+    func getSegmentedControl() -> UIView {
+        guard tabTrayUtils.shouldDisplayExperimentUI() else { return segmentedControl }
+
+        return shouldUseiPadSetup() ? experimentiPadSegmentControl : experimentSegmentControl
     }
 
     // MARK: - Redux
 
     func subscribeToRedux() {
         let initialSelectedPanel = tabTrayState.selectedPanel
-        let screenAction = ScreenAction(windowUUID: windowUUID,
-                                        actionType: ScreenActionType.showScreen,
-                                        screen: .tabsTray)
+        let screenAction = ComponentAction(windowUUID: windowUUID,
+                                           actionType: ComponentActionType.addComponent,
+                                           component: .tabsTray)
         store.dispatch(screenAction)
         let uuid = windowUUID
         store.subscribe(self, transform: {
@@ -355,18 +459,19 @@ class TabTrayViewController: UIViewController,
     }
 
     func unsubscribeFromRedux() {
-        let screenAction = ScreenAction(windowUUID: windowUUID,
-                                        actionType: ScreenActionType.closeScreen,
-                                        screen: .tabsTray)
+        let screenAction = ComponentAction(windowUUID: windowUUID,
+                                           actionType: ComponentActionType.removeComponent,
+                                           component: .tabsTray)
         store.dispatch(screenAction)
     }
 
     func newState(state: TabTrayState) {
         guard state != tabTrayState else { return }
-
+        if state.normalTabsCount != tabTrayState.normalTabsCount {
+            updateTabCountImage(count: state.normalTabsCount)
+        }
         tabTrayState = state
 
-        updateTabCountImage(count: tabTrayState.normalTabsCount)
         segmentedControl.selectedSegmentIndex = tabTrayState.selectedPanel.rawValue
         if tabTrayState.shouldDismiss {
             delegate?.didFinish()
@@ -377,16 +482,8 @@ class TabTrayViewController: UIViewController,
             tabTrayState.showCloseConfirmation = false
         }
 
-        if let toastType = tabTrayState.toastType {
-            presentToast(toastType: toastType) { [weak self] undoClose in
-                guard let self else { return }
-
-                // Undo the action described by the toast
-                if let action = toastType.reduxAction(for: self.windowUUID), undoClose {
-                    store.dispatch(action)
-                }
-                self.shownToast = nil
-            }
+        if let enableDeleteTabsButton = tabTrayState.enableDeleteTabsButton {
+            deleteButton.isEnabled = enableDeleteTabsButton
         }
 
         // Only apply normal theme when there's no on going animations
@@ -403,12 +500,17 @@ class TabTrayViewController: UIViewController,
 
     // MARK: Themeable
     var shouldUsePrivateOverride: Bool {
-        return featureFlags.isFeatureEnabled(.feltPrivacySimplifiedUI, checking: .buildOnly)
+        return true
     }
 
     var shouldBeInPrivateTheme: Bool {
-        let tabTrayState = store.state.screenState(TabTrayState.self, for: .tabsTray, window: windowUUID)
+        let tabTrayState = store.state.componentState(TabTrayState.self, for: .tabsTray, window: windowUUID)
         return tabTrayState?.isPrivateMode ?? false
+    }
+
+    /// This override predates the Nova implementation and must remain unchanged.
+    var isSubjectToNovaPrivateOverride: Bool {
+        return false
     }
 
     func applyTheme() {
@@ -421,16 +523,41 @@ class TabTrayViewController: UIViewController,
         navigationToolbar.barTintColor = theme.colors.layer1
         deleteButton.tintColor = theme.colors.iconPrimary
         newTabButton.tintColor = theme.colors.iconPrimary
-        doneButton.tintColor = theme.colors.iconPrimary
+        if #available(iOS 26, *) {
+            doneButton.tintColor = theme.isNova ? theme.colors.iconInverted : theme.colors.iconPrimary
+        } else {
+            doneButton.tintColor = theme.colors.iconPrimary
+        }
         syncTabButton.tintColor = theme.colors.iconPrimary
-        panelContainer.backgroundColor = theme.colors.layer3
+        panelContainer.backgroundColor = theme.isNova ? theme.colors.layer1 : theme.colors.layer3
+        if #available(iOS 26.0, *) {
+            applyToolbarGlassButtonTints(theme: theme)
+        }
+        if theme.isNova {
+            segmentedControl.selectedSegmentTintColor = theme.colors.layer2
+            if #unavailable(iOS 26) {
+                segmentedControl.backgroundColor = theme.colors.layerSurfaceLow
+            }
+        }
 
         if shouldUsePrivateOverride {
-            experimentSegmentControl.applyTheme(theme: theme)
-
-            let userInterfaceStyle = tabTrayState.isPrivateMode ? .dark : theme.type.getInterfaceStyle()
-            navigationController?.overrideUserInterfaceStyle = userInterfaceStyle
+            activeExperimentSegmentControl.applyTheme(theme: theme)
+            updateInterfaceStyle(isPrivateMode: tabTrayState.isPrivateMode)
         }
+
+        setupToolBarAppearance(theme: theme)
+        setupNavigationBarAppearance(theme: theme)
+    }
+
+    private func updateInterfaceStyle(isPrivateMode: Bool) {
+        guard shouldUsePrivateOverride else { return }
+
+        let style: UIUserInterfaceStyle = if isPrivateMode {
+            .dark
+        } else {
+            themeManager.resolvedTheme(with: false).type.getInterfaceStyle()
+        }
+        navigationController?.overrideUserInterfaceStyle = style
     }
 
     func applyTheme(fromIndex: Int, toIndex: Int, progress: CGFloat) {
@@ -442,13 +569,72 @@ class TabTrayViewController: UIViewController,
 
         view.backgroundColor = swipeTheme.colors.layer1
         navigationToolbar.barTintColor = swipeTheme.colors.layer1
-        deleteButton.tintColor = swipeTheme.colors.iconPrimary
-        newTabButton.tintColor = swipeTheme.colors.iconPrimary
-        doneButton.tintColor = swipeTheme.colors.iconPrimary
+        if !usesNovaGlassToolbarButtons {
+            deleteButton.tintColor = swipeTheme.colors.iconPrimary
+            newTabButton.tintColor = swipeTheme.colors.iconPrimary
+            if #available(iOS 26, *) {
+                doneButton.tintColor = swipeTheme.isNova ? swipeTheme.colors.iconInverted : swipeTheme.colors.iconPrimary
+            } else {
+                doneButton.tintColor = swipeTheme.colors.iconPrimary
+            }
+        }
         syncTabButton.tintColor = swipeTheme.colors.iconPrimary
-        panelContainer.backgroundColor = swipeTheme.colors.layer3
+        panelContainer.backgroundColor = swipeTheme.isNova ? swipeTheme.colors.layer1 : swipeTheme.colors.layer3
 
-        experimentSegmentControl.applyTheme(theme: swipeTheme)
+        activeExperimentSegmentControl.applyTheme(theme: swipeTheme)
+        if progress >= 1.0, let toTheme = childPanelThemes?[safe: toIndex] {
+            activeExperimentSegmentControl.applyTheme(theme: toTheme)
+            if #available(iOS 26.0, *) {
+                applyToolbarGlassButtonTints(theme: toTheme)
+            }
+        }
+        setupToolBarAppearance(theme: swipeTheme)
+        setupNavigationBarAppearance(theme: swipeTheme)
+        updateInterfaceStyle(isPrivateMode: tabTrayState.isPrivateMode)
+    }
+
+    private func setupToolBarAppearance(theme: Theme) {
+        guard tabTrayUtils.shouldDisplayExperimentUI() else { return }
+
+        // When Reduce Transparency is on, fall through to set a solid
+        // appearance so button backgrounds use the correct theme color.
+        if #available(iOS 26, *), !isReduceTransparencyEnabled { return }
+
+        let backgroundAlpha = tabTrayUtils.backgroundAlpha()
+        let color = (theme.isNova ? theme.colors.layerSurfaceLow : theme.colors.layer1)
+            .withAlphaComponent(backgroundAlpha)
+
+        let standardAppearance = UIToolbarAppearance()
+        standardAppearance.configureWithDefaultBackground()
+        standardAppearance.backgroundColor = color
+        standardAppearance.backgroundEffect = nil
+        standardAppearance.shadowColor = .clear
+        navigationController?.toolbar.standardAppearance = standardAppearance
+        navigationController?.toolbar.compactAppearance = standardAppearance
+        navigationController?.toolbar.scrollEdgeAppearance = standardAppearance
+        navigationController?.toolbar.compactScrollEdgeAppearance = standardAppearance
+        navigationController?.toolbar.tintColor = theme.colors.actionPrimary
+    }
+
+    private func setupNavigationBarAppearance(theme: Theme) {
+        guard tabTrayUtils.shouldDisplayExperimentUI() else { return }
+
+        let backgroundAlpha = tabTrayUtils.backgroundAlpha()
+        let color = (theme.isNova ? theme.colors.layerSurfaceLow : theme.colors.layer1)
+            .withAlphaComponent(backgroundAlpha)
+
+        let standardAppearance = UINavigationBarAppearance()
+        standardAppearance.configureWithDefaultBackground()
+        standardAppearance.titleTextAttributes = [.foregroundColor: theme.colors.textPrimary]
+        standardAppearance.backgroundColor = color
+        standardAppearance.backgroundEffect = nil
+        standardAppearance.shadowColor = .clear
+
+        navigationController?.navigationBar.standardAppearance = standardAppearance
+        navigationController?.navigationBar.compactAppearance = standardAppearance
+        navigationController?.navigationBar.scrollEdgeAppearance = standardAppearance
+        navigationController?.navigationBar.compactScrollEdgeAppearance = standardAppearance
+        navigationController?.navigationBar.tintColor = theme.colors.actionPrimary
     }
 
     // MARK: Private
@@ -465,7 +651,9 @@ class TabTrayViewController: UIViewController,
         navigationItem.titleView = nil
         updateTitle()
         view.addSubviews(containerView)
-        if isTabTrayUIExperimentsEnabled {
+
+        if tabTrayUtils.shouldDisplayExperimentUI() {
+            containerView.addSubview(panelContainer)
             containerView.addSubview(segmentedControl)
             segmentedControl.translatesAutoresizingMaskIntoConstraints = false
             // Out of simplicity for the experiment, turn off a11y for the old segmented control
@@ -475,33 +663,33 @@ class TabTrayViewController: UIViewController,
             containerView.addSubview(experimentSegmentControl)
             experimentSegmentControl.translatesAutoresizingMaskIntoConstraints = false
 
-            containerView.addSubview(panelContainer)
+            let segmentControlHeight = tabTrayUtils.segmentedControlHeight
 
             NSLayoutConstraint.activate([
                 panelContainer.topAnchor.constraint(equalTo: containerView.topAnchor),
                 panelContainer.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
                 panelContainer.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-                panelContainer.bottomAnchor.constraint(equalTo: experimentSegmentControl.topAnchor,
-                                                       constant: -UX.segmentedControlTopSpacing),
+                panelContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
 
                 containerView.topAnchor.constraint(equalTo: view.topAnchor),
                 containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
                 containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
-                segmentedControl.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
+                segmentedControl.leadingAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.leadingAnchor,
                                                           constant: UX.segmentedControlHorizontalSpacing),
                 segmentedControl.bottomAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.bottomAnchor),
-                segmentedControl.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
+                segmentedControl.trailingAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.trailingAnchor,
                                                            constant: -UX.segmentedControlHorizontalSpacing),
 
-                experimentSegmentControl.bottomAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.bottomAnchor),
-                experimentSegmentControl.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
-                                                                  constant: UX.segmentedControlHorizontalSpacing),
-                experimentSegmentControl.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
-                                                                   constant: -UX.segmentedControlHorizontalSpacing),
-                experimentSegmentControl.heightAnchor.constraint(equalToConstant: UX.segmentedControlMinHeight)
+                experimentSegmentControl.leadingAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.leadingAnchor),
+                experimentSegmentControl.trailingAnchor.constraint(
+                    equalTo: containerView.safeAreaLayoutGuide.trailingAnchor),
+                experimentSegmentControl.heightAnchor.constraint(equalToConstant: segmentControlHeight)
             ])
+            updateExperimentSegmentControlBottomConstraint()
+
+            setupBlurView()
         } else {
             view.addSubview(navigationToolbar)
             navigationToolbar.setItems([UIBarButtonItem(customView: segmentedControl)], animated: false)
@@ -519,26 +707,106 @@ class TabTrayViewController: UIViewController,
         }
     }
 
+    /// The vertical system bar lays its toolbar items out closer to the bottom edge than the safe area,
+    /// so the selector follows them to stay centered with the bottom-most item.
+    private func updateExperimentSegmentControlBottomConstraint() {
+        guard experimentSegmentControl.superview == containerView else { return }
+
+        experimentSegmentControlBottomConstraint?.isActive = false
+        experimentSegmentControlBottomConstraint = if traitCollection.hasVerticalSystemBar {
+            experimentSegmentControl.bottomAnchor.constraint(
+                equalTo: containerView.bottomAnchor,
+                constant: -UX.verticalBarSegmentedControlBottomSpacing)
+        } else {
+            experimentSegmentControl.bottomAnchor.constraint(equalTo: containerView.safeAreaLayoutGuide.bottomAnchor)
+        }
+        experimentSegmentControlBottomConstraint?.isActive = true
+    }
+
+    private func setupBlurView() {
+        guard tabTrayUtils.shouldDisplayExperimentUI(), tabTrayUtils.isTabTrayTranslucencyEnabled else { return }
+
+        if #available(iOS 26, *) { return }
+
+        // Should use Regular layout used for iPad
+        if isRegularLayout {
+            containerView.insertSubview(blurView, aboveSubview: containerView)
+
+            NSLayoutConstraint.activate([
+                blurView.topAnchor.constraint(equalTo: view.topAnchor),
+                blurView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                blurView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                blurView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+            ])
+        } else {
+            containerView.insertSubview(blurView, belowSubview: experimentSegmentControl)
+
+            NSLayoutConstraint.activate([
+                blurView.topAnchor.constraint(equalTo: experimentSegmentControl.topAnchor),
+                blurView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+                blurView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+                blurView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            ])
+        }
+
+        updateBlurView()
+    }
+
+    private func updateBlurView() {
+        applyTheme()
+
+        if #available(iOS 26, *) { return }
+        blurView.isHidden = isNovaDesignEnabled || !tabTrayUtils.shouldBlur()
+    }
+
     private func updateTitle() {
-        if !isTabTrayUIExperimentsEnabled, !self.isRegularLayout {
+        if !tabTrayUtils.shouldDisplayExperimentUI(), !self.isRegularLayout {
             navigationItem.title = tabTrayState.navigationTitle
         }
     }
 
     private func setupForiPad() {
+        guard !tabTrayUtils.shouldDisplayExperimentUI() else {
+            setupForiPadExperiment()
+            return
+        }
+
         navigationItem.titleView = segmentedControl
         view.addSubviews(containerView)
+        setupBlurView()
 
         if let titleView = navigationItem.titleView {
             titleWidthConstraint = titleView.widthAnchor.constraint(equalToConstant: UX.NavigationMenu.width)
             titleWidthConstraint?.isActive = true
         }
 
+        let isTabTrayEnabled = tabTrayUtils.shouldDisplayExperimentUI() && tabTrayUtils.isTabTrayTranslucencyEnabled
+        let topConstraintTo = isTabTrayEnabled ? view.topAnchor : view.safeAreaLayoutGuide.topAnchor
+
         NSLayoutConstraint.activate([
-            containerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            containerView.topAnchor.constraint(equalTo: topConstraintTo),
             containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+    }
+
+    private func setupForiPadExperiment() {
+        navigationItem.titleView = getSegmentedControl()
+        view.addSubviews(containerView)
+        containerView.addSubview(panelContainer)
+        setupBlurView()
+
+        NSLayoutConstraint.activate([
+            containerView.topAnchor.constraint(equalTo: view.topAnchor),
+            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            panelContainer.topAnchor.constraint(equalTo: containerView.topAnchor),
+            panelContainer.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            panelContainer.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            panelContainer.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
     }
 
@@ -550,13 +818,22 @@ class TabTrayViewController: UIViewController,
         }
 
         let isSyncTabsPanel = tabTrayState.isSyncTabsPanel
-        var toolbarItems: [UIBarButtonItem]
-        if isTabTrayUIExperimentsEnabled {
-            toolbarItems = isSyncTabsPanel ? experimentBottomToolbarItemsForSync : experimentBottomToolbarItems
+        var items: [UIBarButtonItem]
+        if tabTrayUtils.shouldDisplayExperimentUI() {
+            items = isSyncTabsPanel ? experimentBottomToolbarItemsForSync : experimentBottomToolbarItems
         } else {
-            toolbarItems = isSyncTabsPanel ? bottomToolbarItemsForSync : bottomToolbarItems
+            items = isSyncTabsPanel ? bottomToolbarItemsForSync : bottomToolbarItems
         }
-        setToolbarItems(toolbarItems, animated: true)
+        // A trailing space lifts the items off the bottom edge of the vertical system bar.
+        if traitCollection.hasVerticalSystemBar {
+            items.append(verticalBarBottomSpace)
+        }
+        setToolbarItemsIfChanged(items)
+    }
+
+    private func setToolbarItemsIfChanged(_ items: [UIBarButtonItem]) {
+        guard items != toolbarItems else { return }
+        setToolbarItems(items, animated: true)
     }
 
     private func setupToolbarForIpad() {
@@ -569,8 +846,8 @@ class TabTrayViewController: UIViewController,
         }
 
         navigationController?.isToolbarHidden = true
-        let toolbarItems = tabTrayState.isSyncTabsPanel ? bottomToolbarItemsForSync : bottomToolbarItems
-        setToolbarItems(toolbarItems, animated: true)
+        let items = tabTrayState.isSyncTabsPanel ? bottomToolbarItemsForSync : bottomToolbarItems
+        setToolbarItemsIfChanged(items)
     }
 
     private func createSegmentedControl(
@@ -608,49 +885,6 @@ class TabTrayViewController: UIViewController,
         }
     }
 
-    private func presentToast(toastType: ToastType, completion: @escaping (Bool) -> Void) {
-        if let currentToast = shownToast {
-            currentToast.dismiss(false)
-        }
-
-        if toastType.reduxAction(for: windowUUID) != nil {
-            let viewModel = ButtonToastViewModel(labelText: toastType.title, buttonText: toastType.buttonText)
-            let toast = ButtonToast(viewModel: viewModel,
-                                    theme: retrieveTheme(),
-                                    completion: { buttonPressed in
-                                        completion(buttonPressed)
-            })
-            toast.showToast(viewController: self,
-                            delay: UX.Toast.undoDelay,
-                            duration: UX.Toast.undoDuration) { toast in
-                if self.isTabTrayUIExperimentsEnabled, !self.isRegularLayout {
-                    [
-                        toast.leadingAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.leadingAnchor,
-                                                       constant: Toast.UX.toastSidePadding),
-                        toast.trailingAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.trailingAnchor,
-                                                        constant: -Toast.UX.toastSidePadding),
-                        toast.bottomAnchor.constraint(equalTo: self.segmentedControl.topAnchor,
-                                                      constant: -UX.segmentedControlTopSpacing)
-                    ]
-                } else {
-                    [
-                        toast.leadingAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.leadingAnchor,
-                                                       constant: Toast.UX.toastSidePadding),
-                        toast.trailingAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.trailingAnchor,
-                                                        constant: -Toast.UX.toastSidePadding),
-                        toast.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor)
-                    ]
-                }
-            }
-            shownToast = toast
-        } else {
-            let toast = SimpleToast()
-            toast.showAlertWithText(toastType.title,
-                                    bottomContainer: view,
-                                    theme: retrieveTheme())
-        }
-    }
-
     // MARK: Child panels
     func setupOpenPanel(panelType: TabTrayPanelType) {
         tabTrayState.selectedPanel = panelType
@@ -661,7 +895,7 @@ class TabTrayViewController: UIViewController,
         updateTitle()
         updateLayout()
 
-        if !isTabTrayUIExperimentsEnabled {
+        if !tabTrayUtils.shouldDisplayExperimentUI() {
             hideCurrentPanel()
             showPanel(currentPanel)
             navigationHandler?.start(panelType: panelType, navigationController: currentPanel)
@@ -677,6 +911,14 @@ class TabTrayViewController: UIViewController,
         } else {
             navigationHandler?.start(panelType: panelType, navigationController: currentPanel)
         }
+    }
+
+    func preloadSelectedPanelForPresentation() {
+        loadViewIfNeeded()
+        let panel = tabTrayUtils.shouldDisplayExperimentUI() ? currentExperimentPanel : currentPanel
+        guard let panel, let tabsPanel = panel.topViewController as? TabDisplayPanelViewController else { return }
+        panel.loadViewIfNeeded()
+        tabsPanel.loadViewIfNeeded()
     }
 
     private func showPanel(_ panel: UIViewController) {
@@ -716,6 +958,7 @@ class TabTrayViewController: UIViewController,
 
         if let scrollView = pageVC.view.subviews.first(where: { $0 is UIScrollView }) as? UIScrollView {
             scrollView.delegate = self
+            scrollView.isScrollEnabled = false
         }
 
         self.pageViewController = pageVC
@@ -768,7 +1011,8 @@ class TabTrayViewController: UIViewController,
             )
         }
 
-        alert.addAction(UIAlertAction(title: .LegacyAppMenu.AppMenuCloseAllTabsTitleString,
+        let tabsCountString = tabTrayState.isNormalTabsPanel ? tabTrayState.normalTabsCount : tabTrayState.privateTabsCount
+        alert.addAction(UIAlertAction(title: String(format: .TabsTray.TabTrayCloseTabsTitle, tabsCountString),
                                       style: .destructive,
                                       handler: { _ in
             self.confirmCloseAll()
@@ -784,10 +1028,14 @@ class TabTrayViewController: UIViewController,
             accessibilityIdentifier: AccessibilityIdentifiers.TabTray.deleteCancelButton
         )
         alert.popoverPresentationController?.barButtonItem = deleteButton
+        alert.applyNovaActionTint(retrieveTheme())
         present(alert, animated: true, completion: nil)
     }
 
     private func showTabsDeletionPicker() {
+        let telemetry = TabsPanelTelemetry()
+        telemetry.closeAllTabsSheetOptionSelected(option: .old, mode: .normal)
+
         let alert = AlertController(title: .TabsTray.TabTrayCloseTabsOlderThanTitle,
                                     message: nil,
                                     preferredStyle: .actionSheet)
@@ -827,6 +1075,7 @@ class TabTrayViewController: UIViewController,
         )
 
         alert.popoverPresentationController?.barButtonItem = deleteButton
+        alert.applyNovaActionTint(retrieveTheme())
         present(alert, animated: true, completion: nil)
     }
 
@@ -854,10 +1103,11 @@ class TabTrayViewController: UIViewController,
 
     @objc
     private func newTabButtonTapped() {
-        let action = TabPanelViewAction(panelType: tabTrayState.selectedPanel,
-                                        windowUUID: windowUUID,
-                                        actionType: TabPanelViewActionType.addNewTab)
-        store.dispatch(action)
+        guard let type = TabsDisplayViewPanelType(fromTabTrayPanelType: tabTrayState.selectedPanel) else { return }
+        store.dispatch(
+            TabPanelViewModernAction.addNewTab(ofType: type),
+            forWindowUUID: self.windowUUID
+        )
     }
 
     @objc
@@ -885,7 +1135,7 @@ class TabTrayViewController: UIViewController,
     func didSelectSection(panelType: TabTrayPanelType) {
         guard tabTrayState.selectedPanel != panelType else { return }
 
-        if isTabTrayUIExperimentsEnabled {
+        if tabTrayUtils.shouldDisplayExperimentUI() {
             let targetIndex = TabTrayPanelType.getExperimentConvert(index: panelType.rawValue).rawValue
             guard let targetVC = childPanelControllers[safe: targetIndex],
                   let currentVC = pageViewController?.viewControllers?.first as? UINavigationController,
@@ -894,6 +1144,7 @@ class TabTrayViewController: UIViewController,
 
             let reduceMotionEnabled = UIAccessibility.isReduceMotionEnabled
             if !reduceMotionEnabled {
+                updateInterfaceStyle(isPrivateMode: panelType == .privateTabs)
                 themeAnimator.animateThemeTransition(fromIndex: currentIndex, toIndex: targetIndex)
             }
 
@@ -963,7 +1214,7 @@ class TabTrayViewController: UIViewController,
     // MARK: - UIScrollViewDelegate
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard isTabTrayUIExperimentsEnabled,
+        guard tabTrayUtils.shouldDisplayExperimentUI(),
               let fromIndex = swipeFromIndex,
               let width = scrollView.superview?.bounds.width else { return }
 
@@ -989,5 +1240,26 @@ class TabTrayViewController: UIViewController,
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         swipeFromIndex = nil
+    }
+
+    // MARK: TabDisplayViewDragAndDropInteraction
+
+    func dragAndDropStarted() {
+        pageScrollView?.isScrollEnabled = false
+    }
+
+    func dragAndDropEnded() {
+        pageScrollView?.isScrollEnabled = true
+    }
+
+    // MARK: - Notifiable
+    nonisolated func handleNotifications(_ notification: Notification) {
+        switch notification.name {
+        case UIAccessibility.reduceTransparencyStatusDidChangeNotification:
+            DispatchQueue.main.async { [weak self] in
+                self?.updateBlurView()
+            }
+        default: break
+        }
     }
 }

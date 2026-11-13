@@ -6,9 +6,10 @@ import Common
 import Foundation
 import Shared
 import Sync
-import Account
 
-class ManageFxAccountSetting: Setting {
+import class Account.RustFirefoxAccounts
+
+final class ManageFxAccountSetting: Setting {
     private var notification: NSObjectProtocol?
 
     let profile: Profile?
@@ -20,7 +21,7 @@ class ManageFxAccountSetting: Setting {
     init(settings: SettingsTableViewController) {
         self.profile = settings.profile
 
-        let theme = settings.themeManager.getCurrentTheme(for: settings.windowUUID)
+        let theme = settings.currentTheme()
         super.init(
             title: NSAttributedString(
                 string: .FxAManageAccount,
@@ -35,7 +36,9 @@ class ManageFxAccountSetting: Setting {
             object: nil,
             queue: .main
         ) { [weak settings] _ in
-            settings?.dismiss(animated: true, completion: nil)
+            ensureMainThread {
+                settings?.dismiss(animated: true, completion: nil)
+            }
         }
     }
 
@@ -50,14 +53,24 @@ class ManageFxAccountSetting: Setting {
     }
 
     deinit {
-        if let notification = notification {
-            NotificationCenter.default.removeObserver(notification)
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits
+        guard Thread.isMainThread else {
+            assertionFailure("ManageFxAccountSetting was not deallocated on the main thread. Observer was not removed")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            if let notification = notification {
+                NotificationCenter.default.removeObserver(notification)
+            }
         }
     }
 }
 
-class DisconnectSetting: Setting {
-    let settingsVC: SettingsTableViewController
+final class DisconnectSetting: Setting {
+    // `unowned` is chosen here because the setting can't outlive the VC that owns it.
+    // It skips the optional unwrapping that `weak` would require.
+    unowned let settingsVC: SettingsTableViewController
     let profile: Profile?
     override var accessoryType: UITableViewCell.AccessoryType { return .none }
 
@@ -140,9 +153,17 @@ class DeviceNameSetting: StringSetting {
         notification = NotificationCenter.default.addObserver(
             forName: Notification.Name.constellationStateUpdate,
             object: nil,
-            queue: nil
+            queue: .main
         ) { [weak self] notification in
-            self?.tableView?.tableView.reloadData()
+            guard Thread.isMainThread else {
+                assertionFailure("This must be called main thread")
+                return
+            }
+
+            // We have set the queue to `.main` on the observer, so theoretically this is safe to call here
+            MainActor.assumeIsolated {
+                self?.tableView?.tableView.reloadData()
+            }
         }
     }
 
@@ -152,16 +173,35 @@ class DeviceNameSetting: StringSetting {
     }
 
     deinit {
-        if let notification = notification {
-            NotificationCenter.default.removeObserver(notification)
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits
+        guard Thread.isMainThread else {
+            assertionFailure("DeviceNameSetting was not deallocated on the main thread. Observer was not removed")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            if let notification = notification {
+                NotificationCenter.default.removeObserver(notification)
+            }
         }
     }
 }
 
-class SyncContentSettingsViewController: SettingsTableViewController, FeatureFlaggable {
+final class SyncContentSettingsViewController: SettingsTableViewController {
     fileprivate var enginesToSyncOnExit: Set<String> = Set()
 
-    init(windowUUID: WindowUUID) {
+    /// Keep the private theme override just for Settings, since this is also presented from MainMenu.
+    private let _shouldUsePrivateOverride: Bool
+    override var shouldUsePrivateOverride: Bool { return _shouldUsePrivateOverride }
+    override var shouldBeInPrivateTheme: Bool { return false }
+
+    init(windowUUID: WindowUUID, referringPage: ReferringPage = .settings) {
+        switch referringPage {
+        case .settings:
+            self._shouldUsePrivateOverride = true
+        case .appMenu, .none, .onboarding, .tabTray, .library:
+            self._shouldUsePrivateOverride = false
+        }
         super.init(style: .grouped, windowUUID: windowUUID)
 
         self.title = .FxASettingsTitle
@@ -173,9 +213,14 @@ class SyncContentSettingsViewController: SettingsTableViewController, FeatureFla
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        self.profile?.syncManager?.reportOpenSyncSettingsMenuTelemetry()
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         if !enginesToSyncOnExit.isEmpty {
-            _ = self.profile?.syncManager?.syncNamedCollections(
+            self.profile?.syncManager?.syncPostSyncSettingsChange(
                 why: .enabledChange,
                 names: Array(enginesToSyncOnExit)
             )
@@ -277,7 +322,7 @@ class SyncContentSettingsViewController: SettingsTableViewController, FeatureFla
 
         var engineSectionChildren: [Setting] = [bookmarks, history, tabs, passwords, creditCards]
 
-        if AddressLocaleFeatureValidator.isValidRegion() {
+        if AddressLocaleFeatureValidator.isValidRegion(for: SystemLocaleProvider().regionCode()) {
             engineSectionChildren.append(addresses)
         }
 

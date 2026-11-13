@@ -9,7 +9,6 @@ import XCTest
 
 final class SearchEngineSelectionMiddlewareTests: XCTestCase, StoreTestUtility {
     var mockStore: MockStoreForMiddleware<AppState>!
-    var mockProfile: MockProfile!
     var mockSearchEnginesManager: SearchEnginesManagerProvider!
     let mockSearchEngines: [OpenSearchEngine] = [
         OpenSearchEngineTests.generateOpenSearchEngine(type: .wikipedia, withImage: UIImage()),
@@ -19,28 +18,27 @@ final class SearchEngineSelectionMiddlewareTests: XCTestCase, StoreTestUtility {
         return mockSearchEngines.map({ $0.generateModel() })
     }
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
 
         DependencyHelperMock().bootstrapDependencies()
-        mockProfile = MockProfile()
         mockSearchEnginesManager = MockSearchEnginesManager(searchEngines: mockSearchEngines)
 
         // We must reset the global mock store prior to each test
         setupStore()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
         resetStore()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testViewDidLoad_dispatchesDidLoadSearchEngines() throws {
         let subject = createSubject(mockSearchEnginesManager: mockSearchEnginesManager)
         let action = getAction(for: .viewDidLoad)
 
-        subject.searchEngineSelectionProvider(AppState(), action)
+        subject.searchEngineSelectionProvider.legacyMiddleware(AppState(), action)
 
         let actionCalled = try XCTUnwrap(mockStore.dispatchedActions.first as? SearchEngineSelectionAction)
         let actionType = try XCTUnwrap(actionCalled.actionType as? SearchEngineSelectionActionType)
@@ -54,7 +52,7 @@ final class SearchEngineSelectionMiddlewareTests: XCTestCase, StoreTestUtility {
         let subject = createSubject(mockSearchEnginesManager: mockSearchEnginesManager)
         let action = getAction(for: .didTapSearchEngine)
 
-        subject.searchEngineSelectionProvider(AppState(), action)
+        subject.searchEngineSelectionProvider.legacyMiddleware(AppState(), action)
 
         let actionCalled = try XCTUnwrap(mockStore.dispatchedActions.first as? ToolbarAction)
         let actionType = try XCTUnwrap(actionCalled.actionType as? ToolbarActionType)
@@ -66,7 +64,7 @@ final class SearchEngineSelectionMiddlewareTests: XCTestCase, StoreTestUtility {
     // MARK: - Helpers
 
     private func createSubject(mockSearchEnginesManager: SearchEnginesManagerProvider) -> SearchEngineSelectionMiddleware {
-        return SearchEngineSelectionMiddleware(profile: mockProfile, searchEnginesManager: mockSearchEnginesManager)
+        return SearchEngineSelectionMiddleware(searchEnginesManager: mockSearchEnginesManager)
     }
 
     private func getAction(for actionType: SearchEngineSelectionActionType) -> SearchEngineSelectionAction {
@@ -80,24 +78,13 @@ final class SearchEngineSelectionMiddlewareTests: XCTestCase, StoreTestUtility {
 
     func setupAppState() -> AppState {
         return AppState(
-            activeScreens: ActiveScreensState(
-                screens: [
+            presentedComponents: PresentedComponentsState(
+                components: [
                     .searchEngineSelection(
                         SearchEngineSelectionState(windowUUID: .XCTestDefaultUUID)
                     )
                 ]
             )
         )
-    }
-
-    func setupStore() {
-        mockStore = MockStoreForMiddleware(state: setupAppState())
-        StoreTestUtilityHelper.setupStore(with: mockStore)
-    }
-
-    // In order to avoid flaky tests, we should reset the store
-    // similar to production
-    func resetStore() {
-        StoreTestUtilityHelper.resetStore()
     }
 }

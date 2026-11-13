@@ -11,7 +11,7 @@ import struct MozillaAppServices.CreditCard
 
 class CreditCardSettingsViewController: SensitiveViewController, UIAdaptivePresentationControllerDelegate, Themeable {
     var viewModel: CreditCardSettingsViewModel
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var themeManager: ThemeManager
     var notificationCenter: NotificationProtocol
 
@@ -42,6 +42,9 @@ class CreditCardSettingsViewController: SensitiveViewController, UIAdaptivePrese
         return viewModel.windowUUID
     }
 
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
+
     // MARK: Initializers
     init(creditCardViewModel: CreditCardSettingsViewModel,
          themeManager: ThemeManager = AppContainer.shared.resolve(),
@@ -61,7 +64,7 @@ class CreditCardSettingsViewController: SensitiveViewController, UIAdaptivePrese
         self.creditCardEmptyView = UIHostingController(rootView: emptyView)
         self.creditCardEmptyView.view.backgroundColor = .clear
 
-        super.init(nibName: nil, bundle: nil)
+        super.init()
         self.creditCardTableViewController.didSelectCardAtIndex = { [weak self] creditCard in
             self?.viewCreditCard(card: creditCard)
             self?.sendCreditCardsManagementCardTappedTelemetry()
@@ -75,7 +78,8 @@ class CreditCardSettingsViewController: SensitiveViewController, UIAdaptivePrese
     override func viewDidLoad() {
         super.viewDidLoad()
         viewSetup()
-        listenForThemeChange(view)
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
     }
 
@@ -112,8 +116,8 @@ class CreditCardSettingsViewController: SensitiveViewController, UIAdaptivePrese
 
     private func updateCreditCardList() {
         // Check if we have any credit cards to show in the list
-        viewModel.getCreditCardList { creditCards in
-            DispatchQueue.main.async { [weak self] in
+        viewModel.getCreditCardList { [weak self] creditCards in
+            DispatchQueue.main.async {
                 let newState = creditCards?.isEmpty ?? true ? CreditCardSettingsState.empty : CreditCardSettingsState.list
                 self?.updateState(type: newState)
             }
@@ -145,16 +149,14 @@ class CreditCardSettingsViewController: SensitiveViewController, UIAdaptivePrese
     }
 
     private func currentTheme() -> Theme {
-        return themeManager.getCurrentTheme(for: windowUUID)
+        return themeManager.resolveTheme(for: windowUUID,
+                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme)
     }
 
     func applyTheme() {
         let theme = currentTheme()
         view.backgroundColor = theme.colors.layer1
-    }
-
-    deinit {
-        notificationCenter.removeObserver(self)
     }
 
     // MARK: - Private helpers
@@ -166,7 +168,11 @@ class CreditCardSettingsViewController: SensitiveViewController, UIAdaptivePrese
             viewModel.cardInputViewModel.creditCard = creditCard
         }
         viewModel.cardInputViewModel.updateState(state: editState)
-        creditCardEditView = CreditCardInputView(viewModel: viewModel.cardInputViewModel, windowUUID: windowUUID)
+        creditCardEditView = CreditCardInputView(
+            viewModel: viewModel.cardInputViewModel,
+            windowUUID: windowUUID,
+            themeManager: themeManager
+        )
         viewModel.cardInputViewModel.dismiss = { [weak self] status, successVal in
             DispatchQueue.main.async {
                 if successVal {

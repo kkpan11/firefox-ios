@@ -8,16 +8,20 @@ import WebKit
 import Common
 
 protocol TopTabsDelegate: AnyObject {
+    @MainActor
     func topTabsDidPressTabs()
+    @MainActor
     func topTabsDidPressNewTab(_ isPrivate: Bool)
-    func topTabsDidLongPressNewTab(button: UIButton)
+    @MainActor
+    func topTabsNewTabMenu() -> UIMenu?
+    @MainActor
     func topTabsDidChangeTab()
+    @MainActor
     func topTabsDidPressPrivateMode()
-    func topTabsShowCloseTabsToast()
 }
 
-class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFlaggable {
-    private struct UX {
+class TopTabsViewController: UIViewController, Themeable, Notifiable {
+    private enum UX {
         static let trailingEdgeSpace: CGFloat = 10
         static let topTabsViewHeight: CGFloat = 44
         static let topTabsBackgroundShadowWidth: CGFloat = 12
@@ -40,7 +44,7 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
     var tabCellIdentifier: TabDisplayerDelegate.TabCellIdentifier = TopTabCell.cellIdentifier
     var profile: Profile
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
     var currentWindowUUID: UUID? { windowUUID }
     var windowUUID: WindowUUID { tabManager.windowUUID }
@@ -60,25 +64,20 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
         return collectionView
     }()
 
-    private lazy var tabsButton: TabsButton = .build { button in
-        button.semanticContentAttribute = .forceLeftToRight
-        button.addTarget(self, action: #selector(TopTabsViewController.tabsTrayTapped), for: .touchUpInside)
-        button.accessibilityIdentifier = AccessibilityIdentifiers.Toolbar.tabsButton
-        button.showsLargeContentViewer = true
-    }
-
-    private lazy var newTab: UIButton = .build { button in
+    private lazy var newTab: UIButton = .build { [weak self] button in
         button.setImage(UIImage.templateImageNamed(StandardImageIdentifiers.Large.plus), for: .normal)
         button.semanticContentAttribute = .forceLeftToRight
         button.addTarget(self, action: #selector(TopTabsViewController.newTabTapped), for: .touchUpInside)
-        if self.featureFlags.isFeatureEnabled(.toolbarOneTapNewTab, checking: .buildOnly) &&
-           self.featureFlags.isFeatureEnabled(.toolbarRefactor, checking: .buildOnly) {
-            let longPressRecognizer = UILongPressGestureRecognizer(
-                target: self,
-                action: #selector(TopTabsViewController.newTabLongPressed)
-            )
-            button.addGestureRecognizer(longPressRecognizer)
+
+        let deferredMenu = UIDeferredMenuElement.uncached { [weak self] completion in
+            completion(self?.delegate?.topTabsNewTabMenu()?.children ?? [])
         }
+        button.menu = UIMenu(children: [deferredMenu])
+        button.showsMenuAsPrimaryAction = false
+        if #available(iOS 16.0, *) {
+            button.preferredMenuElementOrder = .fixed
+        }
+
         button.accessibilityIdentifier = AccessibilityIdentifiers.Toolbar.addNewTabButton
         button.accessibilityLabel = .AddTabAccessibilityLabel
         button.showsLargeContentViewer = true
@@ -151,7 +150,21 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
     }
 
     deinit {
-        tabManager.removeDelegate(self.topTabDisplayManager, completion: nil)
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits.
+        // Also we will remove Tab Manager Delegates as part of FXIOS-13097
+        guard Thread.isMainThread else {
+            assertionFailure(
+            """
+            TopTabsViewController was not deallocated on the main thread.
+            Tab manager delegate was not removed.
+            """
+            )
+            return
+        }
+
+        MainActor.assumeIsolated {
+            tabManager.removeDelegate(topTabDisplayManager, completion: nil)
+        }
     }
 
     override func viewDidLoad() {
@@ -160,11 +173,15 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
         collectionView.dragDelegate = topTabDisplayManager
         collectionView.dropDelegate = topTabDisplayManager
 
-        listenForThemeChange(view)
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
         setupLayout()
 
-        setupNotifications(forObserver: self,
-                           observing: [.TabsTrayDidClose])
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [.TabsTrayDidClose]
+        )
 
         // Setup UIDropInteraction to handle dragging and dropping
         // links onto the "New Tab" button.
@@ -174,32 +191,24 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
         let uiLargeContentViewInteraction = UILargeContentViewerInteraction()
         view.addInteraction(uiLargeContentViewInteraction)
 
-        tabsButton.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
         applyUIMode(
             isPrivate: tabManager.selectedTab?.isPrivate ?? false,
             theme: themeManager.getCurrentTheme(for: windowUUID)
         )
-
-        updateTabCount(topTabDisplayManager.dataStore.count, animated: false)
     }
 
     func applyTheme() {
         let currentTheme = themeManager.getCurrentTheme(for: windowUUID)
         let colors = currentTheme.colors
 
-        let isToolbarRefactorEnabled = featureFlags.isFeatureEnabled(.toolbarRefactor, checking: .buildOnly)
-
-        if isToolbarRefactorEnabled,
-           let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID),
+        view.backgroundColor = .clear
+        if let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID),
            toolbarState.isTranslucent {
-            view.backgroundColor = colors.layer3.withAlphaComponent(toolbarHelper.backgroundAlpha())
             collectionView.backgroundColor = .clear
         } else {
-            view.backgroundColor = colors.layer3
             collectionView.backgroundColor = view.backgroundColor
         }
 
-        tabsButton.applyTheme(theme: currentTheme)
         privateModeButton.applyTheme(theme: currentTheme)
         newTab.tintColor = colors.iconPrimary
         collectionView.reloadData()
@@ -212,10 +221,6 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
                                   forKey: PrefsKeys.LastSessionWasPrivate)
     }
 
-    func updateTabCount(_ count: Int, animated: Bool = true) {
-        tabsButton.updateTabCount(count, animated: animated)
-    }
-
     @objc
     func tabsTrayTapped() {
         topTabDisplayManager.refreshStore(forceReload: true)
@@ -226,13 +231,6 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
     func newTabTapped() {
         delegate?.topTabsDidPressNewTab(self.topTabDisplayManager.isPrivate)
         store.dispatch(TopTabsAction(windowUUID: windowUUID, actionType: TopTabsActionType.didTapNewTab))
-    }
-
-    @objc
-    func newTabLongPressed(_ gestureRecognizer: UILongPressGestureRecognizer) {
-        if gestureRecognizer.state == .began {
-            delegate?.topTabsDidLongPressNewTab(button: newTab)
-        }
     }
 
     @objc
@@ -282,15 +280,10 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
         view.addSubview(topTabFader)
         topTabFader.addSubview(collectionView)
 
-        let isToolbarRefactorEnabled = featureFlags.isFeatureEnabled(.toolbarRefactor, checking: .buildOnly)
-        if !isToolbarRefactorEnabled {
-            view.addSubview(tabsButton)
-        }
-
         view.addSubview(newTab)
         view.addSubview(privateModeButton)
 
-        NSLayoutConstraint.activate([
+        var constraints = [
             view.heightAnchor.constraint(equalToConstant: UX.topTabsViewHeight),
 
             newTab.centerYAnchor.constraint(equalTo: view.centerYAnchor),
@@ -298,7 +291,6 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
             newTab.heightAnchor.constraint(equalTo: view.heightAnchor),
 
             privateModeButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            privateModeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
             privateModeButton.widthAnchor.constraint(equalTo: view.heightAnchor),
             privateModeButton.heightAnchor.constraint(equalTo: view.heightAnchor),
 
@@ -311,21 +303,23 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
             collectionView.bottomAnchor.constraint(equalTo: topTabFader.bottomAnchor),
             collectionView.leadingAnchor.constraint(equalTo: topTabFader.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: topTabFader.trailingAnchor),
-        ])
+        ]
 
-        if isToolbarRefactorEnabled {
-            newTab.trailingAnchor.constraint(equalTo: view.trailingAnchor,
-                                             constant: -UX.trailingEdgeSpace).isActive = true
+        if #available(iOS 26.0, *) {
+            constraints.append(
+                privateModeButton.leadingAnchor.constraint(
+                    equalTo: view.layoutGuide(for: .margins(cornerAdaptation: .horizontal)).leadingAnchor
+                )
+            )
         } else {
-            NSLayoutConstraint.activate([
-                newTab.trailingAnchor.constraint(equalTo: tabsButton.leadingAnchor),
-
-                tabsButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-                tabsButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.trailingEdgeSpace),
-                tabsButton.widthAnchor.constraint(equalTo: view.heightAnchor),
-                tabsButton.heightAnchor.constraint(equalTo: view.heightAnchor),
-            ])
+            constraints.append(
+                privateModeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10)
+            )
         }
+
+        NSLayoutConstraint.activate(constraints)
+
+        newTab.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.trailingEdgeSpace).isActive = true
     }
 
     private func handleFadeOutAfterTabSelection() {
@@ -346,12 +340,16 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
 
     // MARK: - Notifiable
     func handleNotifications(_ notification: Notification) {
-        switch notification.name {
-        case .TabsTrayDidClose:
-            guard windowUUID == notification.windowUUID else { return }
-            refreshTabs()
-        default:
-            break
+        let name = notification.name
+        let windowUUID = notification.windowUUID
+        ensureMainThread {
+            switch name {
+            case .TabsTrayDidClose:
+                guard self.windowUUID == windowUUID else { return }
+                self.refreshTabs()
+            default:
+                break
+            }
         }
     }
 }
@@ -378,11 +376,23 @@ extension TopTabsViewController: TabDisplayerDelegate {
 }
 
 extension TopTabsViewController: TopTabCellDelegate {
+    @MainActor
     func tabCellDidClose(_ cell: UICollectionViewCell) {
+        store.dispatch(ToolbarAction(windowUUID: windowUUID, actionType: ToolbarActionType.cancelEdit))
         topTabDisplayManager.closeActionPerformed(forCell: cell)
-        delegate?.topTabsShowCloseTabsToast()
         NotificationCenter.default.post(name: .TopTabsTabClosed, object: nil, userInfo: windowUUID.userInfo)
         store.dispatch(TopTabsAction(windowUUID: windowUUID, actionType: TopTabsActionType.didTapCloseTab))
+
+        // Focus voice-over on the selected tab after current tab is closed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self,
+                  let selected = self.tabManager.selectedTab,
+                  let index = self.topTabDisplayManager.dataStore.index(of: selected) else { return }
+
+            let indexPath = IndexPath(item: index, section: 0)
+            guard let selectedCell = self.collectionView.cellForItem(at: indexPath) else { return }
+            UIAccessibility.post(notification: .layoutChanged, argument: selectedCell)
+        }
     }
 }
 

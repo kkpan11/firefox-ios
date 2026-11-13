@@ -5,6 +5,7 @@
 import XCTest
 @testable import WebEngine
 
+@MainActor
 @available(iOS 16.0, *)
 final class WKEngineViewTests: XCTestCase {
     private var engineSession: WKEngineSession!
@@ -14,9 +15,9 @@ final class WKEngineViewTests: XCTestCase {
         engineSession = await MockWKEngineSession()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         engineSession = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testRenderSetsIsActiveTrue() {
@@ -27,7 +28,6 @@ final class WKEngineViewTests: XCTestCase {
         XCTAssertTrue(engineSession.isActive)
     }
 
-    @MainActor
     func testRemoveSetsIsActiveFalse() async {
         let subject = createSubject()
         let newEngineSession = await MockWKEngineSession()
@@ -40,7 +40,7 @@ final class WKEngineViewTests: XCTestCase {
     }
 
     func createSubject() -> WKEngineView {
-        let subject = WKEngineView(frame: CGRect.zero)
+        let subject = WKEngineView.factory(frame: .zero)
         return subject
     }
 }

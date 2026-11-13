@@ -15,7 +15,7 @@ import Foundation
 /// Note that not all applications use the Subject. For example OmniFocus ignores it, so we need to do both.
 
 class TitleActivityItemProvider: UIActivityItemProvider, @unchecked Sendable {
-    private struct ActivityIdentifiers {
+    private enum ActivityIdentifiers {
         static let whatsApp = "net.whatsapp.WhatsApp.ShareExtension"
     }
 
@@ -41,7 +41,7 @@ class TitleActivityItemProvider: UIActivityItemProvider, @unchecked Sendable {
         _ activityViewController: UIActivityViewController,
         itemForActivityType activityType: UIActivity.ActivityType?
     ) -> Any? {
-        // For excluded activites, we don't want to provide any content
+        // For excluded activities, we don't want to provide any content
         if let activityType = activityType, TitleActivityItemProvider.activityTypesToIgnore.contains(activityType) {
             return NSNull()
         } else if applySentFromFirefoxTreatment, activityType?.rawValue == ActivityIdentifiers.whatsApp {

@@ -5,29 +5,31 @@
 import Common
 import Foundation
 import Shared
-import Storage
-import Account
 import Glean
 import MozillaAppServices
 
-final class AppLaunchUtil {
-    private var logger: Logger
-//    private var adjustHelper: AdjustHelper
-    private var profile: Profile
+import class Account.RustFirefoxAccounts
+
+final class AppLaunchUtil: FeatureFlaggable, Sendable {
+    private let logger: Logger
+    private let profile: Profile
     private let introScreenManager: IntroScreenManager
     private let termsOfServiceManager: TermsOfServiceManager
+    private let installationTelemetryService: InstallationTelemetryService
 
     init(
         logger: Logger = DefaultLogger.shared,
-        profile: Profile
+        profile: Profile,
+        installationTelemetryService: InstallationTelemetryService = AppContainer.shared.resolve()
     ) {
         self.logger = logger
         self.profile = profile
-//        self.adjustHelper = AdjustHelper(profile: profile)
+        self.installationTelemetryService = installationTelemetryService
         self.introScreenManager = IntroScreenManager(prefs: profile.prefs)
         self.termsOfServiceManager = TermsOfServiceManager(prefs: profile.prefs)
     }
 
+    @MainActor
     func setUpPreLaunchDependencies() {
         // If the 'Save logs to Files app on next launch' toggle
         // is turned on in the Settings app, copy over old logs.
@@ -35,35 +37,39 @@ final class AppLaunchUtil {
             logger.copyLogsToDocuments()
         }
 
-        DefaultBrowserUtil().processUserDefaultState(isFirstRun: introScreenManager.shouldShowIntroScreen)
+        // Tests can force a deterministic default-browser state; skip the system API so it isn't overwritten.
+        if !ProcessInfo.processInfo.arguments.contains(LaunchArguments.ResetDefaultBrowserStatus) {
+            DefaultBrowserUtility().processUserDefaultState(isFirstRun: introScreenManager.shouldShowIntroScreen)
+        }
+        DefaultBrowserUtility().migrateDefaultBrowserStatusIfNeeded(isFirstRun: introScreenManager.shouldShowIntroScreen)
+
+        SummarizerPrefsMigration(prefs: profile.prefs).migrateSelectedLanguage()
+
+        if #available(iOS 26, *) {
+            AppleIntelligenceUtil().processAvailabilityState()
+        }
 
         // Need to get "settings.sendCrashReports" this way so that Sentry can be initialized before getting the Profile.
         let sendCrashReports = NSUserDefaultsPrefs(prefix: "profile").boolForKey(AppConstants.prefSendCrashReports) ?? true
 
-        if termsOfServiceManager.isAffectedUser {
-            logger.setup(sendCrashReports: sendCrashReports)
-            TelemetryWrapper.shared.setup(profile: profile)
-            TelemetryWrapper.shared.recordStartUpTelemetry()
-        }
+        // Telemetry can start when ToS are disabled, accepted, or skipped for an existing installation.
+        let canInitializeTelemetry = !termsOfServiceManager.isFeatureEnabled
+            || termsOfServiceManager.isAccepted
+            || !introScreenManager.shouldShowIntroScreen
 
-        if termsOfServiceManager.isFeatureEnabled {
-            // Two cases:
-            // 1. when ToS screen has been presented and user accepted it
-            // 2. or when ToS screen is not presented because is not fresh install
-            let isTermsOfServiceAccepted = termsOfServiceManager.isAccepted || !introScreenManager.shouldShowIntroScreen
-            logger.setup(sendCrashReports: sendCrashReports && isTermsOfServiceAccepted)
-            if isTermsOfServiceAccepted {
-                TelemetryWrapper.shared.setup(profile: profile)
-                TelemetryWrapper.shared.recordStartUpTelemetry()
-            } else {
-                // If ToS are not accepted, we still need to setup the Contextual Identifier for
-                // the Unified Ads Sponsored tiles
-                TelemetryContextualIdentifier.setupContextId(isGleanMetricsAllowed: false)
-            }
-        } else {
-            logger.setup(sendCrashReports: sendCrashReports)
+        // Initialize app services ( including NSS ). Must be called before any other calls to rust components.
+        // In particular this must run before telemetry setup.
+        MozillaAppServices.initialize()
+
+        logger.setup(sendCrashReports: sendCrashReports && canInitializeTelemetry)
+        if canInitializeTelemetry {
             TelemetryWrapper.shared.setup(profile: profile)
+            installationTelemetryService.update()
             TelemetryWrapper.shared.recordStartUpTelemetry()
+        } else {
+            // If ToS are not accepted, we still need to setup the Contextual Identifier for
+            // the Unified Ads Sponsored tiles
+            TelemetryContextualIdentifier.setupContextId(isGleanMetricsAllowed: false)
         }
 
         setUserAgent()
@@ -72,22 +78,25 @@ final class AppLaunchUtil {
 
         setMenuItems()
 
-        // Initialize conversion value by specifying fineValue and coarseValue.
-        // Call update postback conversion value for install event.
-        let conversionValue = ConversionValueUtil(fineValue: 0, coarseValue: .low, logger: logger)
-        conversionValue.adNetworkAttributionUpdateConversionEvent()
+        // Active days and conversion events are recorded when the app becomes active
+        ConversionActivityLogger().recordFirstDayAfterInstallTimestampIfNeeded()
 
-        // Used by share extension to determine if the bookmarks refactor feature flag is enabled
-        profile.prefs.setBool(LegacyFeatureFlagsManager.shared.isFeatureEnabled(.bookmarksRefactor,
-                                                                                checking: .buildOnly),
-                              forKey: PrefsKeys.IsBookmarksRefactorEnabled)
+        /// Migrate TermsOfService prefs to TermsOfUse prefs
+        /// before Nimbus is initialized (should be available for experiments)
+        /// and backfill accept date/version if needed - after telemetry set up
+        TermsOfUseMigration(prefs: profile.prefs).migrateTermsOfService()
 
-        // Initialize app services ( including NSS ). Must be called before any other calls to rust components.
-        MozillaAppServices.initialize()
+        // Enable cache_not_ready_for_feature metric (disabled by default in application-services)
+        Glean.shared.applyServerKnobsConfig(
+            "{\"metrics_enabled\":{\"nimbus_health.cache_not_ready_for_feature\":true}}"
+        )
 
         // Start initializing the Nimbus SDK. This should be done after Glean
         // has been started.
         initializeExperiments()
+
+        // Should be done post nimbus initialization in case of experiment
+        migrateTopSitesRowNumbers()
 
         // We migrate history from browser db to places if it hasn't already
         DispatchQueue.global().async {
@@ -95,7 +104,9 @@ final class AppLaunchUtil {
         }
 
         // Save toolbar position to user prefs
-        SearchBarLocationSaver().saveUserSearchBarLocation(profile: profile)
+        let searchBarLocationSaver = SearchBarLocationSaver()
+        searchBarLocationSaver.saveUserSearchBarLocation(profile: profile)
+        let deviceName = UIDevice.current.name
 
         NotificationCenter.default.addObserver(
             forName: .FSReadingListAddReadingListItem,
@@ -107,14 +118,18 @@ final class AppLaunchUtil {
                 self.profile.readingList.createRecordWithURL(
                     url.absoluteString,
                     title: title,
-                    addedBy: UIDevice.current.name
+                    addedBy: deviceName
                 )
             }
         }
 
-        RustFirefoxAccounts.startup(prefs: profile.prefs) { _ in
+        RustFirefoxAccounts.startup(prefs: profile.prefs) { manager in
             self.logger.log("RustFirefoxAccounts started", level: .info, category: .sync)
             AppEventQueue.signal(event: .accountManagerInitialized)
+
+            if let accountUid = manager.accountProfile()?.uid {
+                UserTelemetry().setFirefoxAccountID(uid: accountUid)
+            }
         }
 
         // Add swizzle on UIViewControllers to automatically log when there's a new view appearing or disappearing
@@ -128,6 +143,10 @@ final class AppLaunchUtil {
                    category: .setup)
 
         AppEventQueue.signal(event: .preLaunchDependenciesComplete)
+
+        if #available(iOS 26, *) {
+            AppleIntelligenceUtil().processAvailabilityState()
+        }
     }
 
     func setUpPostLaunchDependencies() {
@@ -153,10 +172,10 @@ final class AppLaunchUtil {
         }
 
         updateSessionCount()
-//        adjustHelper.setupAdjust()
         AppEventQueue.signal(event: .postLaunchDependenciesComplete)
     }
 
+    @MainActor
     private func setUserAgent() {
         // Record the user agent for use by search suggestion clients.
         SearchViewModel.userAgent = UserAgent.getUserAgent()
@@ -176,61 +195,70 @@ final class AppLaunchUtil {
         // increase session count value
         profile.prefs.setInt(sessionCount + 1, forKey: PrefsKeys.Session.Count)
         UserDefaults.standard.set(Date.now(), forKey: PrefsKeys.Session.Last)
-        let conversionMetrics = UserConversionMetrics()
-        conversionMetrics.didStartNewSession()
     }
 
+    /// Used to migrate user preferences for TopSites row numbers if the new design is
+    /// enabled from greater than two to 2. See FXIOS-12704
+    @MainActor
+    private func migrateTopSitesRowNumbers() {
+        if featureFlagsProvider.isEnabled(.homepageAnimatedCenterSearchBar) {
+            let defaultNumber = TopSitesRowCountSettingsController.defaultNumberOfRows
+            let userNumberOfTopSiteRows = profile.prefs.intForKey(
+                PrefsKeys.NumberOfTopSiteRows
+            ) ?? defaultNumber
+            let migratedNumber = userNumberOfTopSiteRows > 2 ? defaultNumber : userNumberOfTopSiteRows
+            profile.prefs.setInt(migratedNumber, forKey: PrefsKeys.NumberOfTopSiteRows)
+        }
+    }
     // MARK: - Application Services History Migration
 
     private func runAppServicesHistoryMigration() {
+        let isFirstRun = introScreenManager.shouldShowIntroScreen
+
+        // If this is a first run, there won't be history to migrate since we are far past v110
+        guard !isFirstRun else {
+            // Mark migration as succeeded and return early
+            UserDefaults.standard.setValue(true, forKey: PrefsKeys.PlacesHistoryMigrationSucceeded)
+            return
+        }
+
         let browserProfile = self.profile as? BrowserProfile
 
         let migrationSucceeded = UserDefaults.standard.bool(forKey: PrefsKeys.PlacesHistoryMigrationSucceeded)
         let migrationAttemptNumber = UserDefaults.standard.integer(forKey: PrefsKeys.HistoryMigrationAttemptNumber)
         UserDefaults.standard.setValue(migrationAttemptNumber + 1, forKey: PrefsKeys.HistoryMigrationAttemptNumber)
+
         if !migrationSucceeded && migrationAttemptNumber < AppConstants.maxHistoryMigrationAttempt {
-            logger.log("Migrating Application services history",
+            HistoryTelemetry().attemptedApplicationServicesMigration()
+            logger.log("Migrating Application Services history",
                        level: .info,
                        category: .sync)
-            let id = GleanMetrics.PlacesHistoryMigration.duration.start()
-            // We mark that the migration started
-            // this will help us identify how often the migration starts, but never ends
-            // additionally, we have a separate metric for error rates
-            GleanMetrics.PlacesHistoryMigration.migrationEndedRate.addToNumerator(1)
-            GleanMetrics.PlacesHistoryMigration.migrationErrorRate.addToNumerator(1)
-            browserProfile?.migrateHistoryToPlaces(
-            callback: { result in
-                self.logger.log("Successful Migration took \(result.totalDuration / 1000) seconds",
-                                level: .info,
-                                category: .sync)
-                // We record various success metrics here
-                GleanMetrics.PlacesHistoryMigration.duration.stopAndAccumulate(id)
-                GleanMetrics.PlacesHistoryMigration.numMigrated.set(Int64(result.numSucceeded))
-                self.logger.log("Migrated \(result.numSucceeded) entries",
-                                level: .info,
-                                category: .sync)
-                GleanMetrics.PlacesHistoryMigration.numToMigrate.set(Int64(result.numTotal))
-                GleanMetrics.PlacesHistoryMigration.migrationEndedRate.addToDenominator(1)
-                UserDefaults.standard.setValue(true, forKey: PrefsKeys.PlacesHistoryMigrationSucceeded)
-                NotificationCenter.default.post(name: .TopSitesUpdated, object: nil)
-            },
-            errCallback: { err in
-                let errDescription = err?.localizedDescription ?? "Unknown error during History migration"
-                self.logger.log("Migration failed with \(errDescription)",
-                                level: .warning,
-                                category: .sync)
 
-                GleanMetrics.PlacesHistoryMigration.duration.cancel(id)
-                GleanMetrics.PlacesHistoryMigration.migrationEndedRate.addToDenominator(1)
-                GleanMetrics.PlacesHistoryMigration.migrationErrorRate.addToDenominator(1)
-            })
+            browserProfile?.migrateHistoryToPlaces(
+                callback: { result in
+                    self.logger.log("Successfully migrated history in \(result.totalDuration / 1000) seconds",
+                                    level: .info,
+                                    category: .sync)
+
+                    UserDefaults.standard.setValue(true, forKey: PrefsKeys.PlacesHistoryMigrationSucceeded)
+                    NotificationCenter.default.post(name: .TopSitesUpdated, object: nil)
+                },
+                errCallback: { err in
+                    let errDescription = err?.localizedDescription ?? "Unknown error during History migration"
+                    self.logger.log("History migration failed",
+                                    level: .fatal,
+                                    category: .sync,
+                                    extra: ["error": errDescription])
+                }
+            )
         } else {
-            self.logger.log("History Migration skipped",
+            self.logger.log("History migration skipped",
                             level: .debug,
                             category: .sync)
         }
     }
 
+    @MainActor
     private func setMenuItems() {
         let webViewModel = MenuHelperWebViewModel(searchTitle: .MenuHelperSearchWithFirefox,
                                                   findInPageTitle: .MenuHelperFindInPage)

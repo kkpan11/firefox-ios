@@ -2,18 +2,22 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import Common
 import XCTest
 
-class SettingsTests: BaseTestCase {
-    override func tearDown() {
+class SettingsTests: FeatureFlaggedTestBase {
+    override func tearDown() async throws {
         if name.contains("testAutofillPasswordSettingsOptionSubtitles") ||
             name.contains("testBrowsingSettingsOptionSubtitles") ||
             name.contains("testSettingsOptionSubtitlesDarkMode") ||
-            name.contains("testSettingsOptionSubtitlesDarkModeLandscape") {
+            name.contains("testSettingsOptionSubtitlesDarkModeLandscape") ||
+            name.contains("testSummarizeContentSettingsShouldShow_hostedSummarizeExperimentOn") {
             switchThemeToDarkOrLight(theme: "Light")
         }
+        // Rotating with the app still up makes SpringBoard relaunch it once the rotation ends
+        app.terminate()
         XCUIDevice.shared.orientation = .portrait
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func checkShowImages(showImages: Bool = true) {
@@ -28,8 +32,7 @@ class SettingsTests: BaseTestCase {
 
     // https://mozilla.testrail.io/index.php?/cases/view/2334757
     func testHelpOpensSUMOInTab() {
-        navigator.nowAt(NewTabScreen)
-        navigator.goto(SettingsScreen)
+        launchIntoSettings()
         let settingsTableView = app.tables[AccessibilityIdentifiers.Settings.tableViewController]
 
         while settingsTableView.staticTexts["Help"].exists == false {
@@ -50,46 +53,17 @@ class SettingsTests: BaseTestCase {
 
     // https://mozilla.testrail.io/index.php?/cases/view/2334760
     func testOpenSiriOption() {
+        app.launch()
         waitForTabsButton()
         navigator.nowAt(NewTabScreen)
         navigator.performAction(Action.OpenSiriFromSettings)
         mozWaitForElementToExist(app.cells["SiriSettings"])
     }
 
-    // https://mozilla.testrail.io/index.php?/cases/view/2334756
-    func testCopiedLinks() {
-        navigator.nowAt(NewTabScreen)
-        navigator.goto(BrowsingSettings)
-
-        // For iOS 15, we must scroll until the switch is visible.
-        if #unavailable(iOS 16) {
-            app.swipeUp()
-            mozWaitForElementToExist(app.tables.cells.switches["Offer to Open Copied Links, When opening Firefox"])
-        }
-        // Check Offer to open copied links, when opening firefox is off
-        let value = app.tables.cells.switches["Offer to Open Copied Links, When opening Firefox"].value
-        XCTAssertEqual(value as? String, "0")
-
-        // Switch on, Offer to open copied links, when opening firefox
-        app.tables.cells.switches["Offer to Open Copied Links, When opening Firefox"].waitAndTap()
-
-        // Check Offer to open copied links, when opening firefox is on
-        let value2 = app.tables.cells.switches["Offer to Open Copied Links, When opening Firefox"].value
-        XCTAssertEqual(value2 as? String, "1")
-
-        navigator.nowAt(BrowsingSettings)
-        navigator.goto(NewTabScreen)
-        navigator.goto(BrowsingSettings)
-
-        // Check Offer to open copied links, when opening firefox is on
-        let value3 = app.tables.cells.switches["Offer to Open Copied Links, When opening Firefox"].value
-        XCTAssertEqual(value3 as? String, "1")
-    }
-
     // https://mozilla.testrail.io/index.php?/cases/view/2307041
+    // Regression
     func testOpenMailAppSettings() {
-        waitForTabsButton()
-        navigator.nowAt(NewTabScreen)
+        launchIntoSettings()
         navigator.goto(MailAppSettings)
 
         // Check that the list is shown
@@ -121,60 +95,64 @@ class SettingsTests: BaseTestCase {
     // Functionality is tested by UITests/NoImageModeTests, here only the UI is updated properly
     // SmokeTest
     func testImageOnOff() {
+        let settingsScreen = SettingScreen(app: app)
         // Select no images or hide images, check it's hidden or not
-        waitUntilPageLoad()
+        launchIntoSettings()
 
         // Select hide images under Browsing Settings page
-        let blockImagesSwitch = app.otherElements.tables.cells.switches[
-            AccessibilityIdentifiers.Settings.BlockImages.title
-        ]
-        navigator.goto(SettingsScreen)
-        navigator.nowAt(SettingsScreen)
-        app.cells[AccessibilityIdentifiers.Settings.Browsing.title].waitAndTap()
-        mozWaitForElementToExist(app.tables.otherElements[AccessibilityIdentifiers.Settings.Browsing.tabs])
+        settingsScreen.openBrowsingSettings()
+        settingsScreen.waitForBrowsingLinksSection()
 
-        mozWaitForElementToExist(blockImagesSwitch)
+        _ = settingsScreen.waitForBlockImagesSwitch()
         app.swipeUp()
         navigator.performAction(Action.ToggleNoImageMode)
-        checkShowImages(showImages: false)
+        settingsScreen.assertShowImagesState(showImages: false)
 
         // Select show images
         navigator.goto(SettingsScreen)
         navigator.nowAt(SettingsScreen)
-        mozWaitForElementToExist(blockImagesSwitch)
+        _ = settingsScreen.waitForBlockImagesSwitch()
         navigator.performAction(Action.ToggleNoImageMode)
-        checkShowImages(showImages: true)
+        settingsScreen.assertShowImagesState(showImages: true)
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2951435
     // Smoketest
     func testSettingsOptionSubtitles() {
-        validateSettingsUIOptions()
+        app.launch()
+        let settingsScreen = SettingScreen(app: app)
+        navigator.nowAt(NewTabScreen)
+        navigator.goto(SettingsScreen)
+
+        settingsScreen.assertSettingsScreenExists()
+        settingsScreen.assertLayout()
+        settingsScreen.assertAllRowsVisible()
+        settingsScreen.closeSettingsWithDoneButton()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2989418
     func testSettingsOptionSubtitlesLandspace() {
         XCUIDevice.shared.orientation = .landscapeLeft
+        launchIntoSettings()
         validateSettingsUIOptions()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2989420
     func testSettingsOptionSubtitlesDarkMode() {
-        switchThemeToDarkOrLight(theme: "Dark")
+        launchIntoSettingsWithDarkTheme()
         validateSettingsUIOptions()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2986986
     func testSettingsOptionSubtitlesDarkModeLandscape() {
-        switchThemeToDarkOrLight(theme: "Dark")
         XCUIDevice.shared.orientation = .landscapeLeft
+        launchIntoSettingsWithDarkTheme()
         validateSettingsUIOptions()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2875583
     func testSettingsCrashReportsOption() {
-        navigator.nowAt(NewTabScreen)
-        navigator.goto(SettingsScreen)
+        launchIntoSettings()
         let crashReportToggle = app.switches["settings.sendCrashReports"]
         scrollToElement(crashReportToggle)
         XCTAssertEqual(crashReportToggle.value as? String, "1", "Crash report toggle in not enabled by default")
@@ -184,7 +162,8 @@ class SettingsTests: BaseTestCase {
 
     // https://mozilla.testrail.io/index.php?/cases/view/2951438
     func testBrowsingSettingsOptionSubtitles() {
-        validateBrowsingUI()
+        launchIntoSettings()
+        validateBrowsingUI(navigateToSettings: false)
         // Repeat steps for dark mode
         navigator.nowAt(SettingsScreen)
         navigator.goto(NewTabScreen)
@@ -198,9 +177,105 @@ class SettingsTests: BaseTestCase {
         app.buttons["Done"].waitAndTap()
     }
 
+    // https://mozilla.testrail.io/index.php?/cases/view/3135841
+    func testSummarizeContentSettingsShouldShow_hostedSummarizeExperimentOn() {
+        addLaunchArgument(jsonFileName: "defaultEnabledOn", featureName: "hosted-summarizer-feature")
+        launchIntoSettings()
+        validateSummarizeContentUI(navigateToSettings: false)
+        // Repeat steps for dark mode
+        navigator.nowAt(SettingsScreen)
+        navigator.goto(NewTabScreen)
+        switchThemeToDarkOrLight(theme: "Dark")
+        validateSummarizeContentUI()
+        navigator.nowAt(SettingsScreen)
+        app.buttons["Done"].waitAndTap()
+        // Repeat steps in landscape
+        XCUIDevice.shared.orientation = .landscapeLeft
+        validateSummarizeContentUI()
+        app.buttons["Done"].waitAndTap()
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3376443
+    func testSummarizeContentSettingsDoesNotAppear_hostedSummarizeExperimentOff() {
+        addLaunchArgument(jsonFileName: "defaultEnabledOff", featureName: "hosted-summarizer-feature")
+        app.launchArguments.append(LaunchArguments.SkipAppleIntelligence)
+        launchIntoSettings()
+        let table = app.tables.element(boundBy: 0)
+        mozWaitForElementToExist(table)
+        let summarizeSettings = table.cells[AccessibilityIdentifiers.Settings.Summarize.title]
+        mozWaitForElementToNotExist(summarizeSettings)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3135845
+    func testSummarizeContentSettingsWithToggleOnOff_hostedSummarizeExperimentOn() {
+        addLaunchArgument(jsonFileName: "defaultEnabledOn", featureName: "hosted-summarizer-feature")
+        app.launch()
+        navigator.openURL(path(forTestPage: TestPages.mozillaOrg))
+        navigator.nowAt(BrowserTab)
+        navigator.goto(BrowserTabMenu)
+        let summarizeContentMenuOption = app.tables.cells[AccessibilityIdentifiers.MainMenu.summarizePage]
+        mozWaitForElementToExist(summarizeContentMenuOption)
+        navigator.goto(SettingsScreen)
+        let table = app.tables.element(boundBy: 0)
+        mozWaitForElementToExist(table)
+        navigator.goto(SummarizeSettings)
+        let settingsQuery = AccessibilityIdentifiers.Settings.self
+        let summarizeContentSwitch = app.switches[settingsQuery.Summarize.summarizeContentSwitch]
+        let gesturesSectionTitle = app.tables.staticTexts["GESTURES"]
+        let shakeGestureSwitch = app.switches[settingsQuery.Summarize.shakeGestureSwitch]
+        waitForElementsToExist([gesturesSectionTitle, shakeGestureSwitch])
+        summarizeContentSwitch.tap()
+        mozWaitForElementToNotExist(gesturesSectionTitle)
+        mozWaitForElementToNotExist(shakeGestureSwitch)
+        XCTAssertEqual(summarizeContentSwitch.value as? String,
+                       "0",
+                       "Summarize content - toggle is enabled by default")
+        navigator.goto(BrowserTabMenu)
+        mozWaitForElementToNotExist(summarizeContentMenuOption)
+
+        navigator.goto(SummarizeSettings)
+        summarizeContentSwitch.tap()
+        waitForElementsToExist([gesturesSectionTitle, shakeGestureSwitch])
+        XCTAssertEqual(summarizeContentSwitch.value as? String,
+                       "1",
+                       "Summarize content - toggle is enabled by default")
+        navigator.goto(BrowserTabMenu)
+        mozWaitForElementToExist(summarizeContentMenuOption)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3135869
+    // Regression
+    func testSummarizePageMainMenuButton_hostedSummarizeExperimentOn() {
+        addLaunchArgument(jsonFileName: "defaultEnabledOn", featureName: "hosted-summarizer-feature")
+        app.launch()
+        let mainMenuScreen = MainMenuScreen(app: app)
+        validateSummarizePageMainMenuButton(mainMenuScreen)
+
+        // Repeat in private browsing
+        navigator.nowAt(BrowserTab)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        navigator.performAction(Action.OpenNewTabFromTabTray)
+        navigator.nowAt(NewTabScreen)
+        BrowserScreen(app: app).assertPrivateModeMessageCardExists()
+        validateSummarizePageMainMenuButton(mainMenuScreen)
+    }
+
+    private func validateSummarizePageMainMenuButton(_ mainMenuScreen: MainMenuScreen) {
+        navigator.openURL(path(forTestPage: TestPages.mozillaOrg))
+        waitUntilPageLoad()
+        navigator.nowAt(BrowserTab)
+        navigator.goto(BrowserTabMenu)
+        // The item is added once the page has been checked for summarization
+        mainMenuScreen.assertSummarizePageIsBelowFindInPage(timeout: TIMEOUT_LONG)
+        mainMenuScreen.closeMenu()
+        navigator.nowAt(BrowserTab)
+    }
+
     // https://mozilla.testrail.io/index.php?/cases/view/2951992
+    // Regression
     func testAutofillPasswordSettingsOptionSubtitles() {
-        validateAutofillAndPasswordsUI()
+        launchIntoSettings()
+        validateAutofillAndPasswordsUI(navigateToSettings: false)
         // Repeat steps for dark mode
         navigator.nowAt(SettingsScreen)
         navigator.goto(NewTabScreen)
@@ -216,8 +291,7 @@ class SettingsTests: BaseTestCase {
 
     // https://mozilla.testrail.io/index.php?/cases/view/2951439
     func testAutoplayOptionUI() {
-        navigator.nowAt(NewTabScreen)
-        navigator.goto(SettingsScreen)
+        launchIntoSettings()
         // Navigate to the Autoplay settings screen
         navigator.goto(AutoplaySettings)
         // Validate UI elements
@@ -249,16 +323,30 @@ class SettingsTests: BaseTestCase {
         mozWaitForElementToExist(app.staticTexts["Browsing"])
     }
 
-    private func validateAutofillAndPasswordsUI() {
-        navigator.nowAt(NewTabScreen)
-        navigator.goto(SettingsScreen)
+    private func launchIntoSettingsWithDarkTheme() {
+        let settingsScreen = SettingScreen(app: app)
+        launchIntoSettings(.theme)
+        settingsScreen.selectDarkTheme()
+        settingsScreen.tapBackToSettings()
+        settingsRootReachedByDeeplink()
+    }
+
+    private func validateAutofillAndPasswordsUI(navigateToSettings: Bool = true) {
+        if navigateToSettings {
+            navigator.nowAt(NewTabScreen)
+            navigator.goto(SettingsScreen)
+        }
         let table = app.tables.element(boundBy: 0)
         mozWaitForElementToExist(table)
         // "Autofills and passwords" sub-menu is displayed in the "Privacy" section
         let settingsQuery = AccessibilityIdentifiers.Settings.self
         let privacySection = table.staticTexts["PRIVACY"]
         let autoFillPasswords = table.cells[AccessibilityIdentifiers.Settings.AutofillsPasswords.title]
-        app.swipeUp()
+        if #available(iOS 26, *) {
+            table.swipeUp()
+        } else {
+            app.swipeUp()
+        }
         XCTAssertTrue(privacySection.isAbove(element: autoFillPasswords))
 
         // Navigate to the Autofills and passwords settings screen
@@ -278,9 +366,11 @@ class SettingsTests: BaseTestCase {
         navigator.goto(SettingsScreen)
     }
 
-    private func validateBrowsingUI() {
-        navigator.nowAt(NewTabScreen)
-        navigator.goto(SettingsScreen)
+    private func validateBrowsingUI(navigateToSettings: Bool = true) {
+        if navigateToSettings {
+            navigator.nowAt(NewTabScreen)
+            navigator.goto(SettingsScreen)
+        }
         let table = app.tables.element(boundBy: 0)
         mozWaitForElementToExist(table)
         let generalSection = table.staticTexts["GENERAL"]
@@ -289,27 +379,26 @@ class SettingsTests: BaseTestCase {
 
         // Navigate to the Browsing settings screen
         navigator.goto(BrowsingSettings)
-        mozWaitForElementToExist(app.tables.otherElements[AccessibilityIdentifiers.Settings.Browsing.tabs])
+        mozWaitForElementToExist(app.staticTexts[AccessibilityIdentifiers.Settings.Browsing.links])
 
         let settingsQuery = AccessibilityIdentifiers.Settings.self
         waitForElementsToExist(
             [
-                app.switches[settingsQuery.Browsing.inactiveTabsSwitch],
                 table.cells[settingsQuery.OpenWithMail.title],
                 app.switches[settingsQuery.OfferToOpen.title],
+                app.switches[settingsQuery.ShowLink.title],
                 table.cells[settingsQuery.Browsing.autoPlay],
                 table.cells[settingsQuery.BlockPopUp.title],
                 table.cells[settingsQuery.NoImageMode.title],
                 app.switches[settingsQuery.BlockExternal.title]
             ]
         )
-        XCTAssertEqual(app.switches[settingsQuery.Browsing.inactiveTabsSwitch].value as? String,
-                       "1",
-                       "Inactive tabs - toggle in not enabled by default")
         XCTAssertEqual(app.switches[settingsQuery.OfferToOpen.title].value as? String,
                        "0",
                        "Offer to Open Copied Links - toggle is not disabled by default")
-        app.swipeUp()
+        XCTAssertEqual(app.switches[settingsQuery.ShowLink.title].value as? String,
+                       "1",
+                       "Show links previews - toggle is not enabled by default")
         XCTAssertEqual(app.switches[settingsQuery.Browsing.blockPopUps].value as? String,
                        "1",
                        "Block Pop-up  Windows - toggle is not enabled by default")
@@ -322,9 +411,19 @@ class SettingsTests: BaseTestCase {
         navigator.goto(SettingsScreen)
     }
 
-    private func validateSettingsUIOptions() {
-        navigator.nowAt(NewTabScreen)
+    private func validateSummarizeContentUI(navigateToSettings: Bool = true) {
+        if navigateToSettings {
+            navigator.nowAt(NewTabScreen)
+            navigator.goto(SettingsScreen)
+        }
+        SettingScreen(app: app).assertSummarizeSettingsIsInGeneralSection()
+
+        navigator.goto(SummarizeSettings)
+        SummarizeSettingsScreen(app: app).assertSummarizeAndShakeTogglesAreOnByDefault()
         navigator.goto(SettingsScreen)
+    }
+
+    private func validateSettingsUIOptions() {
         let table = app.tables.element(boundBy: 0)
         let settingsQuery = AccessibilityIdentifiers.Settings.self
         let settingsTitle = app.staticTexts["Settings"]
@@ -347,7 +446,7 @@ class SettingsTests: BaseTestCase {
             table.cells[settingsQuery.Siri.title],
             table.cells[settingsQuery.AutofillsPasswords.title],
             table.cells[settingsQuery.ClearData.title],
-            app.switches[settingsQuery.ClosePrivateTabs.title],
+            table.switches[settingsQuery.ClosePrivateTabs.title],
             table.cells[settingsQuery.ContentBlocker.title],
             table.cells[settingsQuery.Notifications.title],
             table.cells[settingsQuery.PrivacyPolicy.title],
@@ -369,9 +468,8 @@ class SettingsTests: BaseTestCase {
         }
 
         for i in settingsElements {
-            scrollToElement(i)
             mozWaitForElementToExist(i)
-            XCTAssertTrue(i.isVisible())
+            XCTAssertTrue(i.exists)
         }
         app.buttons["Done"].waitAndTap()
     }

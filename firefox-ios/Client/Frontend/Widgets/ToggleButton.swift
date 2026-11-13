@@ -4,8 +4,9 @@
 
 import UIKit
 import Common
+import Shared
 
-private struct UX {
+private enum UX {
     // The amount of pixels the toggle button will expand over the normal size.
     // This results in the larger -> contract animation.
     static let ExpandDelta: CGFloat = 5
@@ -123,6 +124,7 @@ class ToggleButton: UIButton, ThemeApplicable {
     }
 
     func applyTheme(theme: Theme) {
-        backgroundLayer.backgroundColor = theme.colors.layerAccentPrivate.cgColor
+        let background = theme.isNova ? theme.colors.actionPrimary : theme.colors.layerAccentPrivate
+        backgroundLayer.backgroundColor = background.cgColor
     }
 }

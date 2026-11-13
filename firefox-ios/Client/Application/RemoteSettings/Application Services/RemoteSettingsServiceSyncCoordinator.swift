@@ -7,36 +7,51 @@ import MozillaAppServices
 import Shared
 import Common
 
-final class RemoteSettingsServiceSyncCoordinator {
+// TODO: FXIOS-14203 RemoteSettingsServiceSyncCoordinator is not sendable
+final class RemoteSettingsServiceSyncCoordinator: @unchecked Sendable, Notifiable {
     private weak var service: RemoteSettingsService?
     private let prefs: Prefs
     private let prefsKey = PrefsKeys.RemoteSettings.lastRemoteSettingsServiceSyncTimestamp
     private let logger: Logger
     private var syncTimer: Timer?
     private let maxSyncFrequency: Double = 60 * 60 * 24 // 24 hours
+    private let notificationCenter: NotificationProtocol
 
     init(service: RemoteSettingsService,
          prefs: Prefs,
-         logger: Logger = DefaultLogger.shared) {
+         logger: Logger = DefaultLogger.shared,
+         notificationCenter: NotificationProtocol = NotificationCenter.default) {
         self.service = service
         self.prefs = prefs
         self.logger = logger
+        self.notificationCenter = notificationCenter
 
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in self?.didBecomeActive() }
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.willResignActiveNotification,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in self?.willResignActive() }
+        startObservingNotifications(
+            withNotificationCenter: NotificationCenter.default,
+            forObserver: self,
+            observing: [
+                UIApplication.didBecomeActiveNotification,
+                UIApplication.willResignActiveNotification
+            ]
+        )
+    }
+
+    // MARK: - Notifiable
+
+    func handleNotifications(_ notification: Notification) {
+        switch notification.name {
+        case UIApplication.didBecomeActiveNotification:
+            didBecomeActive()
+        case UIApplication.willResignActiveNotification:
+            willResignActive()
+        default:
+            break
+        }
     }
 
     // This is primarily for internal testing or QA purposes.
-    func forceImmediateSync() async {
-        await performSync()
+    func forceImmediateSync() {
+        performSync()
     }
 
     // MARK: - Private API
@@ -50,7 +65,11 @@ final class RemoteSettingsServiceSyncCoordinator {
         // some time to allow any other work or threads to take priority
         syncTimer?.invalidate()
         syncTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: false) { [weak self] _ in
-            self?.syncIfNeeded()
+            guard let self else { return }
+            // Sync needs to be scheduled on a background thread, otherwise it will block ui
+            DispatchQueue.global().async {
+                self.syncIfNeeded()
+            }
         }
     }
 
@@ -61,11 +80,11 @@ final class RemoteSettingsServiceSyncCoordinator {
             // Persist our sync time. Note that this will persist the timestamp
             // even if the sync fails, which means we won't retry for another 24hrs
             updateLastSyncTime()
-            Task { await performSync() }
+            performSync()
         }
     }
 
-    private func performSync() async {
+    private func performSync() {
         guard let service else {
             logger.log(
                 "Remote Settings needs sync but service instance is nil.",
@@ -81,6 +100,13 @@ final class RemoteSettingsServiceSyncCoordinator {
                 level: .info,
                 category: .remoteSettings
             )
+            if !syncResults.isEmpty {
+                notificationCenter.post(
+                    name: .remoteSettingsDidSync,
+                    withObject: nil,
+                    withUserInfo: ["updatedCollections": syncResults]
+                )
+            }
         } catch {
             logger.log(
                 "Remote Settings sync error: \(error)",

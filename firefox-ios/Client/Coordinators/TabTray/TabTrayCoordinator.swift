@@ -5,35 +5,34 @@
 import Common
 
 protocol TabTrayCoordinatorDelegate: AnyObject {
+    @MainActor
     func didDismissTabTray(from coordinator: TabTrayCoordinator)
 }
 
 protocol TabTrayNavigationHandler: AnyObject {
+    @MainActor
     func start(panelType: TabTrayPanelType, navigationController: UINavigationController)
 }
 
-class TabTrayCoordinator: BaseCoordinator,
+final class TabTrayCoordinator: BaseCoordinator,
                           ParentCoordinatorDelegate,
                           TabTrayViewControllerDelegate,
-                          TabTrayNavigationHandler,
-                          FeatureFlaggable {
+                          TabTrayNavigationHandler {
     var tabTrayViewController: TabTrayViewController?
     weak var parentCoordinator: TabTrayCoordinatorDelegate?
     private let profile: Profile
     private let tabManager: TabManager
-
-    private var isTabTrayUIExperimentsEnabled: Bool {
-        return featureFlags.isFeatureEnabled(.tabTrayUIExperiments, checking: .buildOnly)
-        && UIDevice.current.userInterfaceIdiom != .pad
-    }
+    private let tabTrayUtils: TabTrayUtils
 
     init(router: Router,
          tabTraySection: TabTrayPanelType,
          profile: Profile,
-         tabManager: TabManager
+         tabManager: TabManager,
+         tabTrayUtils: TabTrayUtils = DefaultTabTrayUtils()
     ) {
         self.profile = profile
         self.tabManager = tabManager
+        self.tabTrayUtils = tabTrayUtils
         super.init(router: router)
         initializeTabTrayViewController(panelType: tabTraySection)
     }
@@ -48,7 +47,7 @@ class TabTrayCoordinator: BaseCoordinator,
         let tabTrayViewController = TabTrayViewController(panelType: panelType, windowUUID: tabManager.windowUUID)
         router.setRootViewController(tabTrayViewController)
         self.tabTrayViewController = tabTrayViewController
-        tabTrayViewController.childPanelControllers = makeChildPanels()
+        tabTrayViewController.childPanelControllers = makeChildPanels(dragAndDropDelegate: tabTrayViewController)
         tabTrayViewController.childPanelThemes = makeChildPanelThemes()
         tabTrayViewController.delegate = self
         tabTrayViewController.navigationHandler = self
@@ -56,17 +55,23 @@ class TabTrayCoordinator: BaseCoordinator,
 
     func start(with tabTraySection: TabTrayPanelType) {
         tabTrayViewController?.setupOpenPanel(panelType: tabTraySection)
+        // Build the tray and populate the selected panel now, before `present` kicks off the transition.
+        tabTrayViewController?.preloadSelectedPanelForPresentation()
     }
 
-    private func makeChildPanels() -> [UINavigationController] {
+    private func makeChildPanels(dragAndDropDelegate: TabDisplayViewDragAndDropInteraction) -> [UINavigationController] {
         let windowUUID = tabManager.windowUUID
-        let regularTabsPanel = TabDisplayPanelViewController(isPrivateMode: false, windowUUID: windowUUID)
-        let privateTabsPanel = TabDisplayPanelViewController(isPrivateMode: true, windowUUID: windowUUID)
+        let regularTabsPanel = TabDisplayPanelViewController(isPrivateMode: false,
+                                                             windowUUID: windowUUID,
+                                                             dragAndDropDelegate: dragAndDropDelegate)
+        let privateTabsPanel = TabDisplayPanelViewController(isPrivateMode: true,
+                                                             windowUUID: windowUUID,
+                                                             dragAndDropDelegate: dragAndDropDelegate)
         let syncTabs = RemoteTabsPanel(windowUUID: windowUUID)
 
         let panels: [UIViewController]
         // Panels order is different for the experiment
-        if isTabTrayUIExperimentsEnabled {
+        if tabTrayUtils.shouldDisplayExperimentUI() {
             panels = [privateTabsPanel, regularTabsPanel, syncTabs]
         } else {
             panels = [regularTabsPanel, privateTabsPanel, syncTabs]
@@ -97,10 +102,21 @@ class TabTrayCoordinator: BaseCoordinator,
     }
 
     private func makeTabsCoordinator(navigationController: UINavigationController) {
+        // A panel can be selected any number of times while the tab tray stays open, so reuse the
+        // coordinator already owning that navigation controller instead of appending a new
+        // coordinator and router on every switch.
+        guard !hasTabsCoordinator(for: navigationController) else { return }
         let router = DefaultRouter(navigationController: navigationController)
         let tabCoordinator = TabsCoordinator(router: router)
         add(child: tabCoordinator)
         tabCoordinator.parentCoordinator = self
+    }
+
+    private func hasTabsCoordinator(for navigationController: UINavigationController) -> Bool {
+        return childCoordinators.contains { child in
+            guard let tabsCoordinator = child as? TabsCoordinator else { return false }
+            return (tabsCoordinator.router.navigationController as? UINavigationController) === navigationController
+        }
     }
 
     private func makeRemoteTabsCoordinator(navigationController: UINavigationController, for window: WindowUUID) {

@@ -9,12 +9,13 @@ import UIKit
 
 class ContextualHintViewViewController: UIViewController, Themeable {
     private lazy var hintView: ContextualHintView = .build { _ in }
-    private struct UX {
+    private enum UX {
         static let contextualHintWidth: CGFloat = 350
         static let contextualHintLandscapeExtraWidth: CGFloat = 60
     }
 
     var themeManager: ThemeManager
+    var themeListenerCancellable: Any?
     var themeObserver: NSObjectProtocol?
     var notificationCenter: NotificationProtocol = NotificationCenter.default
 
@@ -29,11 +30,10 @@ class ContextualHintViewViewController: UIViewController, Themeable {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        listenForThemeChange(view)
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
 
         var viewModel = ContextualHintViewModel(
-            isActionType: true,
             actionButtonTitle: "This button has an action",
             title: "CFR title",
             description: "This contextual hint gives you some context about a random feature",

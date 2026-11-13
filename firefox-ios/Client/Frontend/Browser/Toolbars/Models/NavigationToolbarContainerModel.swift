@@ -18,12 +18,18 @@ struct NavigationToolbarContainerModel: Equatable {
                                               isTranslucencyEnabled: isTranslucent)
     }
 
-    init(state: ToolbarState, windowUUID: WindowUUID) {
+    @MainActor
+    init(
+        lens: AddressToolbarContainerLens,
+        longPressMenuProvider: @escaping @MainActor (ToolbarActionConfiguration.ActionType) -> UIMenu? = { _ in nil },
+        windowUUID: WindowUUID
+    ) {
+        let state = lens.toolbarState
         self.displayBorder = state.navigationToolbar.displayBorder
         self.canShowNavigationHint = state.canShowNavigationHint
         self.isTranslucent = state.isTranslucent
-        self.actions = state.navigationToolbar.actions.map { action in
-            ToolbarElement(
+        self.actions = lens.navigationToolbarActions.map { action in
+            return ToolbarElement(
                 iconName: action.iconName,
                 title: action.actionLabel,
                 badgeImageName: action.badgeImageName,
@@ -39,30 +45,65 @@ struct NavigationToolbarContainerModel: Equatable {
                 a11yHint: action.a11yHint,
                 a11yId: action.a11yId,
                 a11yCustomActionName: action.a11yCustomActionName,
-                a11yCustomAction: action.a11yCustomActionName != nil ? {
-                    let action = ToolbarMiddlewareAction(buttonType: action.actionType,
-                                                         windowUUID: windowUUID,
-                                                         actionType: ToolbarMiddlewareActionType.customA11yAction)
-                    store.dispatch(action)
-                } : nil,
-                hasLongPressAction: action.canPerformLongPressAction(isShowingTopTabs: state.isShowingTopTabs),
-                onSelected: { button in
-                    let action = ToolbarMiddlewareAction(buttonType: action.actionType,
-                                                         buttonTapped: button,
-                                                         gestureType: .tap,
-                                                         windowUUID: windowUUID,
-                                                         actionType: ToolbarMiddlewareActionType.didTapButton)
-                    store.dispatch(action)
-                }, onLongPress: action.canPerformLongPressAction(isShowingTopTabs: state.isShowingTopTabs) ? { button in
-                    let action = ToolbarMiddlewareAction(buttonType: action.actionType,
-                                                         buttonTapped: button,
-                                                         gestureType: .longPress,
-                                                         windowUUID: windowUUID,
-                                                         actionType: ToolbarMiddlewareActionType.didTapButton)
-                    store.dispatch(action)
-                } : nil
+                a11yCustomAction: NavigationToolbarContainerModel.getA11yCustomAction(action: action,
+                                                                                      windowUUID: windowUUID),
+                longPressBehavior: NavigationToolbarContainerModel.makeLongPressBehavior(
+                    action: action,
+                    longPressMenuProvider: longPressMenuProvider,
+                    windowUUID: windowUUID
+                ),
+                previousTabScreenshot: action.previousTabScreenshot,
+                nextTabScreenshot: action.nextTabScreenshot,
+                onSelected: NavigationToolbarContainerModel.getOnSelected(action: action, windowUUID: windowUUID)
             )
         }
         self.windowUUID = windowUUID
+    }
+
+    @MainActor
+    private static func getA11yCustomAction(action: ToolbarActionConfiguration, windowUUID: WindowUUID) -> (() -> Void)? {
+        return action.a11yCustomActionName != nil ? {
+            let action = ToolbarMiddlewareAction(buttonType: action.actionType,
+                                                 windowUUID: windowUUID,
+                                                 actionType: ToolbarMiddlewareActionType.customA11yAction)
+            store.dispatch(action)
+        } : nil
+    }
+
+    @MainActor
+    private static func getOnSelected(action: ToolbarActionConfiguration, windowUUID: WindowUUID) -> ((UIButton) -> Void)? {
+        return { button in
+            let action = ToolbarMiddlewareAction(buttonType: action.actionType,
+                                                 buttonTapped: button,
+                                                 gestureType: .tap,
+                                                 windowUUID: windowUUID,
+                                                 actionType: ToolbarMiddlewareActionType.didTapButton)
+            store.dispatch(action)
+        }
+    }
+
+    @MainActor
+    private static func makeLongPressBehavior(
+        action: ToolbarActionConfiguration,
+        longPressMenuProvider: @escaping @MainActor (ToolbarActionConfiguration.ActionType) -> UIMenu?,
+        windowUUID: WindowUUID
+    ) -> ToolbarLongPressBehavior {
+        guard action.canPerformLongPressAction else {
+            return .none
+        }
+
+        switch action.actionType {
+        case .tabs, .newTab:
+            return .menu { longPressMenuProvider(action.actionType) }
+        default:
+            return .action { button in
+                let action = ToolbarMiddlewareAction(buttonType: action.actionType,
+                                                     buttonTapped: button,
+                                                     gestureType: .longPress,
+                                                     windowUUID: windowUUID,
+                                                     actionType: ToolbarMiddlewareActionType.didTapButton)
+                store.dispatch(action)
+            }
+        }
     }
 }

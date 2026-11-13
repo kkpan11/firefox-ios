@@ -5,26 +5,26 @@
 import XCTest
 @testable import Client
 
+@MainActor
 final class DownloadsCoordinatorTests: XCTestCase {
     private var router: MockRouter!
     private var parentCoordinator: MockLibraryCoordinatorDelegate!
     private var profile: MockProfile!
 
-    override func setUp() {
-        super.setUp()
-        profile = MockProfile()
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
+    override func setUp() async throws {
+        try await super.setUp()
+        profile = makeProfile()
         router = MockRouter(navigationController: UINavigationController())
         parentCoordinator = MockLibraryCoordinatorDelegate()
         DependencyHelperMock().bootstrapDependencies()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         router = nil
         parentCoordinator = nil
         profile = nil
         DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
     func testHandleFile_presentsShareController() {

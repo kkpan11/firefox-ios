@@ -5,14 +5,17 @@
 import Common
 import Foundation
 
-// Convenience protocol to have a blur on a collection view cell
+// Convenience protocol to have a blur on a view
 // Currently used on the homepage cells
-protocol Blurrable: UICollectionViewCell {
+protocol Blurrable: UIView {
+    @MainActor
     var shouldApplyWallpaperBlur: Bool { get }
+    @MainActor
     func adjustBlur(theme: Theme)
 }
 
 extension Blurrable {
+    @MainActor
     var shouldApplyWallpaperBlur: Bool {
         guard !UIAccessibility.isReduceTransparencyEnabled else { return false }
 

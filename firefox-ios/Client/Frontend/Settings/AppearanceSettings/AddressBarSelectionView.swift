@@ -14,10 +14,10 @@ struct AddressBarSelectionView: View {
     var onSelected: ((SearchBarPosition) -> Void)?
 
     var backgroundColor: Color {
-        return Color(theme?.colors.layer2 ?? UIColor.clear)
+        return Color(theme?.colors.layer5 ?? UIColor.clear)
     }
 
-    private struct UX {
+    private enum UX {
         static let spacing: CGFloat = 36
         static let sectionPadding: CGFloat = 16
         static let dividerHeight: CGFloat = 0.7
@@ -27,18 +27,29 @@ struct AddressBarSelectionView: View {
         HStack(spacing: UX.spacing) {
             ForEach(SearchBarPosition.allCases, id: \.label) { addressBarPosition in
                 GenericImageOption(
+                    theme: theme,
                     isSelected: selectedAddressBarPosition == addressBarPosition,
                     onSelected: {
                         selectedAddressBarPosition = addressBarPosition
                         onSelected?(selectedAddressBarPosition)
                     },
                     label: addressBarPosition.label,
-                    imageName: addressBarPosition.imageName
+                    imageName: addressBarPosition.imageName,
+                    a11yIdentifier: identifierName(for: addressBarPosition)
                 )
             }
         }
         .padding(.vertical, UX.sectionPadding)
         .frame(maxWidth: .infinity)
         .background(backgroundColor)
+    }
+
+    func identifierName(for addressBarPosition: SearchBarPosition) -> String {
+        switch addressBarPosition {
+        case .top:
+            return AccessibilityIdentifiers.Settings.SearchBar.topSetting
+        case .bottom:
+            return AccessibilityIdentifiers.Settings.SearchBar.bottomSetting
+        }
     }
 }

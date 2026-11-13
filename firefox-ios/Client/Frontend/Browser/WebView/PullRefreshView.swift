@@ -7,7 +7,7 @@ import Common
 
 class PullRefreshView: UIView,
                        ThemeApplicable {
-    private struct UX {
+    private enum UX {
         static let blinkProgressViewStandardThreshold: CGFloat = 80.0
         static let progressViewPadding: CGFloat = 28.0
         static let progressViewSize: CGFloat = 40.0
@@ -26,6 +26,7 @@ class PullRefreshView: UIView,
     private lazy var progressView: UIImageView = .build { view in
         view.image = UIImage(named: StandardImageIdentifiers.Large.arrowClockwise)?.withRenderingMode(.alwaysTemplate)
         view.contentMode = .scaleAspectFit
+        view.alpha = 0
     }
     private lazy var progressContainerView: UIView = .build { view in
         view.layer.cornerRadius = UX.progressViewAnimatedBackgroundSize / 2.0 * self.computeShrinkingFactor()
@@ -42,10 +43,9 @@ class PullRefreshView: UIView,
     }
     private var easterEggTimer: DispatchSourceTimer?
     private var isIpad: Bool {
+        // An additional check for horizontalSizeClass is needed since for iPad in multi windows state
+        // the smallest window possible has horizontalSizeClass equal to compact, thus behaving like an iPhone.
         return traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular
-    }
-    private var isToolbarRefactorEnabled: Bool {
-        return FxNimbus.shared.features.toolbarRefactorFeature.value().enabled
     }
 
     init(parentScrollView: UIScrollView?,
@@ -103,33 +103,62 @@ class PullRefreshView: UIView,
     /// the correct state of the pull to refresh view.
     func startObservingContentScroll() {
         scrollObserver = scrollView?.observe(\.contentOffset) { [weak self] _, _ in
-            guard let scrollView = self?.scrollView, scrollView.isDragging else {
-                guard let refreshHasFocus = self?.refreshIconHasFocus, refreshHasFocus else { return }
-                self?.refreshIconHasFocus = false
-                self?.easterEggGif?.removeFromSuperview()
-                self?.easterEggGif = nil
-                self?.scrollObserver?.invalidate()
-                self?.triggerReloadAnimation()
-                return
-            }
-
-            let threshold = (self?.computeShrinkingFactor() ?? 1.0) * UX.blinkProgressViewStandardThreshold
-
-            if scrollView.contentOffset.y < -threshold {
-                self?.blinkBackgroundProgressViewIfNeeded()
-                self?.scheduleEasterEgg()
-            } else if scrollView.contentOffset.y != 0.0 {
-                self?.easterEggTimer?.cancel()
-                self?.easterEggTimer = nil
-                // This check prevents progressView re blink when scrolling the pull refresh before the web view is loaded
-                self?.restoreBackgroundProgressViewIfNeeded()
-                let rotationAngle = -(scrollView.contentOffset.y) / threshold
-
-                UIView.animate(withDuration: UX.rotateProgressViewAnimationDuration) {
-                    self?.progressView.transform = CGAffineTransform(rotationAngle: rotationAngle * 1.5)
+            ensureMainThread { [weak self] in
+                guard let scrollView = self?.scrollView, scrollView.isDragging else {
+                    self?.handleScrollViewNotDragging()
+                    return
                 }
+
+                self?.handleScrollViewDragging()
             }
         }
+    }
+
+    private func handleScrollViewNotDragging() {
+        if let scrollView = scrollView, scrollView.contentOffset.y <= 0 {
+            updateElementAlpha()
+        }
+
+        guard refreshIconHasFocus else { return }
+
+        refreshIconHasFocus = false
+        easterEggGif?.removeFromSuperview()
+        easterEggGif = nil
+        scrollObserver?.invalidate()
+        triggerReloadAnimation()
+    }
+
+    private func handleScrollViewDragging() {
+        guard let scrollView else { return }
+
+        let threshold = computeShrinkingFactor() * UX.blinkProgressViewStandardThreshold
+
+        if scrollView.contentOffset.y < -threshold {
+            blinkBackgroundProgressViewIfNeeded()
+            scheduleEasterEgg()
+            updateElementAlpha()
+        } else if scrollView.contentOffset.y != 0.0 {
+            easterEggTimer?.cancel()
+            easterEggTimer = nil
+            // This check prevents progressView re blink when scrolling the pull refresh
+            // before the web view is loaded
+            restoreBackgroundProgressViewIfNeeded()
+            let rotationAngle = -(scrollView.contentOffset.y) / threshold
+
+            UIView.animate(withDuration: UX.rotateProgressViewAnimationDuration) {
+                self.progressView.transform = CGAffineTransform(rotationAngle: rotationAngle * 1.5)
+                self.updateElementAlpha()
+            }
+        }
+    }
+
+    private func updateElementAlpha() {
+        guard let scrollView = scrollView else { return }
+
+        let threshold = computeShrinkingFactor() * UX.blinkProgressViewStandardThreshold
+        let elementAlpha: CGFloat = -(scrollView.contentOffset.y) / threshold
+        easterEggGif?.alpha = elementAlpha
+        progressView.alpha = elementAlpha
     }
 
     private func triggerReloadAnimation() {
@@ -231,7 +260,7 @@ class PullRefreshView: UIView,
 
     func applyTheme(theme: any Theme) {
         currentTheme = theme
-        backgroundColor = isToolbarRefactorEnabled ? theme.colors.layer3 : theme.colors.layer1
+        backgroundColor = theme.colors.layerSurfaceLow
         progressView.tintColor = theme.colors.iconPrimary
     }
 
@@ -244,7 +273,7 @@ class PullRefreshView: UIView,
 }
 
 struct EasterEggViewLayoutBuilder {
-    private struct UX {
+    private enum UX {
         static let sidePadding: CGFloat = 32.0
         /// The max height that we are considering a device a small one.
         /// This screen height refers to iPhone SE 2/3 rd gen, 6,7,8.
@@ -255,6 +284,7 @@ struct EasterEggViewLayoutBuilder {
 
     let easterEggSize: CGSize
 
+    @MainActor
     func layoutEasterEggView(_ view: UIView, superview: UIView, isPortrait: Bool, isIpad: Bool) {
         var isPortrait = isPortrait
         if let screenHeight = UIWindow.keyWindow?.windowScene?.screen.bounds.height,
@@ -269,6 +299,7 @@ struct EasterEggViewLayoutBuilder {
         }
     }
 
+    @MainActor
     private func layoutEasterEggView(_ view: UIView, superview: UIView, position: NSRectAlignment) {
         let constraints: [NSLayoutConstraint] = switch position {
         case .leading:

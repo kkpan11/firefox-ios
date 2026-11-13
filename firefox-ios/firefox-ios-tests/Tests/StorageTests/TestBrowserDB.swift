@@ -7,25 +7,16 @@ import Shared
 @testable import Storage
 import XCTest
 
-class TestBrowserDB: XCTestCase {
-    let files = MockFiles()
+class SupportingFiles: FileAccessor {
+    var rootPath: String
 
-    fileprivate func rm(_ path: String) {
-        do {
-            try files.remove(path)
-        } catch {
-        }
+    init() {
+        rootPath = Bundle.main.bundlePath + "/PlugIns/StorageTests.xctest/"
     }
+}
 
-    override func setUp() {
-        super.setUp()
-        rm("foo.db")
-        rm("foo.db-shm")
-        rm("foo.db-wal")
-        rm("foo.db.bak.1")
-        rm("foo.db.bak.1-shm")
-        rm("foo.db.bak.1-wal")
-    }
+class TestBrowserDB: XCTestCase, @unchecked Sendable {
+    lazy var files = makeTemporaryFiles()
 
     class MockFailingSchema: Schema {
         var name: String { return "FAILURE" }
@@ -148,7 +139,7 @@ class TestBrowserDB: XCTestCase {
         XCTAssertEqual("foo.db", (listener.notification?.object as? String))
     }
 
-    func testConcurrentQueriesDealloc() {
+    func testConcurrentQueriesDealloc() async {
         let expectation = self.expectation(description: "Got all DB results")
 
         let db = BrowserDB(filename: "foo.db", schema: BrowserSchema(), files: self.files)
@@ -164,34 +155,35 @@ class TestBrowserDB: XCTestCase {
             }
         }
 
-        func fooBarFactory(_ row: SDRow) -> [String: Any] {
-            var result: [String: Any] = [:]
-            result["id"] = row["id"]
-            result["bar"] = row["bar"]
-            return result
-        }
-
         let shortConcurrentQuery = db.runQueryConcurrently(
             "SELECT * FROM foo LIMIT 1",
             args: nil,
-            factory: fooBarFactory
+            factory: Self.fooBarFactory
         )
 
-        _ = shortConcurrentQuery.bind { result -> Deferred<Maybe<[[String: Any]]>> in
-            if let results = result.successValue?.asArray() {
+        await self.trackForMemoryLeaks(shortConcurrentQuery)
+
+        _ = shortConcurrentQuery.bind { result -> Deferred<Maybe<Bool>> in
+            if result.successValue?.asArray() != nil {
                 expectation.fulfill()
-                return deferMaybe(results)
+                return deferMaybe(true)
             }
 
             return deferMaybe(DatabaseError(description: "Unable to execute concurrent short-running query"))
         }
 
-        trackForMemoryLeaks(shortConcurrentQuery)
-
-        waitForExpectations(timeout: 10, handler: nil)
+        await fulfillment(of: [expectation], timeout: 3)
     }
 
-    func trackForMemoryLeaks(_ instance: AnyObject, file: StaticString = #file, line: UInt = #line) {
+    nonisolated static func fooBarFactory(_ row: SDRow) -> [String: Any] {
+        var result: [String: Any] = [:]
+        result["id"] = row["id"]
+        result["bar"] = row["bar"]
+        return result
+    }
+
+    @MainActor
+    func trackForMemoryLeaks(_ instance: AnyObject, file: StaticString = #filePath, line: UInt = #line) {
         addTeardownBlock { [weak instance] in
             XCTAssertNil(
                 instance,

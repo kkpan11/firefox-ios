@@ -5,14 +5,15 @@
 import UIKit
 import Common
 
-final class CertificatesHeaderItem: UIView {
-    struct UX {
+final class CertificatesHeaderItem: UIView, ThemeApplicable {
+    enum UX {
         static let headerItemIndicatorHeight = 4.0
         static let headerItemsSpacing = 10.0
     }
 
     private var itemSelectedCallback: (() -> Void)?
     private var theme: Theme?
+    private var isSelected = false
 
     private let stackView: UIStackView = .build { stack in
         stack.axis = .vertical
@@ -52,13 +53,17 @@ final class CertificatesHeaderItem: UIView {
     }
 
     func configure(theme: Theme, title: String?, isSelected: Bool, itemSelectedCallback: @escaping () -> Void) {
-        self.theme = theme
+        self.isSelected = isSelected
         button.setTitle(title, for: .normal)
         button.addTarget(self, action: #selector(certificateButtonTapped(_:)), for: .touchUpInside)
+        self.itemSelectedCallback = itemSelectedCallback
+        applyTheme(theme: theme)
+    }
+
+    func applyTheme(theme: Theme) {
+        self.theme = theme
         indicator.backgroundColor = isSelected ? theme.colors.textAccent : .clear
         button.setTitleColor(isSelected ? theme.colors.textAccent : theme.colors.textPrimary, for: .normal)
-        indicator.backgroundColor = isSelected ? theme.colors.textAccent : .clear
-        self.itemSelectedCallback = itemSelectedCallback
     }
 
     @objc

@@ -8,7 +8,7 @@ import Common
 
 private let temporaryDocumentOperationQueue = OperationQueue()
 
-protocol TemporaryDocument {
+protocol TemporaryDocument: Sendable {
     var filename: String { get }
     var sourceURL: URL? { get }
     var isDownloading: Bool { get }
@@ -17,7 +17,7 @@ protocol TemporaryDocument {
 
     func download() async -> URL?
 
-    func download(_ completion: @escaping (URL?) -> Void)
+    func download(_ completion: @escaping @Sendable (URL?) -> Void)
 
     func cancelDownload()
 
@@ -26,12 +26,13 @@ protocol TemporaryDocument {
     func resumeDownload()
 }
 
-class WeakURLSessionDelegate: NSObject, URLSessionDownloadDelegate {
+// TODO: FXIOS-13618 Make WeakURLSessionDelegate actually sendable
+final class WeakURLSessionDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     init(delegate: URLSessionDownloadDelegate?) {
         self.delegate = delegate
     }
 
-    weak var delegate: URLSessionDownloadDelegate?
+    private weak var delegate: URLSessionDownloadDelegate?
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         delegate?.urlSession(session, downloadTask: downloadTask, didFinishDownloadingTo: location)
@@ -39,6 +40,44 @@ class WeakURLSessionDelegate: NSObject, URLSessionDownloadDelegate {
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
         delegate?.urlSession?(session, task: task, didCompleteWithError: error)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let delegate else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        delegate.urlSession?(
+            session,
+            task: task,
+            didReceive: challenge,
+            completionHandler: completionHandler
+        )
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        guard let delegate else {
+            completionHandler(request)
+            return
+        }
+        delegate.urlSession?(
+            session,
+            task: task,
+            willPerformHTTPRedirection: response,
+            newRequest: request,
+            completionHandler: completionHandler
+        )
     }
 
     func urlSession(
@@ -58,18 +97,21 @@ class WeakURLSessionDelegate: NSObject, URLSessionDownloadDelegate {
     }
 }
 
-class DefaultTemporaryDocument: NSObject,
-                                TemporaryDocument,
-                                FeatureFlaggable,
-                                URLSessionDownloadDelegate {
+// TODO: FXIOS-13619 Make DefaultTemporaryDocument actually sendable
+final class DefaultTemporaryDocument: NSObject,
+                                      TemporaryDocument,
+                                      URLSessionDownloadDelegate,
+                                      @unchecked Sendable {
     private let session: URLSession
-    private let request: URLRequest
+    private let request: URLRequest?
+    private let cookies: [HTTPCookie]
+    private let credential: URLCredential?
     private var currentDownloadTask: URLSessionDownloadTask?
 
     private var onDownload: ((URL?) -> Void)?
-    var onDownloadProgressUpdate: ((Double) -> Void)?
+    var onDownloadProgressUpdate: (@MainActor (Double) -> Void)?
     var onDownloadStarted: VoidReturnCallback?
-    var onDownloadError: ((Error?) -> Void)?
+    var onDownloadError: (@MainActor (Error?) -> Void)?
     var isDownloading: Bool {
         return currentDownloadTask != nil
     }
@@ -79,11 +121,8 @@ class DefaultTemporaryDocument: NSObject,
     private(set) var filename: String
     private let logger: Logger
 
-    private var isPDFRefactorEnabled: Bool {
-        return featureFlags.isFeatureEnabled(.pdfRefactor, checking: .buildOnly)
-    }
     var sourceURL: URL? {
-        return request.url
+        return request?.url
     }
 
     init(
@@ -91,11 +130,14 @@ class DefaultTemporaryDocument: NSObject,
         request: URLRequest,
         mimeType: String? = nil,
         cookies: [HTTPCookie] = [],
+        credential: URLCredential? = nil,
         session: URLSession = .shared,
         logger: Logger = DefaultLogger.shared
     ) {
         self.request = Self.applyCookiesToRequest(request, cookies: cookies)
-        self.filename = filename ?? "unknown"
+        self.cookies = cookies
+        self.credential = credential
+        self.filename = FilenameSanitizer.sanitize(filename)
         self.mimeType = mimeType
         self.session = session
         self.logger = logger
@@ -105,13 +147,15 @@ class DefaultTemporaryDocument: NSObject,
 
     init(
         preflightResponse: URLResponse,
-        request: URLRequest,
+        request: URLRequest? = nil,
         mimeType: String? = nil,
         session: URLSession = .shared,
         logger: Logger = DefaultLogger.shared
     ) {
         self.request = request
-        self.filename = preflightResponse.suggestedFilename ?? "unknown"
+        self.cookies = []
+        self.credential = nil
+        self.filename = FilenameSanitizer.sanitize(preflightResponse.suggestedFilename)
         self.mimeType = mimeType
         self.session = session
         self.logger = logger
@@ -122,7 +166,7 @@ class DefaultTemporaryDocument: NSObject,
     /// Returns a modified request with Cookies header field
     private static func applyCookiesToRequest(_ request: URLRequest, cookies: [HTTPCookie]) -> URLRequest {
         var rawHeaderCookies = cookies.reduce("") { partialResult, cookie in
-            if let domain = request.url?.baseDomain, cookie.domain.contains(domain) {
+            if let url = request.url, cookieDomainMatches(cookie, url: url) {
                 return partialResult.appending("\(cookie.name)=\(cookie.value); ")
             }
             return partialResult
@@ -139,6 +183,22 @@ class DefaultTemporaryDocument: NSObject,
         return request
     }
 
+    /// Cookies match when request host is identical to domain (host-only cookie) or is a subdomain (domain-scoped cookie).
+    static func cookieDomainMatches(_ cookie: HTTPCookie, url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        let cookieDomain = cookie.domain.lowercased()
+        if cookieDomain.hasPrefix(".") {
+            // Domain-scoped cookie (explicit Domain attribute) then subdomain matching allowed
+            let domain = String(cookieDomain.dropFirst())
+            guard !domain.isEmpty else { return false }
+            return host == domain || host.hasSuffix("." + domain)
+        }
+        // If Host-only cookie (no Domain attribute, no leading dot)
+        // then according to RFC 6265 Section 5.4: identical match only
+        // See: https://www.rfc-editor.org/info/rfc6265/#section-5.4
+        return host == cookieDomain
+    }
+
     func canDownload(request: URLRequest) -> Bool {
         return request.url != localFileURL
     }
@@ -147,16 +207,23 @@ class DefaultTemporaryDocument: NSObject,
         if let tempFile = queryTempFile() {
             return tempFile
         }
+        guard let request else { return nil }
         let response = try? await session.download(for: request)
         guard let location = response?.0, let tempFileURL = storeTempDownloadFile(at: location) else { return nil }
 
         return tempFileURL
     }
 
-    func download(_ completion: @escaping (URL?) -> Void) {
+    func download(_ completion: @escaping @Sendable (URL?) -> Void) {
         if let tempFile = queryTempFile() {
             ensureMainThread {
                 completion(tempFile)
+            }
+            return
+        }
+        guard let request else {
+            ensureMainThread {
+                completion(nil)
             }
             return
         }
@@ -170,7 +237,9 @@ class DefaultTemporaryDocument: NSObject,
         if let localFileURL {
             return localFileURL
         }
-        let tempFileURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(filename)
+        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+        let tempFileURL = tempDirectory.appendingPathComponent(filename)
+        guard FilenameSanitizer.isContained(tempFileURL, in: tempDirectory) else { return nil }
         if FileManager.default.fileExists(atPath: tempFileURL.path) {
             localFileURL = tempFileURL
             return tempFileURL
@@ -197,6 +266,9 @@ class DefaultTemporaryDocument: NSObject,
         // By default the downloaded file is stored in the temp directory
         let tempDirectory = url.deletingPathExtension().deletingLastPathComponent()
         let tempFileURL = tempDirectory.appendingPathComponent(filename)
+        // `filename` is sanitized at init, but never remove or move onto a path outside
+        // the staging directory even if that invariant is broken by a future caller.
+        guard FilenameSanitizer.isContained(tempFileURL, in: tempDirectory) else { return nil }
 
         try? FileManager.default.createDirectory(
             at: tempDirectory,
@@ -216,10 +288,7 @@ class DefaultTemporaryDocument: NSObject,
 
     private func shouldRetainTempFile() -> Bool {
         // Retain the PDF so when the tab gets restored it still has the PDFs from the previous session
-        if isPDFRefactorEnabled {
-            return mimeType == MIMEType.PDF
-        }
-        return false
+        return mimeType == MIMEType.PDF
     }
 
     deinit {
@@ -227,12 +296,52 @@ class DefaultTemporaryDocument: NSObject,
         try? FileManager.default.removeItem(at: localFileURL)
     }
 
+    // MARK: - URLSessionTaskDelegate
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        guard !cookies.isEmpty else {
+            completionHandler(request)
+            return
+        }
+        // Re-evaluates cookies against the redirect destination so the `Cookie` header
+        // originally constructed is not forwarded incorrectly for a cross-origin redirect
+        completionHandler(Self.applyCookiesToRequest(request, cookies: cookies))
+    }
+
     // MARK: - URLSessionDownloadDelegate
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let method = challenge.protectionSpace.authenticationMethod
+        let isHTTPAuthChallenge = method == NSURLAuthenticationMethodHTTPBasic
+            || method == NSURLAuthenticationMethodHTTPDigest
+            || method == NSURLAuthenticationMethodNTLM
+        if isHTTPAuthChallenge,
+           let credential,
+           let request,
+           challenge.protectionSpace.host == request.url?.host {
+            completionHandler(.useCredential, credential)
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         currentDownloadTask = nil
         guard let url = storeTempDownloadFile(at: location) else {
-            onDownloadError?(nil)
+            ensureMainThread {
+                self.onDownloadError?(nil)
+            }
             return
         }
         ensureMainThread { [weak self] in

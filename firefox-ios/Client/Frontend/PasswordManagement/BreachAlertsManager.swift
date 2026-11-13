@@ -24,7 +24,8 @@ struct BreachRecord: Codable, Equatable, Hashable {
 }
 
 /// A manager for the user's breached login information, if any.
-final class BreachAlertsManager {
+/// FIXME: FXIOS-14141 class is not Sendable / thread safe
+final class BreachAlertsManager: @unchecked Sendable {
     static let monitorAboutUrl = URL(string: "https://monitor.firefox.com/about")
     var breaches = Set<BreachRecord>()
     var client: BreachAlertsClientProtocol
@@ -43,7 +44,12 @@ final class BreachAlertsManager {
     /// Loads breaches from Monitor endpoint using BreachAlertsClient.
     ///    - Parameters:
     ///         - completion: a completion handler for the processed breaches
-    func loadBreaches(completion: @escaping (Maybe<Set<BreachRecord>>) -> Void) {
+    func loadBreaches(completion: @escaping @Sendable (Maybe<Set<BreachRecord>>) -> Void) {
+        guard !isUsingMockBreaches else {
+            completion(Maybe(success: breaches))
+            return
+        }
+
         guard let cacheURL = self.cacheURL else {
             self.fetchAndSaveBreaches(completion)
             return
@@ -105,6 +111,10 @@ final class BreachAlertsManager {
     ///    - Returns:
     ///         - an array of LoginRecords of breaches in the original list.
     func findUserBreaches(_ logins: [LoginRecord]) -> Maybe<Set<LoginRecord>> {
+        if isUsingMockBreaches {
+            breaches = BreachAlertsTestData().breaches(forDomains: Array(loginsByHostname(logins).keys))
+        }
+
         var result = Set<LoginRecord>()
 
         if self.breaches.isEmpty {
@@ -169,12 +179,16 @@ final class BreachAlertsManager {
     }
 
     // MARK: - Helper Functions
+    private var isUsingMockBreaches: Bool {
+        return profile.prefs.boolForKey(PrefsKeys.useMockBreachAlerts) ?? false
+    }
+
     private func baseDomainForLogin(_ login: LoginRecord) -> String {
         guard let result = login.hostname.asURL?.baseDomain else { return login.hostname }
         return result
     }
 
-    private func fetchAndSaveBreaches(_ completion: @escaping (Maybe<Set<BreachRecord>>) -> Void) {
+    private func fetchAndSaveBreaches(_ completion: @escaping @Sendable (Maybe<Set<BreachRecord>>) -> Void) {
         guard let cacheURL = self.cacheURL else { return }
         self.client.fetchData(endpoint: .breachedAccounts, profile: self.profile) { maybeData in
             guard let fetchedData = maybeData.successValue else { return }

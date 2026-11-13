@@ -67,6 +67,9 @@
 /* Text to let users know how many analytics trackers were blocked on the current website. %@ is the number of cookies of this type detected. */
 "Menu.EnhancedTrackingProtection.Details.Trackers.Analytics.v132" = "പിന്തുടർച്ച ഉള്ളടക്കം: %@";
 
+/* Text to let users know how many cross-site tracking cookies were blocked on the current website. %@ is the number of cookies of this type detected. */
+"Menu.EnhancedTrackingProtection.Details.Trackers.CrossSite.v129" = "വെബ്ബിടകുറുകെ പിന്തുടൎച്ച കുക്കികൾ: %@";
+
 /* Text to let users know how many fingerprinters were blocked on the current website. %@ is the number of fingerprinters detected. */
 "Menu.EnhancedTrackingProtection.Details.Trackers.Fingerprinter.v129" = "വിരലടയാളപ്പിന്തുടൎച്ചയന്ത്രങ്ങൾ: %@";
 
@@ -81,6 +84,9 @@
 
 /* The title for the button that allows users to view certificates inside the enhanced tracking protection details screen. */
 "Menu.EnhancedTrackingProtection.Details.ViewCertificatesTitle.v131" = "പ്രമാണപത്രം കാണുക";
+
+/* Title for a link that explains how current Tracking Protection mode work. */
+"Menu.EnhancedTrackingProtection.Link.LearnMore.v150" = "കൂടുതല്‍ അറിയുക";
 
 /* Header for the enhanced tracking protection screen when the user has opted out of the feature. %@ is the app name (e.g. Firefox). */
 "Menu.EnhancedTrackingProtection.Off.Header.v128" = "%@ കാവൽ വിട്ടു. പരിരക്ഷകൾ വീണ്ടും തുടങ്ങിവയ്ക്കാനാണു് നല്ലതു്.";

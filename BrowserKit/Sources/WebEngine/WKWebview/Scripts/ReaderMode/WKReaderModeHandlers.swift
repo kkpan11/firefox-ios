@@ -7,6 +7,7 @@ import Foundation
 import GCDWebServers
 
 protocol WKReaderModeHandlersProtocol {
+    @MainActor
     func register(_ webServer: WKEngineWebServerProtocol,
                   readerModeConfiguration: ReaderModeConfiguration)
 }
@@ -34,26 +35,21 @@ public struct ReaderModeConfiguration {
 }
 
 // TODO: FXIOS-11373 - finish handling reader mode in WebEngine - this class is to be tested
-class WKReaderModeHandlers: WKReaderModeHandlersProtocol, Notifiable {
+final class WKReaderModeHandlers: WKReaderModeHandlersProtocol, Notifiable {
     var notificationCenter: NotificationProtocol = NotificationCenter.default
     private var readerModeCache: ReaderModeCache = DiskReaderModeCache()
-    private let mainQueue: DispatchQueueInterface
 
-    init(mainQueue: DispatchQueueInterface = DispatchQueue.main) {
-        self.mainQueue = mainQueue
-
-        setupNotifications(forObserver: self, observing: [.ReaderModeSessionChanged])
+    init() {
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [.ReaderModeSessionChanged]
+        )
     }
 
+    @MainActor
     func register(_ webServer: WKEngineWebServerProtocol, readerModeConfiguration: ReaderModeConfiguration) {
-        mainQueue.ensureMainThread { [weak self] in
-            self?.register(webServer: webServer, readerModeConfiguration: readerModeConfiguration)
-        }
-    }
-
-    private func register(webServer: WKEngineWebServerProtocol, readerModeConfiguration: ReaderModeConfiguration) {
-        // Register our fonts and css, which we want to expose to web content that we present in the WebView
-        webServer.registerMainBundleResourcesOfType("otf", module: "reader-mode/fonts")
+        // Register our css to expose to web content that we present in the WebView
         webServer.registerMainBundleResource("Reader.css", module: "reader-mode/styles")
 
         // Initialize ReaderModeStyle here to ensure it is initialized on the main thread.
@@ -92,6 +88,7 @@ class WKReaderModeHandlers: WKReaderModeHandlersProtocol, Notifiable {
         return GCDWebServerResponse(statusCode: status)
     }
 
+    @MainActor
     private func handleReaderModePage(request: GCDWebServerRequest?,
                                       readerModeConfiguration: ReaderModeConfiguration,
                                       readerModeStyle: ReaderModeStyle) -> GCDWebServerResponse? {
@@ -126,6 +123,7 @@ class WKReaderModeHandlers: WKReaderModeHandlersProtocol, Notifiable {
         }
     }
 
+    @MainActor
     private func handleReaderModeError(url: URL,
                                        readerModeConfiguration: ReaderModeConfiguration) -> GCDWebServerResponse? {
         WKReadabilityService().process(url, cache: readerModeCache)
@@ -152,6 +150,7 @@ class WKReaderModeHandlers: WKReaderModeHandlersProtocol, Notifiable {
         }
     }
 
+    @MainActor
     private func generateHtmlFor(readabilityResult: ReadabilityResult,
                                  style: ReaderModeStyle,
                                  readerModeConfiguration: ReaderModeConfiguration) -> GCDWebServerDataResponse? {
@@ -167,18 +166,7 @@ class WKReaderModeHandlers: WKReaderModeHandlersProtocol, Notifiable {
 
         guard let html = ReaderModeUtils.generateReaderContent(readabilityResult, initialStyle: readerModeStyle),
               let response = GCDWebServerDataResponse(html: html) else { return nil }
-        // Apply a Content Security Policy that disallows everything except:
-        // - images from anywhere
-        // - styles including inline styles from our internal server
-        // - scripts including inline scripts from our internal server
-        // - fonts our internal server
-        let csp = """
-            default-src 'none';
-            img-src *;
-            style-src 'unsafe-inline' http://localhost:*;
-            font-src http://localhost:*;
-            script-src 'unsafe-inline' http://localhost:*;
-        """
+        let csp = ReaderModeUtils.contentSecurityPolicy(origin: "http://localhost:*")
         response.setValue(csp, forAdditionalHeader: "Content-Security-Policy")
         return response
     }

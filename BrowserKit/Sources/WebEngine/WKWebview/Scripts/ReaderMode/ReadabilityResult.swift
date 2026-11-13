@@ -6,7 +6,7 @@ import Common
 import Foundation
 
 /// This struct captures the response from the Readability.js code.
-public struct ReadabilityResult {
+public struct ReadabilityResult: Sendable {
     /// The `dir` global attribute is an enumerated attribute that indicates the directionality of the element's text
     enum Direction: String {
         /// Direction for languages that are written from the left to the right
@@ -24,6 +24,9 @@ public struct ReadabilityResult {
     public let title: String
     public let credits: String
     public let excerpt: String
+    /// The jsonld metadata of the originating WebView.
+    /// Represents a structured view of the content of the originating WebView to embed in the `Reader.html`.
+    let jsonld: String
     let byline: String
     let length: Int
     let language: String
@@ -43,6 +46,7 @@ public struct ReadabilityResult {
         self.credits = dict["credits"] as? String ?? ""
         self.byline = dict["byline"] as? String ?? ""
         self.direction = Direction(rawValue: dict["dir"] as? String ?? "") ?? .auto
+        self.jsonld = dict["jsonld"] as? String ?? ""
     }
 
     /// Initialize from a JSON encoded string
@@ -67,6 +71,7 @@ public struct ReadabilityResult {
         self.siteName = object["siteName"] as? String ?? ""
         self.byline = object["byline"] as? String ?? ""
         self.direction = Direction(rawValue: object["dir"] as? String ?? "") ?? .auto
+        self.jsonld = object["jsonld"] as? String ?? ""
     }
 
     /// Encode to a dictionary, which can then for example be json encoded
@@ -81,7 +86,8 @@ public struct ReadabilityResult {
             "length": length,
             "dir": direction.rawValue,
             "siteName": siteName,
-            "lang": language
+            "lang": language,
+            "jsonld": jsonld
         ]
     }
 
@@ -93,7 +99,7 @@ public struct ReadabilityResult {
 }
 
 // NSObject wrapper around ReadabilityResult Swift struct for adding into the NSCache
-class ReadabilityResultWrapper: NSObject {
+final class ReadabilityResultWrapper: NSObject {
     let result: ReadabilityResult
 
     init(readabilityResult: ReadabilityResult) {

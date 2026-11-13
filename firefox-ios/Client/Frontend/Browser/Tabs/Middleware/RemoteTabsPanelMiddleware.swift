@@ -3,14 +3,15 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import UIKit
-import Storage
 import Common
 import Shared
 import Redux
 
 import struct MozillaAppServices.Device
+import struct Storage.ClientAndTabs
 
-class RemoteTabsPanelMiddleware {
+@MainActor
+final class RemoteTabsPanelMiddleware: Notifiable {
     private let profile: Profile
     var notificationCenter: NotificationProtocol
 
@@ -25,7 +26,13 @@ class RemoteTabsPanelMiddleware {
         observeNotifications()
     }
 
-    lazy var remoteTabsPanelProvider: Middleware<AppState> = { [self] state, action in
+    lazy var remoteTabsPanelProvider: Middleware<AppState> = (legacyProvider, modernProvider)
+
+    lazy var modernProvider: MiddlewareClosure<AppState> = { [self] state, action, windowUUID in
+        // Does not test any modern actions
+    }
+
+    lazy var legacyProvider: LegacyMiddlewareClosure<AppState> = { [self] state, action in
         let uuid = action.windowUUID
         if let action = action as? RemoteTabsPanelAction {
             self.resolveRemoteTabsPanelActions(action: action, state: state)
@@ -35,6 +42,7 @@ class RemoteTabsPanelMiddleware {
     }
 
     // MARK: - Internal Utilities
+    @MainActor
     private func resolveRemoteTabsPanelActions(action: RemoteTabsPanelAction, state: AppState) {
         let uuid = action.windowUUID
         switch action.actionType {
@@ -66,46 +74,47 @@ class RemoteTabsPanelMiddleware {
         }
     }
 
+    @MainActor
     private func getSyncState(window: WindowUUID, useCache: Bool = false) {
-        ensureMainThread { [self] in
-            guard self.hasSyncableAccount else {
-                let action = RemoteTabsPanelAction(reason: .notLoggedIn,
-                                                   windowUUID: window,
-                                                   actionType: RemoteTabsPanelActionType.refreshDidFail)
-                store.dispatch(action)
-                return
-            }
-
-            let syncEnabled = (profile.prefs.boolForKey(PrefsKeys.TabSyncEnabled) == true)
-            guard syncEnabled else {
-                let action = RemoteTabsPanelAction(reason: .syncDisabledByUser,
-                                                   windowUUID: window,
-                                                   actionType: RemoteTabsPanelActionType.refreshDidFail)
-                store.dispatch(action)
-                return
-            }
-
-            // If above checks have succeeded, we know we can perform the tab refresh. We
-            // need to update the State to .refreshing since there are implications for being
-            // in the middle of a refresh (pull-to-refresh shouldn't trigger a new update etc.)
-            let action = RemoteTabsPanelAction(windowUUID: window,
-                                               actionType: RemoteTabsPanelActionType.refreshDidBegin)
+        guard self.hasSyncableAccount else {
+            let action = RemoteTabsPanelAction(reason: .notLoggedIn,
+                                               windowUUID: window,
+                                               actionType: RemoteTabsPanelActionType.refreshDidFail)
             store.dispatch(action)
-
-            getTabsAndDevices(window: window, useCache: useCache)
+            return
         }
+
+        let syncEnabled = (profile.prefs.boolForKey(PrefsKeys.TabSyncEnabled) == true)
+        guard syncEnabled else {
+            let action = RemoteTabsPanelAction(reason: .syncDisabledByUser,
+                                               windowUUID: window,
+                                               actionType: RemoteTabsPanelActionType.refreshDidFail)
+            store.dispatch(action)
+            return
+        }
+
+        // If above checks have succeeded, we know we can perform the tab refresh. We
+        // need to update the State to .refreshing since there are implications for being
+        // in the middle of a refresh (pull-to-refresh shouldn't trigger a new update etc.)
+        let action = RemoteTabsPanelAction(windowUUID: window,
+                                           actionType: RemoteTabsPanelActionType.refreshDidBegin)
+        store.dispatch(action)
+
+        getTabsAndDevices(window: window, useCache: useCache)
     }
 
     private func getTabsAndDevices(window: WindowUUID, useCache: Bool = false) {
-        let completion = { (result: [ClientAndTabs]?) in
+        let completion: @Sendable ([ClientAndTabs]?) -> Void = { (result: [ClientAndTabs]?) in
             guard let clientAndTabs = result else {
-                let action = RemoteTabsPanelAction(reason: .failedToSync,
-                                                   windowUUID: window,
-                                                   actionType: RemoteTabsPanelActionType.refreshDidFail)
-                store.dispatch(action)
+                ensureMainThread {
+                    let action = RemoteTabsPanelAction(reason: .failedToSync,
+                                                       windowUUID: window,
+                                                       actionType: RemoteTabsPanelActionType.refreshDidFail)
+                    store.dispatch(action)
+                }
                 return
             }
-            var action: RemoteTabsPanelAction
+            let action: RemoteTabsPanelAction
 
             if let constellation = self.profile.rustFxA.accountManager?.deviceConstellation() {
                 constellation.refreshState()
@@ -120,7 +129,9 @@ class RemoteTabsPanelMiddleware {
                                                windowUUID: window,
                                                actionType: RemoteTabsPanelActionType.refreshDidSucceed)
             }
-            store.dispatch(action)
+            ensureMainThread {
+                store.dispatch(action)
+            }
         }
 
         if useCache {
@@ -131,15 +142,17 @@ class RemoteTabsPanelMiddleware {
     }
 
     private func handleFetchingMostRecentRemoteTab(windowUUID: WindowUUID) {
-        let completion = { (result: [ClientAndTabs]?) in
-            guard let mostRecentSyncedTab = self.retrieveConfigurationForMostRecentTab(from: result) else { return }
-            store.dispatch(
-                RemoteTabsAction(
-                    mostRecentSyncedTab: mostRecentSyncedTab,
-                    windowUUID: windowUUID,
-                    actionType: RemoteTabsMiddlewareActionType.fetchedMostRecentSyncedTab
+        let completion: @Sendable ([ClientAndTabs]?) -> Void = { (result: [ClientAndTabs]?) in
+            ensureMainThread {
+                guard let mostRecentSyncedTab = self.retrieveConfigurationForMostRecentTab(from: result) else { return }
+                store.dispatch(
+                    RemoteTabsAction(
+                        mostRecentSyncedTab: mostRecentSyncedTab,
+                        windowUUID: windowUUID,
+                        actionType: RemoteTabsMiddlewareActionType.fetchedMostRecentSyncedTab
+                    )
                 )
-            )
+            }
         }
         profile.getCachedClientsAndTabs(completion: completion)
     }
@@ -167,38 +180,32 @@ class RemoteTabsPanelMiddleware {
 
     // MARK: - Notifications
     private func observeNotifications() {
-        let notificationCenter = NotificationCenter.default
-        notificationCenter.addObserver(self,
-                                       selector: #selector(notificationReceived),
-                                       name: .FirefoxAccountChanged,
-                                       object: nil)
-        notificationCenter.addObserver(self,
-                                       selector: #selector(notificationReceived),
-                                       name: .ProfileDidFinishSyncing,
-                                       object: nil)
-        notificationCenter.addObserver(self,
-                                       selector: #selector(notificationReceived),
-                                       name: .constellationStateUpdate,
-                                       object: nil)
+        startObservingNotifications(withNotificationCenter: notificationCenter,
+                                    forObserver: self,
+                                    observing: [.FirefoxAccountChanged,
+                                                .ProfileDidFinishSyncing,
+                                                .constellationStateUpdate])
     }
 
-    @objc
-    func notificationReceived(_ notification: Notification) {
-        switch notification.name {
-        case .FirefoxAccountChanged,
-                .ProfileDidFinishSyncing:
-            // This update occurs independently of any specific window, so for now we send `.unavailable`
-            // as the window UUID. Reducers responding to these types of messages need to use care not to
-            // propagate that UUID in any subsequent actions or state changes.
-            let accountChangeAction = TabTrayAction(hasSyncableAccount: hasSyncableAccount,
-                                                    windowUUID: WindowUUID.unavailable,
-                                                    actionType: TabTrayActionType.firefoxAccountChanged)
-            store.dispatch(accountChangeAction)
-        case .constellationStateUpdate:
-            let action = RemoteTabsPanelAction(windowUUID: WindowUUID.unavailable,
-                                               actionType: RemoteTabsPanelActionType.remoteDevicesChanged)
-            store.dispatch(action)
-        default: break
+    func handleNotifications(_ notification: Notification) {
+        let name = notification.name
+        ensureMainThread {
+            switch name {
+            case .FirefoxAccountChanged,
+                    .ProfileDidFinishSyncing:
+                // This update occurs independently of any specific window, so for now we send `.unavailable`
+                // as the window UUID. Reducers responding to these types of messages need to use care not to
+                // propagate that UUID in any subsequent actions or state changes.
+                let accountChangeAction = TabTrayAction(hasSyncableAccount: self.hasSyncableAccount,
+                                                        windowUUID: WindowUUID.unavailable,
+                                                        actionType: TabTrayActionType.firefoxAccountChanged)
+                store.dispatch(accountChangeAction)
+            case .constellationStateUpdate:
+                let action = RemoteTabsPanelAction(windowUUID: WindowUUID.unavailable,
+                                                   actionType: RemoteTabsPanelActionType.remoteDevicesChanged)
+                store.dispatch(action)
+            default: break
+            }
         }
     }
 }

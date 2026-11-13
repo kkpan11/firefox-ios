@@ -14,16 +14,19 @@ class SceneDelegate: UIResponder,
     var window: UIWindow?
 
     let profile: Profile = AppContainer.shared.resolve()
+    lazy var introScreenManager = IntroScreenManager(prefs: profile.prefs)
     var sessionManager: AppSessionProvider = AppContainer.shared.resolve()
     var downloadQueue: DownloadQueue = AppContainer.shared.resolve()
 
     var sceneCoordinator: SceneCoordinator?
     var routeBuilder = RouteBuilder()
+    lazy var browserDataTransferActivityHandler = BrowserDataTransferActivityHandler()
+    var shareTelemetry: ShareTelemetry = AppContainer.shared.resolve()
 
     private let logger: Logger = DefaultLogger.shared
     private let tabErrorTelemetryHelper = TabErrorTelemetryHelper.shared
     private var isDeeplinkOptimizationRefactorEnabled: Bool {
-        return featureFlags.isFeatureEnabled(.deeplinkOptimizationRefactor, checking: .buildOnly)
+        return featureFlagsProvider.isEnabled(.deeplinkOptimizationRefactor)
     }
 
     // MARK: - Connecting / Disconnecting Scenes
@@ -41,11 +44,6 @@ class SceneDelegate: UIResponder,
         guard !AppConstants.isRunningUnitTest else { return }
         logger.log("SceneDelegate: will connect to session", level: .info, category: .lifecycle)
 
-        // Add hooks for the nimbus-cli to test experiments on device or involving deeplinks.
-        if let url = connectionOptions.urlContexts.first?.url {
-            Experiments.shared.initializeTooling(url: url)
-        }
-
         routeBuilder.configure(
             isPrivate: UserDefaults.standard.bool(
                 forKey: PrefsKeys.LastSessionWasPrivate
@@ -53,13 +51,13 @@ class SceneDelegate: UIResponder,
             prefs: profile.prefs
         )
 
-        let sceneCoordinator = SceneCoordinator(scene: scene)
+        let sceneCoordinator = SceneCoordinator(scene: scene, introManager: introScreenManager)
         self.sceneCoordinator = sceneCoordinator
         self.window = sceneCoordinator.window
         sceneCoordinator.start()
         handle(connectionOptions: connectionOptions)
         if !sessionManager.launchSessionProvider.openedFromExternalSource {
-            AppEventQueue.signal(event: .recordStartupTimeOpenDeeplinkCancelled)
+            shareTelemetry.cancelOpenURLTimeRecord()
         }
     }
 
@@ -78,6 +76,9 @@ class SceneDelegate: UIResponder,
         (AppContainer.shared.resolve() as WindowManager).windowWillClose(uuid: sceneCoordinator.windowUUID)
         self.sceneCoordinator?.removeAllChildren()
         self.sceneCoordinator = nil
+
+        // The set of open windows changed; only offer the "Combine Windows" Quick Action when 2+ remain.
+        MergeWindowsQuickActionController().update()
     }
 
     // MARK: - Transitioning to Foreground
@@ -98,6 +99,10 @@ class SceneDelegate: UIResponder,
                 self.tabErrorTelemetryHelper.validateTabCountForForegroundedScene(uuid)
             }
         }
+
+        // The set of open windows may have changed; only offer the "Combine Windows" Quick Action
+        // when 2+ windows are open.
+        MergeWindowsQuickActionController().update()
     }
 
     // MARK: - Transitioning to Background
@@ -133,6 +138,7 @@ class SceneDelegate: UIResponder,
 
     /// Use this method to handle Handoff-related data or other activities.
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        guard !browserDataTransferActivityHandler.handle(userActivity) else { return }
         guard let route = routeBuilder.makeRoute(userActivity: userActivity) else { return }
         handle(route: route)
     }
@@ -174,7 +180,7 @@ class SceneDelegate: UIResponder,
         // If so, we want to be sure that we select the tab in the correct iPad window.
         if shouldRerouteIncomingURLToSpecificWindow(url),
            let tabUUID = URLScanner(url: url)?.value(query: "uuid"),
-           let targetWindow = (AppContainer.shared.resolve() as WindowManager).window(for: tabUUID),
+           let targetWindow = (AppContainer.shared.resolve() as WindowManager).windowUUID(forTab: tabUUID),
            targetWindow != sceneCoordinator?.windowUUID {
             DefaultApplicationHelper().open(url, inWindow: targetWindow)
         } else {
@@ -195,7 +201,10 @@ class SceneDelegate: UIResponder,
             handle(route: route)
         }
 
-        if let activity = connectionOptions.userActivities.first,
+        let routableActivities = browserDataTransferActivityHandler.routableActivities(
+            from: connectionOptions.userActivities
+        )
+        if let activity = routableActivities.first,
            let route = routeBuilder.makeRoute(userActivity: activity) {
             handle(route: route)
         }
@@ -236,14 +245,24 @@ class SceneDelegate: UIResponder,
         sessionManager.launchSessionProvider.openedFromExternalSource = true
 
         if isDeeplinkOptimizationRefactorEnabled {
-            sceneCoordinator.findAndHandle(route: route)
+            AppEventQueue.wait(for: [.startupFlowComplete]) { [weak self] in
+                ensureMainThread {
+                    self?.logger.log("Start up flow done, will handle route",
+                                     level: .info,
+                                     category: .coordinator)
+                    sceneCoordinator.findAndHandle(route: route)
+                    self?.shareTelemetry.sendOpenDeeplinkTimeRecord()
+                }
+            }
         } else {
             AppEventQueue.wait(for: [.startupFlowComplete, .tabRestoration(sceneCoordinator.windowUUID)]) { [weak self] in
-                self?.logger.log("Start up flow and restoration done, will handle route",
-                                 level: .info,
-                                 category: .coordinator)
-                sceneCoordinator.findAndHandle(route: route)
-                AppEventQueue.signal(event: .recordStartupTimeOpenDeeplinkComplete)
+                ensureMainThread {
+                    self?.logger.log("Start up flow and restoration done, will handle route",
+                                     level: .info,
+                                     category: .coordinator)
+                    sceneCoordinator.findAndHandle(route: route)
+                    self?.shareTelemetry.sendOpenDeeplinkTimeRecord()
+                }
             }
         }
     }

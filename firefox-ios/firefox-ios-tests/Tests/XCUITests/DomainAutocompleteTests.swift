@@ -28,7 +28,7 @@ class DomainAutocompleteTests: BaseTestCase {
     // This DB contains 3 entries mozilla.com/github.com/git.es
     let historyDB = "browserAutocomplete-places.db"
 
-    override func setUp() {
+    override func setUp() async throws {
         // Test name looks like: "[Class testFunc]", parse out the function name
         let parts = name.replacingOccurrences(of: "]", with: "").split(separator: " ")
         let key = String(parts[1])
@@ -41,10 +41,11 @@ class DomainAutocompleteTests: BaseTestCase {
                                LaunchArguments.SkipContextualHints,
                                LaunchArguments.DisableAnimations]
         }
-        super.setUp()
+        try await super.setUp()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2334558
+    // Regression
     func test1Autocomplete() {
         // Basic autocompletion cases
         // The autocomplete does not display the history item from the DB. Workaround is to manually visit "mozilla.org".
@@ -73,22 +74,25 @@ class DomainAutocompleteTests: BaseTestCase {
 
     // Test that deleting characters works correctly with autocomplete
     // https://mozilla.testrail.io/index.php?/cases/view/2334647
+    // Regression
     func test3AutocompleteDeletingChars() {
         // The autocomplete does not display the history item from the DB. Workaround is to manually visit "mozilla.org".
         navigator.openURL("mozilla.org")
         waitUntilPageLoad()
+        waitForTabsButton()
         navigator.goto(TabTray)
 
         navigator.goto(CloseTabMenu)
         navigator.performAction(Action.AcceptRemovingAllTabs)
-        navigator.nowAt(HomePanelsScreen)
 
-        navigator.goto(URLBarOpen)
+        urlBarAddress.waitAndTap()
         mozWaitForElementToExist(urlBarAddress)
         urlBarAddress.typeText("moz")
+        mozWaitForValueContains(urlBarAddress, value: "mozilla.org")
 
         // First delete the autocompleted part
         urlBarAddress.typeText("\u{0008}")
+        mozWaitForValueContains(urlBarAddress, value: "moz")
         // Then remove an extra char and check that the autocompletion stops working
         urlBarAddress.typeText("\u{0008}")
         mozWaitForValueContains(urlBarAddress, value: "mo")
@@ -120,6 +124,7 @@ class DomainAutocompleteTests: BaseTestCase {
     func test4EnsureSchemeIncludedAutocompletion() {
         navigator.openURL(websiteExample["url"]!)
         waitUntilPageLoad()
+        navigator.nowAt(BrowserTab)
         navigator.goto(URLBarOpen)
         urlBarAddress.typeText("ex")
         if #available(iOS 16, *) {
@@ -131,9 +136,11 @@ class DomainAutocompleteTests: BaseTestCase {
 
     // Non-matches.
     // https://mozilla.testrail.io/index.php?/cases/view/2334650
+    // Regression
     func test5NoMatches() {
-        navigator.openURL("twitter.com/login")
+        navigator.openURL("https://mozilla.github.io/form-fill-examples/basic.html")
         waitUntilPageLoad()
+        navigator.nowAt(BrowserTab)
         navigator.goto(URLBarOpen)
         urlBarAddress.typeText("baz")
         let value = urlBarAddress.value
@@ -178,6 +185,7 @@ class DomainAutocompleteTests: BaseTestCase {
 
     // Test default domains.
     // https://mozilla.testrail.io/index.php?/cases/view/2334651
+    // Regression
     func test2DefaultDomains() {
         navigator.goto(URLBarOpen)
         urlBarAddress.typeText("a")

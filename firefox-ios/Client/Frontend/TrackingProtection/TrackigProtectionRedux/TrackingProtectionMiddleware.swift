@@ -6,10 +6,17 @@ import Foundation
 import Redux
 import Common
 
+@MainActor
 final class TrackingProtectionMiddleware {
     private let telemetryWrapper = TrackingProtectionTelemetry()
 
-    lazy var trackingProtectionProvider: Middleware<AppState> = { state, action in
+    lazy var trackingProtectionProvider: Middleware<AppState> = (legacyProvider, modernProvider)
+
+    lazy var modernProvider: MiddlewareClosure<AppState> = { [self] state, action, windowUUID in
+        // Does not test any modern actions
+    }
+
+    lazy var legacyProvider: LegacyMiddlewareClosure<AppState> = { [self] state, action in
         let windowUUID = action.windowUUID
         switch action.actionType {
         case TrackingProtectionActionType.toggleTrackingProtectionStatus:

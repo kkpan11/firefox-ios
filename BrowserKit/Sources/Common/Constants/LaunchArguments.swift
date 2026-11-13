@@ -4,7 +4,7 @@
 
 import Foundation
 
-public struct LaunchArguments {
+public enum LaunchArguments {
     public static let Test = "FIREFOX_TEST"
     public static let PerformanceTest = "FIREFOX_PERFORMANCE_TEST"
     public static let SkipIntro = "FIREFOX_SKIP_INTRO"
@@ -12,18 +12,31 @@ public struct LaunchArguments {
     public static let SkipETPCoverSheet = "FIREFOX_SKIP_ETP_COVER_SHEET"
     public static let SkipContextualHints = "FIREFOX_SKIP_CONTEXTUAL_HINTS"
     public static let SkipSponsoredShortcuts = "FIREFOX_SKIP_SPONSORED_SHORTCUTS"
+    public static let SkipTermsOfUse = "FIREFOX_SKIP_TERMS_OF_USE"
     public static let ClearProfile = "FIREFOX_CLEAR_PROFILE"
+    /// Re-enables tab session restore, which `Test` otherwise skips to give every UI test a clean
+    /// tab state. Only needed by tests that relaunch the app and assert on the restored tabs.
+    public static let EnableSessionRestore = "FIREFOX_ENABLE_SESSION_RESTORE"
+    /// Re-enables the Start at Home feature, which `Test` otherwise always skips. Only needed by
+    /// tests that assert on the Opening screen setting.
+    public static let EnableStartAtHome = "FIREFOX_ENABLE_START_AT_HOME"
+    /// Clears the WKWebView website data store (cookies, local storage, cache) on launch. Web data
+    /// lives in WKWebsiteDataStore, which ClearProfile does not touch.
+    public static let ClearWebData = "FIREFOX_CLEAR_WEB_DATA"
     public static let StageServer = "FIREFOX_USE_STAGE_SERVER"
     public static let FxAChinaServer = "FIREFOX_USE_FXA_CHINA_SERVER"
     public static let DeviceName = "DEVICE_NAME"
     public static let ServerPort = "GCDWEBSERVER_PORT:"
     public static let SkipAddingGoogleTopSite = "SKIP_ADDING_GOOGLE_TOP_SITE"
     public static let SkipDefaultBrowserOnboarding = "SKIP_DEFAULT_BROWSER_ONBOARDING"
+    /// Forces the "is default browser" state to false and prevents the iOS 18.2+ system API from
+    /// re-querying it at launch, so the default-browser onboarding card renders deterministically.
+    public static let ResetDefaultBrowserStatus = "RESET_DEFAULT_BROWSER_STATUS"
     public static let LoadExperiment = "LOAD_EXPERIMENT"
     public static let ExperimentFeatureName = "EXPERIMENT_FEATURE_NAME"
     public static let DisableAnimations = "DISABLE_ANIMATIONS"
-    public static let SkipSplashScreenExperiment = "SKIP_SPLASH_SCREEN_EXPERIMENT"
     public static let ResetMicrosurveyExpirationCount = "RESET_MICROSURVEY_EXPIRATION_COUNT"
+    public static let SkipAppleIntelligence = "SKIP_APPLE_INTELLIGENCE"
 
     // After the colon, put the name of the file to load from test bundle
     public static let LoadDatabasePrefix = "FIREFOX_LOAD_DB_NAMED:"

@@ -7,37 +7,43 @@ import Common
 import MozillaAppServices
 
 protocol BookmarksCoordinatorDelegate: AnyObject, LibraryPanelCoordinatorDelegate {
+    @MainActor
     func start(from folder: FxBookmarkNode)
 
     /// Shows the bookmark detail to modify a bookmark folder
-    func showBookmarkDetail(for node: FxBookmarkNode, folder: FxBookmarkNode, completion: (() -> Void)?)
+    @MainActor
+    func showBookmarkDetail(for node: FxBookmarkNode, folder: FxBookmarkNode)
 
     /// Shows the bookmark detail to create a new bookmark or folder in the parent folder
+    @MainActor
     func showBookmarkDetail(
         bookmarkType: BookmarkNodeType,
         parentBookmarkFolder: FxBookmarkNode,
-        updatePanelState: ((LibraryPanelSubState) -> Void)?,
-        parentFolderSelector: ParentFolderSelector?
+        parentFolderSelector: ParentFolderSelector?,
+        groupedParentFolderSelector: GroupedParentFolderSelector?
     )
 
+    @MainActor
     func showSignIn()
 
     /// Calls the parent coordinator dismiss and remove the bookmarks coordinator
+    @MainActor
     func didFinish()
 }
 
 extension BookmarksCoordinatorDelegate {
+    @MainActor
     func showBookmarkDetail(
         bookmarkType: BookmarkNodeType,
         parentBookmarkFolder: FxBookmarkNode,
-        updatePanelState: ((LibraryPanelSubState) -> Void)? = nil,
-        parentFolderSelector: ParentFolderSelector? = nil
+        parentFolderSelector: ParentFolderSelector? = nil,
+        groupedParentFolderSelector: GroupedParentFolderSelector? = nil
     ) {
         showBookmarkDetail(
             bookmarkType: bookmarkType,
             parentBookmarkFolder: parentBookmarkFolder,
-            updatePanelState: updatePanelState,
-            parentFolderSelector: parentFolderSelector
+            parentFolderSelector: parentFolderSelector,
+            groupedParentFolderSelector: groupedParentFolderSelector
         )
     }
 }
@@ -45,7 +51,8 @@ extension BookmarksCoordinatorDelegate {
 class BookmarksCoordinator: BaseCoordinator,
                             BookmarksCoordinatorDelegate,
                             QRCodeNavigationHandler,
-                            ParentCoordinatorDelegate {
+                            ParentCoordinatorDelegate,
+                            FeatureFlaggable {
     // MARK: - Properties
 
     private let profile: Profile
@@ -53,7 +60,7 @@ class BookmarksCoordinator: BaseCoordinator,
     private weak var libraryNavigationHandler: LibraryNavigationHandler?
     private var fxAccountViewController: FirefoxAccountSignInViewController?
     private let windowUUID: WindowUUID
-    private let isBookmarkRefactorEnabled: Bool
+    private let shouldUsePrivateOverride: Bool
 
     // MARK: - Initializers
 
@@ -63,13 +70,13 @@ class BookmarksCoordinator: BaseCoordinator,
         windowUUID: WindowUUID,
         libraryCoordinator: LibraryCoordinatorDelegate?,
         libraryNavigationHandler: LibraryNavigationHandler?,
-        isBookmarkRefactorEnabled: Bool
+        shouldUsePrivateOverride: Bool = true
     ) {
         self.profile = profile
         self.windowUUID = windowUUID
+        self.shouldUsePrivateOverride = shouldUsePrivateOverride
         self.libraryCoordinator = libraryCoordinator
         self.libraryNavigationHandler = libraryNavigationHandler
-        self.isBookmarkRefactorEnabled = isBookmarkRefactorEnabled
         super.init(router: router)
     }
 
@@ -79,67 +86,51 @@ class BookmarksCoordinator: BaseCoordinator,
         let viewModel = BookmarksPanelViewModel(profile: profile,
                                                 bookmarksHandler: profile.places,
                                                 bookmarkFolderGUID: folder.guid)
-        if isBookmarkRefactorEnabled {
-            let controller = BookmarksViewController(viewModel: viewModel, windowUUID: windowUUID)
-            controller.bookmarkCoordinatorDelegate = self
-            controller.libraryPanelDelegate = libraryCoordinator
-            router.push(controller)
-        } else {
-            let controller = LegacyBookmarksPanel(viewModel: viewModel, windowUUID: windowUUID)
-            controller.bookmarkCoordinatorDelegate = self
-            controller.libraryPanelDelegate = libraryCoordinator
-            router.push(controller)
-        }
+        let controller = BookmarksViewController(viewModel: viewModel, windowUUID: windowUUID)
+        controller.bookmarkCoordinatorDelegate = self
+        controller.libraryPanelDelegate = libraryCoordinator
+        router.push(controller)
     }
 
     func start(parentFolder: FxBookmarkNode, bookmark: FxBookmarkNode) {
-        let viewModel = EditBookmarkViewModel(parentFolder: parentFolder,
-                                              node: bookmark,
-                                              profile: profile)
-        viewModel.bookmarkCoordinatorDelegate = self
-        let controller = EditBookmarkViewController(viewModel: viewModel,
-                                                    windowUUID: windowUUID)
-        router.setRootViewController(controller)
+        if featureFlagsProvider.isEnabled(.newBookmarkFolderTree) {
+            let viewModel = GroupedEditBookmarkViewModel(parentFolder: parentFolder,
+                                                         node: bookmark,
+                                                         profile: profile)
+            viewModel.bookmarkCoordinatorDelegate = self
+            let controller = GroupedEditBookmarkViewController(viewModel: viewModel,
+                                                               windowUUID: windowUUID,
+                                                               shouldUsePrivateOverride: shouldUsePrivateOverride)
+            router.setRootViewController(controller)
+        } else {
+            let viewModel = EditBookmarkViewModel(parentFolder: parentFolder,
+                                                  node: bookmark,
+                                                  profile: profile)
+            viewModel.bookmarkCoordinatorDelegate = self
+            let controller = EditBookmarkViewController(viewModel: viewModel,
+                                                        windowUUID: windowUUID,
+                                                        shouldUsePrivateOverride: shouldUsePrivateOverride)
+            router.setRootViewController(controller)
+        }
     }
 
-    func showBookmarkDetail(for node: FxBookmarkNode, folder: FxBookmarkNode, completion: (() -> Void)? = nil) {
+    func showBookmarkDetail(for node: FxBookmarkNode, folder: FxBookmarkNode) {
         let bookmarksTelemetry = BookmarksTelemetry()
         bookmarksTelemetry.editBookmark(eventLabel: .bookmarksPanel)
-        if isBookmarkRefactorEnabled {
-            router.push(makeDetailController(for: node, folder: folder))
-        } else {
-            let detailController = LegacyBookmarkDetailPanel(profile: profile,
-                                                             windowUUID: windowUUID,
-                                                             bookmarkNode: node,
-                                                             parentBookmarkFolder: folder) {
-                completion?()
-            }
-            router.push(detailController)
-        }
+        router.push(makeDetailController(for: node, folder: folder))
     }
 
     func showBookmarkDetail(
         bookmarkType: BookmarkNodeType,
         parentBookmarkFolder: FxBookmarkNode,
-        updatePanelState: ((LibraryPanelSubState) -> Void)? = nil,
-        parentFolderSelector: ParentFolderSelector? = nil
+        parentFolderSelector: ParentFolderSelector? = nil,
+        groupedParentFolderSelector: GroupedParentFolderSelector? = nil
     ) {
-        if isBookmarkRefactorEnabled {
-            let detailController = makeDetailController(for: bookmarkType,
-                                                        parentFolder: parentBookmarkFolder,
-                                                        parentFolderSelector: parentFolderSelector)
-            router.push(detailController)
-        } else {
-            let detailController = LegacyBookmarkDetailPanel(
-                profile: profile,
-                windowUUID: windowUUID,
-                withNewBookmarkNodeType: bookmarkType,
-                parentBookmarkFolder: parentBookmarkFolder
-            ) {
-                updatePanelState?($0)
-            }
-            router.push(detailController)
-        }
+        let detailController = makeDetailController(for: bookmarkType,
+                                                    parentFolder: parentBookmarkFolder,
+                                                    parentFolderSelector: parentFolderSelector,
+                                                    groupedParentFolderSelector: groupedParentFolderSelector)
+        router.push(detailController)
     }
 
     func showSignIn() {
@@ -188,11 +179,20 @@ class BookmarksCoordinator: BaseCoordinator,
 
     private func makeDetailController(for type: BookmarkNodeType,
                                       parentFolder: FxBookmarkNode,
-                                      parentFolderSelector: ParentFolderSelector?) -> UIViewController {
+                                      parentFolderSelector: ParentFolderSelector?,
+                                      groupedParentFolderSelector: GroupedParentFolderSelector?) -> UIViewController {
         if type == .bookmark {
+            if featureFlagsProvider.isEnabled(.newBookmarkFolderTree) {
+                return makeGroupedEditBookmarkController(for: nil, folder: parentFolder)
+            }
             return makeEditBookmarkController(for: nil, folder: parentFolder)
         }
         if type == .folder {
+            if featureFlagsProvider.isEnabled(.newBookmarkFolderTree) {
+                return makeGroupedEditFolderController(for: nil,
+                                                       folder: parentFolder,
+                                                       parentFolderSelector: groupedParentFolderSelector)
+            }
             return makeEditFolderController(for: nil, folder: parentFolder, parentFolderSelector: parentFolderSelector)
         }
         return UIViewController()
@@ -200,9 +200,15 @@ class BookmarksCoordinator: BaseCoordinator,
 
     private func makeDetailController(for node: FxBookmarkNode, folder: FxBookmarkNode) -> UIViewController {
         if node.type == .bookmark {
+            if featureFlagsProvider.isEnabled(.newBookmarkFolderTree) {
+                return makeGroupedEditBookmarkController(for: node, folder: folder)
+            }
             return makeEditBookmarkController(for: node, folder: folder)
         }
         if node.type == .folder {
+            if featureFlagsProvider.isEnabled(.newBookmarkFolderTree) {
+                return makeGroupedEditFolderController(for: node, folder: folder, parentFolderSelector: nil)
+            }
             return makeEditFolderController(for: node, folder: folder, parentFolderSelector: nil)
         }
         return UIViewController()
@@ -216,14 +222,34 @@ class BookmarksCoordinator: BaseCoordinator,
         viewModel.bookmarkCoordinatorDelegate = self
         setBackBarButtonItemTitle(viewModel.getBackNavigationButtonTitle)
         let controller = EditBookmarkViewController(viewModel: viewModel,
-                                                    windowUUID: windowUUID)
+                                                    windowUUID: windowUUID,
+                                                    shouldUsePrivateOverride: shouldUsePrivateOverride)
         controller.onViewWillAppear = { [weak self] in
             self?.libraryNavigationHandler?.setNavigationBarHidden(true)
         }
-        controller.onViewWillDisappear = { [weak self] in
-            if !(controller.transitionCoordinator?.isInteractive ?? false) {
-                self?.libraryNavigationHandler?.setNavigationBarHidden(false)
-            }
+        controller.onViewWillDisappear = { [weak self, weak controller] in
+            guard !(controller?.transitionCoordinator?.isInteractive ?? false) else { return }
+            self?.libraryNavigationHandler?.setNavigationBarHidden(false)
+        }
+        return controller
+    }
+
+    private func makeGroupedEditBookmarkController(for node: FxBookmarkNode?, folder: FxBookmarkNode) -> UIViewController {
+        let viewModel = GroupedEditBookmarkViewModel(parentFolder: folder, node: node, profile: profile)
+        viewModel.onBookmarkSaved = { [weak self] in
+            self?.reloadLastBookmarksController()
+        }
+        viewModel.bookmarkCoordinatorDelegate = self
+        setBackBarButtonItemTitle(viewModel.getBackNavigationButtonTitle)
+        let controller = GroupedEditBookmarkViewController(viewModel: viewModel,
+                                                           windowUUID: windowUUID,
+                                                           shouldUsePrivateOverride: shouldUsePrivateOverride)
+        controller.onViewWillAppear = { [weak self] in
+            self?.libraryNavigationHandler?.setNavigationBarHidden(true)
+        }
+        controller.onViewWillDisappear = { [weak self, weak controller] in
+            guard !(controller?.transitionCoordinator?.isInteractive ?? false) else { return }
+            self?.libraryNavigationHandler?.setNavigationBarHidden(false)
         }
         return controller
     }
@@ -240,14 +266,38 @@ class BookmarksCoordinator: BaseCoordinator,
         viewModel.parentFolderSelector = parentFolderSelector
         setBackBarButtonItemTitle("")
         let controller = EditFolderViewController(viewModel: viewModel,
-                                                  windowUUID: windowUUID)
+                                                  windowUUID: windowUUID,
+                                                  shouldUsePrivateOverride: shouldUsePrivateOverride)
         controller.onViewWillAppear = { [weak self] in
             self?.libraryNavigationHandler?.setNavigationBarHidden(true)
         }
-        controller.onViewWillDisappear = { [weak self] in
-            if !(controller.transitionCoordinator?.isInteractive ?? false) {
-                self?.libraryNavigationHandler?.setNavigationBarHidden(false)
-            }
+        controller.onViewWillDisappear = { [weak self, weak controller] in
+            guard !(controller?.transitionCoordinator?.isInteractive ?? false) else { return }
+            self?.libraryNavigationHandler?.setNavigationBarHidden(false)
+        }
+        return controller
+    }
+
+    private func makeGroupedEditFolderController(for node: FxBookmarkNode?,
+                                                 folder: FxBookmarkNode,
+                                                 parentFolderSelector: GroupedParentFolderSelector?) -> UIViewController {
+        let viewModel = GroupedEditFolderViewModel(profile: profile,
+                                                   parentFolder: folder,
+                                                   folder: node)
+        viewModel.onBookmarkSaved = { [weak self] in
+            self?.reloadLastBookmarksController()
+        }
+        viewModel.parentFolderSelector = parentFolderSelector
+        setBackBarButtonItemTitle("")
+        let controller = GroupedEditFolderViewController(viewModel: viewModel,
+                                                         windowUUID: windowUUID,
+                                                         shouldUsePrivateOverride: shouldUsePrivateOverride)
+        controller.onViewWillAppear = { [weak self] in
+            self?.libraryNavigationHandler?.setNavigationBarHidden(true)
+        }
+        controller.onViewWillDisappear = { [weak self, weak controller] in
+            guard !(controller?.transitionCoordinator?.isInteractive ?? false) else { return }
+            self?.libraryNavigationHandler?.setNavigationBarHidden(false)
         }
         return controller
     }
@@ -266,7 +316,7 @@ class BookmarksCoordinator: BaseCoordinator,
             action: #selector(dismissFxAViewController)
         )
         viewController.navigationItem.leftBarButtonItem = buttonItem
-        let navController = ThemedNavigationController(rootViewController: viewController, windowUUID: windowUUID)
+        let navController = LibraryNavigationController(rootViewController: viewController, windowUUID: windowUUID)
         fxAccountViewController = viewController
         return navController
     }

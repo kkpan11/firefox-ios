@@ -6,11 +6,14 @@ import Common
 import Shared
 import Glean
 
-class AutoFillPasswordSettingsViewController: SettingsTableViewController, FeatureFlaggable {
+class AutoFillPasswordSettingsViewController: SettingsTableViewController {
     weak var parentCoordinator: PrivacySettingsDelegate?
+    private let relayController: RelayControllerProtocol
 
     init(profile: Profile,
+         relayController: RelayControllerProtocol,
          windowUUID: WindowUUID) {
+        self.relayController = relayController
         super.init(style: .grouped, windowUUID: windowUUID)
         self.profile = profile
         self.title = .Settings.AutofillAndPassword.Title
@@ -26,11 +29,15 @@ class AutoFillPasswordSettingsViewController: SettingsTableViewController, Featu
         sectionItems.append(PasswordManagerSetting(settings: self, settingsDelegate: parentCoordinator))
         sectionItems.append(AutofillCreditCardSettings(settings: self, settingsDelegate: parentCoordinator))
 
-        let autofillAddressStatus = AddressLocaleFeatureValidator.isValidRegion()
+        let autofillAddressStatus = AddressLocaleFeatureValidator.isValidRegion(for: SystemLocaleProvider().regionCode())
         if autofillAddressStatus, let profile {
-            sectionItems.append(AddressAutofillSetting(theme: themeManager.getCurrentTheme(for: windowUUID),
+            sectionItems.append(AddressAutofillSetting(theme: currentTheme(),
                                                        profile: profile,
                                                        settingsDelegate: parentCoordinator))
+        }
+
+        if relayController.shouldDisplayRelaySettings() {
+            sectionItems.append(AutofillRelayMaskSetting(settings: self, settingsDelegate: parentCoordinator))
         }
 
         return [SettingSection(children: sectionItems)]

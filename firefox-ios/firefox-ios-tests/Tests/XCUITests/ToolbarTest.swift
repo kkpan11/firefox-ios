@@ -5,22 +5,31 @@
 import XCTest
 
 let website1: [String: String] = [
-    "url": path(forTestPage: "test-mozilla-org.html"),
+    "url": path(forTestPage: TestPages.mozillaOrg),
     "label": "Internet for people, not profit — Mozilla",
     "value": "localhost",
-    "longValue": "localhost:\(serverPort)/test-fixture/test-mozilla-org.html"
+    "longValue": "localhost:\(serverPort)/test-fixture/\(TestPages.mozillaOrg)"
 ]
-let website2 = path(forTestPage: "test-example.html")
+let website2 = path(forTestPage: TestPages.exampleHTML)
 
-class ToolbarTests: BaseTestCase {
-    override func setUp() {
-        super.setUp()
-        XCUIDevice.shared.orientation = UIDeviceOrientation.landscapeLeft
+class ToolbarTests: FeatureFlaggedTestBase {
+    private var browserScreen: BrowserScreen!
+    private var toolbarScreen: ToolbarScreen!
+    private var searchSettingsScreen: SearchSettingsScreen!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        browserScreen = BrowserScreen(app: app)
+        toolbarScreen = ToolbarScreen(app: app)
+        searchSettingsScreen = SearchSettingsScreen(app: app)
     }
 
-    override func tearDown() {
+    // Each test sets its own orientation before `app.launch()`. Don't force one here: half the tests
+    // need portrait and were overriding a class-wide landscape default, so new tests silently
+    // inherited an orientation they didn't ask for.
+    override func tearDown() async throws {
         XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2344428
@@ -28,8 +37,8 @@ class ToolbarTests: BaseTestCase {
      * Tests landscape page navigation enablement with the URL bar with tab switching.
      */
     func testLandscapeNavigationWithTabSwitch() {
-        navigator.nowAt(NewTabScreen)
-        waitForTabsButton()
+        XCUIDevice.shared.orientation = UIDeviceOrientation.landscapeLeft
+        app.launch()
         let urlPlaceholder = "Search or enter address"
         let searchTextField = AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField
         XCTAssert(app.textFields[searchTextField].exists)
@@ -41,12 +50,13 @@ class ToolbarTests: BaseTestCase {
         XCTAssertFalse(app.buttons[AccessibilityIdentifiers.Toolbar.forwardButton].isEnabled)
 
         // Navigate to two pages and press back once so that all buttons are enabled in landscape mode.
+        navigator.nowAt(NewTabScreen)
         navigator.openURL(website1["url"]!)
         waitUntilPageLoad()
         mozWaitForElementToExist(app.webViews.links["Mozilla"], timeout: 10)
         guard let valueMozilla = app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField].value
                 as? String else {
-            XCTFail("Failed to retrieve the value from the Mozilla URL bar text field")
+            XCTFail("Failed to retrieve the value from the Mozilla URL bar textField")
             return
         }
         XCTAssertEqual(valueMozilla, urlValueLong)
@@ -70,7 +80,7 @@ class ToolbarTests: BaseTestCase {
         // Open new tab and then go back to previous tab to test navigation buttons.
         waitForTabsButton()
         navigator.goto(TabTray)
-        mozWaitForElementToExist(app.cells.staticTexts[website1["label"]!])
+        mozWaitForElementToExist(app.cells.elementContainingText(website1["label"]!))
         app.cells.element(boundBy: 0).waitAndTap()
         XCTAssertEqual(valueMozilla, urlValueLong)
 
@@ -82,6 +92,9 @@ class ToolbarTests: BaseTestCase {
 
     // https://mozilla.testrail.io/index.php?/cases/view/2344430
     func testClearURLTextUsingBackspace() {
+        XCUIDevice.shared.orientation = UIDeviceOrientation.landscapeLeft
+        app.launch()
+        mozWaitForElementToExist(app.links[AccessibilityIdentifiers.FirefoxHomepage.TopSites.itemCell])
         navigator.openURL(website1["url"]!)
         waitUntilPageLoad()
         waitForTabsButton()
@@ -105,39 +118,47 @@ class ToolbarTests: BaseTestCase {
     // the URL bar, tapping again on the status will scroll to the top
     // Skipping for iPad for now, not sure how to implement it there
     // https://mozilla.testrail.io/index.php?/cases/view/2344431
-    func testRevealToolbarWhenTappingOnStatusbar() {
-        if !iPad() {
-            // Workaround when testing on iPhone. If the orientation is in landscape on iPhone the tests will fail.
-
-            XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
-            mozWaitForElementToExist(app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField])
-
-            navigator.openURL(website1["url"]!, waitForLoading: true)
-            // Adding the waiter right after navigating to the webpage in order to make the test more stable
-            waitUntilPageLoad()
-            mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Toolbar.settingsMenuButton], timeout: 10)
-            let PageOptionsMenu = app.buttons[AccessibilityIdentifiers.Toolbar.settingsMenuButton]
-            let statusbarElement: XCUIElement = XCUIApplication(
-                bundleIdentifier: "com.apple.springboard"
-            ).statusBars.element(boundBy: 1)
-            app.swipeUp()
-            XCTAssertFalse(PageOptionsMenu.isHittable)
-            statusbarElement.tap(force: true)
-            XCTAssertTrue(PageOptionsMenu.isHittable)
-            statusbarElement.tap(force: true)
-            let topElement = app.webViews
-                .otherElements["Internet for people, not profit — Mozilla"]
-                .children(matching: .other)
-                .matching(identifier: "navigation")
-                .element(boundBy: 0)
-                .staticTexts["Mozilla"]
-            mozWaitForElementToExist(topElement, timeout: 10)
-            XCTAssertTrue(topElement.isHittable)
+    func testRevealToolbarWhenTappingOnStatusbar() throws {
+        if iPad() {
+            throw XCTSkip("iPhone only test")
         }
-   }
+        XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
+        app.launch()
 
-    // https://mozilla.testrail.io/index.php?/cases/view/2306870
+        // Only NewTabScreen has a direct edge to URLBarOpen; from HomePanelsScreen the route detours
+        // through the tab tray and opens an extra tab.
+        navigator.nowAt(NewTabScreen)
+        navigator.goto(URLBarOpen)
+        mozWaitForElementToExist(app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField])
+
+        navigator.openURL(website1["url"]!, waitForLoading: true)
+        // Wait for the loading indicator to appear
+        waitUntilPageLoad()
+        mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Toolbar.settingsMenuButton], timeout: 10)
+        let settingsMenuButton = app.buttons[AccessibilityIdentifiers.Toolbar.settingsMenuButton]
+        let statusbarElement: XCUIElement = XCUIApplication(
+            bundleIdentifier: "com.apple.springboard"
+        ).statusBars.element(boundBy: 1)
+        app.swipeUp()
+        XCTAssertFalse(settingsMenuButton.isHittable)
+        statusbarElement.tap(force: true)
+        XCTAssertTrue(settingsMenuButton.isHittable)
+        statusbarElement.tap(force: true)
+        let topElement = app.webViews
+            .otherElements["Internet for people, not profit — Mozilla"]
+            .children(matching: .other)
+            .matching(identifier: "navigation")
+            .element(boundBy: 0)
+            .staticTexts["Mozilla"]
+        mozWaitForElementToExist(topElement, timeout: 10)
+        XCTAssertTrue(topElement.isHittable)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3197644
+    // Regression
     func testOpenNewTabButtonOnToolbar() throws {
+        XCUIDevice.shared.orientation = UIDeviceOrientation.landscapeLeft
+        app.launch()
         if iPad() {
             throw XCTSkip("iPhone only test")
         } else {
@@ -147,12 +168,151 @@ class ToolbarTests: BaseTestCase {
             // Repeat steps on private mode
             // validateAddNewTabButtonOnToolbar() does not work on iOS 15
             if #available(iOS 16, *) {
-                navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+                navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
                 navigator.performAction(Action.OpenNewTabFromTabTray)
-                app.buttons[AccessibilityIdentifiers.Browser.UrlBar.cancelButton].waitAndTap()
                 validateAddNewTabButtonOnToolbar(isPrivate: true)
             }
         }
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/4105580
+    // Smoketest
+    func testToolbarIsVisibleAfterTypingInWebPageTextField() {
+        XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
+        app.launch()
+
+        // Access a page with a text field
+        browserScreen.navigateToURL(path(forTestPage: "empty-login-form.html"))
+        waitUntilPageLoad()
+
+        // Type some characters in the text field and tap on enter
+        browserScreen.typeOnWebFormTextField("firefox")
+        waitUntilPageLoad()
+
+        // The toolbar is visible
+        toolbarScreen.assertToolbarIsVisible()
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/4135587
+    // Regression
+    func testGoogleLensIconReplacedByClearIconWhenTyping() {
+        XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
+        app.launch()
+
+        // Step 1: in edit mode with an empty address bar, the Google Lens icon is visible
+        focusAddressBarClosingGoogleLensTip()
+        toolbarScreen.assertGoogleLensButtonExists()
+        browserScreen.assertClearButtonDoesNotExist()
+
+        // Step 2: typing a character replaces the Google Lens icon with the Clear icon
+        browserScreen.typeOnSearchBar(text: "m")
+        browserScreen.assertClearButtonExists()
+        toolbarScreen.assertGoogleLensButtonDoesNotExist()
+
+        // Step 3: clearing the text brings the Google Lens icon back
+        browserScreen.clearURL()
+        toolbarScreen.assertGoogleLensButtonExists()
+        browserScreen.assertClearButtonDoesNotExist()
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/4225090
+    // Regression
+    func testGoogleLensIconHiddenWhenGoogleIsNotDefaultSearchEngine() {
+        XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
+        app.launch()
+        assertGoogleLensButtonShownInEditMode()
+
+        // Step 1: set Bing as the default search engine
+        navigator.goto(SearchSettings)
+        searchSettingsScreen.selectDefaultSearchEngine(named: defaultSearchEngine2)
+        searchSettingsScreen.assertDefaultSearchEngine(is: defaultSearchEngine2)
+        navigator.goto(HomePanelsScreen)
+
+        // Step 2: the app is backgrounded and reopened instead of killed, because a relaunched
+        // test app gets a new app-group container, treats the profile as new and wipes its prefs
+        restartInBackground()
+
+        // Step 3: in edit mode with an empty address bar, the Google Lens icon is not displayed
+        assertGoogleLensButtonHiddenInEditMode()
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/4225091
+    // Regression
+    func testGoogleLensIconHiddenInPrivateBrowsing() {
+        XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
+        app.launch()
+        assertGoogleLensButtonShownInEditMode()
+
+        // Step 1: open a private tab
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        navigator.performAction(Action.OpenNewTabFromTabTray)
+        browserScreen.assertPrivateModeMessageCardExists()
+
+        // Step 2: in edit mode with an empty address bar, the Google Lens icon is not displayed
+        assertGoogleLensButtonHiddenInEditMode()
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/4225095
+    // Regression
+    func testGoogleLensAddressBarContextMenu() {
+        XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
+        app.launch()
+        focusAddressBarClosingGoogleLensTip()
+
+        // Step 1: tapping the Google Lens icon opens a menu with only Photo Library and Take Photo
+        toolbarScreen.tapGoogleLensButton()
+        toolbarScreen.assertGoogleLensMenuShowsOnlyPhotoOptions()
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/4146326
+    // Regression
+    func testReEnablingGoogleLensToggleRestoresLensIcon() {
+        XCUIDevice.shared.orientation = UIDeviceOrientation.portrait
+        app.launch()
+
+        // Step 1: with the Google Lens toggle off, edit mode shows no Lens icon
+        navigator.nowAt(NewTabScreen)
+        navigator.goto(SearchSettings)
+        searchSettingsScreen.assertGoogleLensToggle(isOn: true)
+        searchSettingsScreen.tapOnGoogleLensToggle()
+        searchSettingsScreen.assertGoogleLensToggle(isOn: false)
+        navigator.goto(HomePanelsScreen)
+        assertGoogleLensButtonHiddenInEditMode()
+        browserScreen.leaveAddressBarEditingIfActive()
+
+        // Step 2: turn the Google Lens toggle back on
+        navigator.nowAt(NewTabScreen)
+        navigator.goto(SearchSettings)
+        searchSettingsScreen.tapOnGoogleLensToggle()
+        searchSettingsScreen.assertGoogleLensToggle(isOn: true)
+        navigator.goto(HomePanelsScreen)
+
+        // Step 3: in edit mode, the Google Lens icon is visible again
+        browserScreen.tapOnAddressBar()
+        toolbarScreen.assertGoogleLensButtonExists()
+    }
+
+    /// Closing the first-run Google Lens tip leaves edit mode on without the keyboard, so the address bar is refocused.
+    private func focusAddressBarClosingGoogleLensTip() {
+        browserScreen.tapOnAddressBar()
+        if toolbarScreen.dismissGoogleLensTipIfPresented() {
+            browserScreen.tapOnAddressBar()
+        }
+    }
+
+    /// Positive control for the hidden-icon tests: before the change under test, edit mode shows the Lens icon.
+    private func assertGoogleLensButtonShownInEditMode() {
+        focusAddressBarClosingGoogleLensTip()
+        toolbarScreen.assertGoogleLensButtonExists()
+        browserScreen.leaveAddressBarEditingIfActive()
+        navigator.nowAt(NewTabScreen)
+    }
+
+    /// The keyboard check proves edit mode is on, so a missing icon is not just a missing address bar focus.
+    private func assertGoogleLensButtonHiddenInEditMode() {
+        browserScreen.tapOnAddressBar()
+        browserScreen.assertAddressBarFocusedWithKeyboard()
+        toolbarScreen.assertGoogleLensButtonDoesNotExist()
     }
 
     private func validateAddNewTabButtonOnToolbar(isPrivate: Bool) {
@@ -162,8 +322,28 @@ class ToolbarTests: BaseTestCase {
         // Swipe up to close the app does not work on iOS 15.
         if #available(iOS 16, *) {
             closeFromAppSwitcherAndRelaunch()
-            app.buttons[AccessibilityIdentifiers.Toolbar.tabsButton].waitAndTap()
-            app.buttons[AccessibilityIdentifiers.TabTray.newTabButton].waitAndTap()
+            mozWaitForElementToExist(app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField])
+            mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Toolbar.settingsMenuButton])
+            if !isPrivate {
+                if isStoriesBrokenByLocaleBug {
+                    // News only confirms the homepage scrolled here, and never renders below iOS 17.
+                    // https://github.com/mozilla-mobile/firefox-ios/issues/35618
+                    NewsScreen(app: app).assertNewsSectionIsAbsent()
+                } else {
+                    // News scrolls in after the relaunch and loads async; retry the swipe.
+                    let news = app.otherElements["News"]
+                    var swipes = 3
+                    repeat {
+                        app.partialSwipeUp(distance: 0.2)
+                        swipes -= 1
+                    } while !news.mozWaitForElementToExist(timeout: TIMEOUT, failOnTimeout: false) && swipes > 0
+                    mozWaitForElementToExist(news)
+                }
+            }
+            navigator.nowAt(BrowserTab)
+            mozWaitElementHittable(element: app.buttons[AccessibilityIdentifiers.Toolbar.tabsButton], timeout: TIMEOUT)
+            navigator.goto(TabTray)
+            navigator.performAction(Action.OpenNewTabFromTabTray)
             mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Toolbar.tabsButton])
             XCTAssertEqual(app.buttons[AccessibilityIdentifiers.Toolbar.tabsButton].value as? String, "2")
         }

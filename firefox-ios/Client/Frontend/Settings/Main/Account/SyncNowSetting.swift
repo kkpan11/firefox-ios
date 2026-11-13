@@ -6,7 +6,8 @@ import Common
 import Foundation
 import Shared
 
-class SyncNowSetting: WithAccountSetting {
+class SyncNowSetting: WithAccountSetting,
+                      Notifiable {
     private weak var settingsDelegate: AccountSettingsDelegate?
     private var notificationCenter: NotificationProtocol
 
@@ -27,19 +28,19 @@ class SyncNowSetting: WithAccountSetting {
         self.notificationCenter = notificationCenter
         super.init(settings: settings)
 
-        notificationCenter.addObserver(self,
-                                       selector: #selector(stopRotateSyncIcon),
-                                       name: .ProfileDidFinishSyncing,
-                                       object: nil)
-    }
-
-    deinit {
-        notificationCenter.removeObserver(self)
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [
+                .ProfileDidFinishSyncing
+            ]
+        )
     }
 
     private lazy var timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
         return formatter
     }()
 
@@ -68,15 +69,19 @@ class SyncNowSetting: WithAccountSetting {
     }
 
     func startRotateSyncIcon() {
-        DispatchQueue.main.async {
-            self.imageView.layer.add(self.continuousRotateAnimation, forKey: "rotateKey")
-        }
+        self.imageView.layer.add(self.continuousRotateAnimation, forKey: "rotateKey")
     }
 
-    @objc
     func stopRotateSyncIcon() {
-        DispatchQueue.main.async {
-            self.imageView.layer.removeAllAnimations()
+        self.imageView.layer.removeAllAnimations()
+    }
+
+    // MARK: Notifiable
+    func handleNotifications(_ notification: Notification) {
+        guard notification.name == .ProfileDidFinishSyncing else { return }
+
+        ensureMainThread {
+            self.stopRotateSyncIcon()
         }
     }
 

@@ -50,3 +50,29 @@ extension UIColor {
         return Color(self)
     }
 }
+
+extension UIColor {
+    /// Use this for glass buttons and translucent UI elements to ensure optimal contrast
+    /// and readability on backgrounds that adapt to content behind them. The color inverts
+    /// based on the current interface style (dark mode uses light label, light mode uses dark label)
+    public static let invertedLabel = UIColor { traitCollection in
+        return traitCollection.userInterfaceStyle == .dark
+        ? .label.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .light)
+        )
+        : .label.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .dark)
+        )
+    }
+
+    /// Dynamic text color that resolves to primary text color for the current interface style.
+    /// Use this when text needs to transition with UIKit's adaptive color resolution, such as labels in pinned
+    /// headers moving over system material or changing backdrop content.
+    public static let adaptiveTextPrimary = UIColor { traitCollection in
+        if traitCollection.userInterfaceStyle == .dark {
+            return DarkTheme().colors.textPrimary
+        } else {
+            return LightTheme().colors.textPrimary
+        }
+    }
+}

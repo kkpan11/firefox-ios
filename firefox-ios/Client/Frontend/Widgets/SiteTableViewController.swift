@@ -6,7 +6,7 @@ import UIKit
 import Storage
 import Common
 
-struct SiteTableViewControllerUX {
+enum SiteTableViewControllerUX {
     static let RowHeight: CGFloat = 44
 }
 
@@ -20,14 +20,19 @@ class SiteTableViewController: UIViewController,
                                Themeable {
     var themeManager: ThemeManager
     let windowManager: WindowManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
     let profile: Profile
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { windowUUID }
 
+    var shouldUsePrivateOverride: Bool { return false }
+    var shouldBeInPrivateTheme: Bool { return false }
+
+    var tableViewStyle: UITableView.Style { return .plain }
+
     var data = Cursor<Site>(status: .success, msg: "No data set")
-    lazy var tableView: UITableView = .build { [weak self] table in
+    lazy var tableView: UITableView = .build({ [weak self] table in
         guard let self = self else { return }
         table.delegate = self
         table.dataSource = self
@@ -43,21 +48,25 @@ class SiteTableViewController: UIViewController,
             SiteTableViewHeader.self,
             forHeaderFooterViewReuseIdentifier: SiteTableViewHeader.cellIdentifier
         )
-        table.layoutMargins = .zero
+        if self.tableViewStyle == .plain {
+            table.layoutMargins = .zero
+        }
         table.keyboardDismissMode = .onDrag
         table.accessibilityIdentifier = "SiteTable"
         table.cellLayoutMarginsFollowReadableWidth = false
         table.estimatedRowHeight = SiteTableViewControllerUX.RowHeight
         table.setEditing(false, animated: false)
 
-        if self as? LibraryPanelContextMenu != nil {
+        if self is LibraryPanelContextMenu {
             table.dragDelegate = self
         }
 
         // Set an empty footer to prevent empty cells from appearing in the list.
         table.tableFooterView = UIView()
         table.sectionHeaderTopPadding = 0
-    }
+    }, {
+        UITableView(frame: .zero, style: self.tableViewStyle)
+    })
 
     override private init(nibName: String?, bundle: Bundle?) {
         fatalError("init(coder:) has not been implemented")
@@ -74,8 +83,6 @@ class SiteTableViewController: UIViewController,
         self.themeManager = themeManager
         self.windowManager = windowManager
         super.init(nibName: nil, bundle: nil)
-        listenForThemeChange(view)
-        applyTheme()
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -86,13 +93,9 @@ class SiteTableViewController: UIViewController,
         super.viewDidLoad()
 
         setupView()
-    }
 
-    deinit {
-        // The view might outlive this view controller thanks to animations;
-        // explicitly nil out its references to us to avoid crashes. Bug 1218826.
-        tableView.dataSource = nil
-        tableView.delegate = nil
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -108,7 +111,7 @@ class SiteTableViewController: UIViewController,
         super.viewWillTransition(to: size, with: coordinator)
         tableView.setEditing(false, animated: false)
         // The AS context menu does not behave correctly. Dismiss it when rotating.
-        if self.presentedViewController as? PhotonActionSheet != nil {
+        if self.presentedViewController is PhotonActionSheet {
             self.presentedViewController?.dismiss(animated: true, completion: nil)
         }
     }
@@ -116,11 +119,16 @@ class SiteTableViewController: UIViewController,
     private func setupView() {
         view.addSubview(tableView)
 
+        // Inset grouped tables apply horizontal safe area insets through their own layout margins.
+        // Pinning them to the safe area zeroes the margin on the inset side, which removes the rounded corners.
+        let isInsetGrouped = tableViewStyle == .insetGrouped
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.leadingAnchor.constraint(
+                equalTo: isInsetGrouped ? view.leadingAnchor : view.safeAreaLayoutGuide.leadingAnchor),
+            tableView.trailingAnchor.constraint(
+                equalTo: isInsetGrouped ? view.trailingAnchor : view.safeAreaLayoutGuide.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ])
     }
 
@@ -142,7 +150,7 @@ class SiteTableViewController: UIViewController,
         if self.tableView(tableView, hasFullWidthSeparatorForRowAtIndexPath: indexPath) {
             cell.separatorInset = .zero
         }
-        cell.textLabel?.textColor = themeManager.getCurrentTheme(for: windowUUID).colors.textPrimary
+        cell.textLabel?.textColor = currentTheme().colors.textPrimary
         return cell
     }
 
@@ -156,8 +164,8 @@ class SiteTableViewController: UIViewController,
 
     func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
         if let header = view as? UITableViewHeaderFooterView {
-            header.textLabel?.textColor = themeManager.getCurrentTheme(for: windowUUID).colors.textPrimary
-            header.contentView.backgroundColor = themeManager.getCurrentTheme(for: windowUUID).colors.layer1
+            header.textLabel?.textColor = currentTheme().colors.textPrimary
+            header.contentView.backgroundColor = currentTheme().colors.layer1
         }
     }
 
@@ -182,8 +190,14 @@ class SiteTableViewController: UIViewController,
         return false
     }
 
+    func currentTheme() -> Theme {
+        return themeManager.resolveTheme(for: windowUUID,
+                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme)
+    }
+
     func applyTheme() {
-        let theme = themeManager.getCurrentTheme(for: windowUUID)
+        let theme = currentTheme()
         navigationController?.navigationBar.barTintColor = theme.colors.layer1
         navigationController?.navigationBar.tintColor = theme.colors.iconAccent
         navigationController?.navigationBar.titleTextAttributes = [

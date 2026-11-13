@@ -4,11 +4,14 @@
 
 import UIKit
 
-public class AppConstants {
+public enum AppConstants {
     // Any type of tests (UI and Unit)
     public static let isRunningTest = NSClassFromString("XCTestCase") != nil
     || AppConstants.isRunningUITests
     || AppConstants.isRunningPerfTests
+
+    public static let isSkippingAppleIntelligence =
+        ProcessInfo.processInfo.arguments.contains(LaunchArguments.SkipAppleIntelligence)
 
     // Unit tests only
     public static let isRunningUnitTest = NSClassFromString("XCTestCase") != nil
@@ -20,6 +23,14 @@ public class AppConstants {
 
     // Only performance tests
     public static let isRunningPerfTests = ProcessInfo.processInfo.arguments.contains(LaunchArguments.PerformanceTest)
+
+    // Opt-in for the UI tests that relaunch the app and assert on the restored tabs
+    public static let isSessionRestoreEnabledForTests =
+        ProcessInfo.processInfo.arguments.contains(LaunchArguments.EnableSessionRestore)
+
+    // Opt-in for the UI tests that assert on the Start at Home behaviour
+    public static let isStartAtHomeEnabledForTests =
+        ProcessInfo.processInfo.arguments.contains(LaunchArguments.EnableStartAtHome)
 
     public static let scheme: String = {
         guard let identifier = Bundle.main.bundleIdentifier else {
@@ -40,6 +51,9 @@ public class AppConstants {
     public static let prefSendCrashReports = "settings.sendCrashReports"
     public static let prefSendDailyUsagePing = "settings.sendDailyUsagePing"
     public static let prefStudiesToggle = "settings.studiesToggle"
+    public static let prefRolloutsToggle = "settings.rolloutsToggle"
+
+    public static let defaultSendDailyUsagePing = true
 
     /// Build Channel.
     public static let buildChannel: AppBuildChannel = {
@@ -59,6 +73,9 @@ public class AppConstants {
 
     /// Time that needs to pass before polling FxA for send tabs again, 86_400_000 milliseconds is 1 day
     public static let fxaCommandsInterval = 86_400_000
+
+    /// Time that needs to pass before verifying Autopush connections again, 86_400_000 milliseconds is 1 day
+    public static let autopushVerificationInterval = 86_400_000
 
     /// The maximum number of times we should attempt to migrated the History to Application Services Places DB
     public static let maxHistoryMigrationAttempt = 5

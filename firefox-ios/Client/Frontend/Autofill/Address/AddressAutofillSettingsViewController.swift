@@ -16,7 +16,7 @@ class AddressAutofillSettingsViewController: SensitiveViewController, Themeable 
     var viewModel: AddressAutofillSettingsViewModel
 
     /// Observer for theme changes.
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
 
     /// Manager responsible for handling themes.
     var themeManager: ThemeManager
@@ -29,6 +29,15 @@ class AddressAutofillSettingsViewController: SensitiveViewController, Themeable 
 
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { return windowUUID }
+
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
+
+    private func currentTheme() -> Theme {
+        return themeManager.resolveTheme(for: windowUUID,
+                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme)
+    }
 
     // MARK: Views
 
@@ -70,7 +79,7 @@ class AddressAutofillSettingsViewController: SensitiveViewController, Themeable 
             addressListViewModel: viewModel.addressListViewModel)
         self.addressAutofillSettingsPageView = UIHostingController(rootView: addressAutofillSettingsVC)
 
-        super.init(nibName: nil, bundle: nil)
+        super.init()
     }
 
     /// Not implemented for this view controller. Raises a fatal error.
@@ -84,8 +93,7 @@ class AddressAutofillSettingsViewController: SensitiveViewController, Themeable 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
-        listenForThemeChange(view)
-        applyTheme()
+
         viewModel.addressListViewModel.presentToast = { [weak self] status in
             guard let self else { return }
             switch status {
@@ -93,7 +101,7 @@ class AddressAutofillSettingsViewController: SensitiveViewController, Themeable 
                 let viewModel = ButtonToastViewModel(labelText: errorType.message,
                                                      buttonText: errorType.actionTitle)
                 let toast = ButtonToast(viewModel: viewModel,
-                                        theme: themeManager.getCurrentTheme(for: windowUUID),
+                                        theme: currentTheme(),
                                         completion: { buttonTap in
                     if buttonTap {
                         errorType.action()
@@ -101,13 +109,15 @@ class AddressAutofillSettingsViewController: SensitiveViewController, Themeable 
                 })
                 show(toast: toast)
             default:
-                SimpleToast().showAlertWithText(
-                    status.message,
-                    bottomContainer: view,
-                    theme: themeManager.getCurrentTheme(for: windowUUID)
-                )
+                let viewModel = PlainToastViewModel(labelText: status.message)
+                let toast = PlainToast(viewModel: viewModel,
+                                       theme: currentTheme())
+                show(toast: toast)
             }
         }
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     private func show(toast: Toast,
@@ -151,17 +161,12 @@ class AddressAutofillSettingsViewController: SensitiveViewController, Themeable 
 
     /// Applies the current theme to the view.
     func applyTheme() {
-        let theme = themeManager.getCurrentTheme(for: windowUUID)
+        let theme = currentTheme()
         view.backgroundColor = theme.colors.layer1
     }
 
     @objc
     func addAddress() {
         self.viewModel.addressListViewModel.addAddressButtonTap()
-    }
-
-    deinit {
-        addressAutofillSettingsPageView.removeFromParent()
-        addressAutofillSettingsPageView.view.removeFromSuperview()
     }
 }

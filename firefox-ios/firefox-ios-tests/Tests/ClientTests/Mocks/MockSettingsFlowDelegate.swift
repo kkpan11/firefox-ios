@@ -20,6 +20,7 @@ class MockSettingsFlowDelegate: SettingsFlowDelegate,
     var showPasswordManagerCalled = 0
     var savedShouldShowOnboarding = false
     var showQRCodeCalled = 0
+    var pressedVPNCalled = 0
 
     func showDevicePassCode() {
         showDevicePassCodeCalled += 1
@@ -64,11 +65,19 @@ class MockSettingsFlowDelegate: SettingsFlowDelegate,
 
     func pressedSiri() {}
 
+    func pressedAIControls() {}
+
     func pressedToolbar() {}
 
     func pressedTheme() {}
 
     func pressedBrowsing() {}
+
+    func pressedQuickAnswers() {}
+
+    func pressedSummarize() {}
+
+    func pressedTranslation() {}
 
     func pressedAutoFillsPasswords() {}
 
@@ -84,9 +93,15 @@ class MockSettingsFlowDelegate: SettingsFlowDelegate,
 
     func pressedClearPrivateData() {}
 
+    func pressedVPN() {
+        pressedVPNCalled += 1
+    }
+
     func pressedContentBlocker() {}
 
     func pressedPasswords() {}
+
+    func pressedRelayMask() {}
 
     func pressedNotifications() {}
 

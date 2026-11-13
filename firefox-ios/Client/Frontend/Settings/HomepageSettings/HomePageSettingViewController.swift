@@ -6,30 +6,25 @@ import Foundation
 import Shared
 import Common
 
-class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggable {
+final class HomePageSettingViewController: SettingsTableViewController,
+                                     FeatureFlaggable,
+                                     UserFeaturePreferenceProvider {
     // MARK: - Variables
     /* variables for checkmark settings */
     let prefs: Prefs
     var currentNewTabChoice: NewTabPage?
     var currentStartAtHomeSetting: StartAtHomeSetting?
     var hasHomePage = false
-    var wallpaperManager: WallpaperManagerInterface
-
-    var isWallpaperSectionEnabled: Bool {
-        return wallpaperManager.canSettingsBeShown
-    }
 
     var isPocketSectionEnabled: Bool {
-        return PocketProvider.islocaleSupported(Locale.current.identifier)
+        return MerinoProvider.isLocaleSupported(Locale.current.identifier)
     }
 
     // MARK: - Initializers
     init(prefs: Prefs,
-         wallpaperManager: WallpaperManagerInterface = WallpaperManager(),
          settingsDelegate: SettingsDelegate? = nil,
          tabManager: TabManager) {
         self.prefs = prefs
-        self.wallpaperManager = wallpaperManager
         super.init(style: .grouped, windowUUID: tabManager.windowUUID)
         super.settingsDelegate = settingsDelegate
         self.tabManager = tabManager
@@ -43,6 +38,12 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
             style: .plain,
             target: self,
             action: #selector(done))
+        if #available(iOS 26.0, *) {
+            let theme = currentTheme()
+            navigationItem.rightBarButtonItem?.tintColor = theme.isNova
+                ? theme.colors.actionPrimary
+                : theme.colors.textPrimary
+        }
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -79,19 +80,19 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
         self.currentNewTabChoice = NewTabAccessors.getHomePage(self.prefs)
         self.hasHomePage = HomeButtonHomePageAccessors.getHomePage(self.prefs) != nil
 
-        let onFinished = {
-            guard let currentNewTabChoice = self.currentNewTabChoice else { return }
-            self.prefs.setString(currentNewTabChoice.rawValue, forKey: NewTabAccessors.HomePrefKey)
-            self.tableView.reloadData()
+        let onFinished = { [weak self] in
+            guard let self, let currentNewTabChoice else { return }
+            prefs.setString(currentNewTabChoice.rawValue, forKey: NewTabAccessors.HomePrefKey)
+            tableView.reloadData()
         }
 
         let showTopSites = CheckmarkSetting(
             title: NSAttributedString(string: .SettingsNewTabTopSites),
             subtitle: nil,
             accessibilityIdentifier: "HomeAsFirefoxHome",
-            isChecked: { return self.currentNewTabChoice == NewTabPage.topSites },
-            onChecked: {
-                self.currentNewTabChoice = NewTabPage.topSites
+            isChecked: { [weak self] in return self?.currentNewTabChoice == NewTabPage.topSites },
+            onChecked: { [weak self] in
+                self?.currentNewTabChoice = NewTabPage.topSites
                 onFinished()
             })
 
@@ -102,8 +103,8 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
             placeholder: .CustomNewPageURL,
             accessibilityIdentifier: "HomeAsCustomURL",
             isChecked: { return !showTopSites.isChecked() },
-            settingDidChange: { (string) in
-                self.currentNewTabChoice = NewTabPage.homePage
+            settingDidChange: { [weak self] (string) in
+                self?.currentNewTabChoice = NewTabPage.homePage
                 onFinished()
             })
 
@@ -120,25 +121,40 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
         // Setup
         var sectionItems = [Setting]()
 
-        let pocketStatusText = String(
-            format: .Settings.Homepage.CustomizeFirefoxHome.ThoughtProvokingStoriesSubtitle,
-            PocketAppName.shortName.rawValue)
-
         // Section ordering
         sectionItems.append(TopSitesSettings(settings: self))
 
         if let profile {
+            if featureFlagsProvider.isEnabled(.homepageTrackerBlockerModule) {
+                let trackerBlockerModuleSetting = BoolSetting(
+                    prefs: profile.prefs,
+                    theme: currentTheme(),
+                    prefKey: PrefsKeys.HomepageSettings.TrackerBlockerSection,
+                    defaultValue: userPreferences.getPreferenceFor(.homepageTrackerBlockerModule),
+                    titleText: .Settings.Homepage.CustomizeFirefoxHome.PrivacyReport
+                ) { [windowUUID] value in
+                    store.dispatch(
+                        TrackerBlockerModuleAction(
+                            isEnabled: value,
+                            windowUUID: windowUUID,
+                            actionType: TrackerBlockerModuleActionType.toggleShowSectionSetting
+                        )
+                    )
+                }
+                sectionItems.append(trackerBlockerModuleSetting)
+            }
+
             let jumpBackInSetting = BoolSetting(
                 prefs: profile.prefs,
-                theme: themeManager.getCurrentTheme(for: windowUUID),
-                prefKey: PrefsKeys.UserFeatureFlagPrefs.JumpBackInSection,
-                defaultValue: true,
+                theme: currentTheme(),
+                prefKey: PrefsKeys.HomepageSettings.JumpBackInSection,
+                defaultValue: userPreferences.getPreferenceFor(.homepageJumpBackinSectionDefault),
                 titleText: .Settings.Homepage.CustomizeFirefoxHome.JumpBackIn
-            ) { value in
+            ) { [windowUUID] value in
                 store.dispatch(
                     JumpBackInAction(
                         isEnabled: value,
-                        windowUUID: self.windowUUID,
+                        windowUUID: windowUUID,
                         actionType: JumpBackInActionType.toggleShowSectionSetting
                     )
                 )
@@ -147,15 +163,15 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
 
             let bookmarksSetting = BoolSetting(
                 prefs: profile.prefs,
-                theme: themeManager.getCurrentTheme(for: windowUUID),
-                prefKey: PrefsKeys.UserFeatureFlagPrefs.BookmarksSection,
-                defaultValue: true,
+                theme: currentTheme(),
+                prefKey: PrefsKeys.HomepageSettings.BookmarksSection,
+                defaultValue: userPreferences.getPreferenceFor(.homepageBookmarksSectionDefault),
                 titleText: .Settings.Homepage.CustomizeFirefoxHome.Bookmarks
-            ) { value in
+            ) { [windowUUID] value in
                 store.dispatch(
                     BookmarksAction(
                         isEnabled: value,
-                        windowUUID: self.windowUUID,
+                        windowUUID: windowUUID,
                         actionType: BookmarksActionType.toggleShowSectionSetting
                     )
                 )
@@ -163,34 +179,24 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
             sectionItems.append(bookmarksSetting)
         }
 
+        // TODO: FXIOS-12980: Replace "Stories" title with "Top Stories" string once it is translated in v143
         if isPocketSectionEnabled, let profile {
             let pocketSetting = BoolSetting(
                 prefs: profile.prefs,
-                theme: themeManager.getCurrentTheme(for: windowUUID),
+                theme: currentTheme(),
                 prefKey: PrefsKeys.UserFeatureFlagPrefs.ASPocketStories,
                 defaultValue: true,
-                titleText: .Settings.Homepage.CustomizeFirefoxHome.ThoughtProvokingStories,
-                statusText: pocketStatusText
-            ) { value in
+                titleText: .Settings.Homepage.CustomizeFirefoxHome.Stories
+            ) { [windowUUID] value in
                 store.dispatch(
-                    PocketAction(
+                    MerinoAction(
                         isEnabled: value,
-                        windowUUID: self.windowUUID,
-                        actionType: PocketActionType.toggleShowSectionSetting
+                        windowUUID: windowUUID,
+                        actionType: MerinoActionType.toggleShowSectionSetting
                     )
                 )
             }
             sectionItems.append(pocketSetting)
-        }
-
-        if isWallpaperSectionEnabled, let tabManager {
-            let wallpaperSetting = WallpaperSettings(
-                settings: self,
-                settingsDelegate: settingsDelegate,
-                tabManager: tabManager,
-                wallpaperManager: wallpaperManager
-            )
-            sectionItems.append(wallpaperSetting)
         }
 
         return SettingSection(
@@ -203,50 +209,57 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
     }
 
     private func setupStartAtHomeSection() -> SettingSection {
-        let pref: StartAtHome = featureFlags.getCustomState(for: .startAtHome) ?? .afterFourHours
-        currentStartAtHomeSetting = StartAtHomeSetting(rawValue: pref.rawValue) ?? .afterFourHours
+        let pref = userPreferences.startAtHomeSetting
+        currentStartAtHomeSetting = StartAtHomeSetting(rawValue: pref.rawValue) ?? .disabled
 
         typealias a11y = AccessibilityIdentifiers.Settings.Homepage.StartAtHome
 
-        let onOptionSelected: (Bool, StartAtHomeSetting) -> Void = { [weak self] state, option in
-            self?.prefs.setString(option.rawValue, forKey: PrefsKeys.FeatureFlags.StartAtHome)
+        let onOptionSelected: (
+            Bool,
+            StartAtHomeSetting,
+            StartAtHomeSetting?
+        ) -> Void = { [weak self] state, newOption, previousOption in
+            self?.prefs.setString(newOption.rawValue, forKey: PrefsKeys.FeatureFlags.StartAtHome)
             self?.tableView.reloadData()
 
-            let extras = [
-                TelemetryWrapper.EventExtraKey.preference.rawValue: PrefsKeys.FeatureFlags.StartAtHome,
-                TelemetryWrapper.EventExtraKey.preferenceChanged.rawValue: option.rawValue
-            ]
-            TelemetryWrapper.recordEvent(category: .action, method: .change, object: .setting, extras: extras)
+            SettingsTelemetry().changedSetting(
+                PrefsKeys.FeatureFlags.StartAtHome,
+                to: newOption.rawValue,
+                from: previousOption?.rawValue ?? SettingsTelemetry.Placeholders.missingValue
+            )
         }
 
         let afterFourHoursOption = CheckmarkSetting(
             title: NSAttributedString(string: .Settings.Homepage.StartAtHome.AfterFourHours),
             subtitle: nil,
             accessibilityIdentifier: a11y.afterFourHours,
-            isChecked: { return self.currentStartAtHomeSetting == .afterFourHours },
-            onChecked: {
-                self.currentStartAtHomeSetting = .afterFourHours
-                onOptionSelected(true, .afterFourHours)
+            isChecked: { [weak self] in return self?.currentStartAtHomeSetting == .afterFourHours },
+            onChecked: { [weak self] in
+                let previousOption = self?.currentStartAtHomeSetting
+                self?.currentStartAtHomeSetting = .afterFourHours
+                onOptionSelected(true, .afterFourHours, previousOption)
             })
 
         let alwaysOption = CheckmarkSetting(
             title: NSAttributedString(string: .Settings.Homepage.StartAtHome.Always),
             subtitle: nil,
             accessibilityIdentifier: a11y.always,
-            isChecked: { return self.currentStartAtHomeSetting == .always },
-            onChecked: {
-                self.currentStartAtHomeSetting = .always
-                onOptionSelected(true, .always)
+            isChecked: { [weak self] in return self?.currentStartAtHomeSetting == .always },
+            onChecked: { [weak self] in
+                let previousOption = self?.currentStartAtHomeSetting
+                self?.currentStartAtHomeSetting = .always
+                onOptionSelected(true, .always, previousOption)
             })
 
         let neverOption = CheckmarkSetting(
             title: NSAttributedString(string: .Settings.Homepage.StartAtHome.Never),
             subtitle: nil,
             accessibilityIdentifier: a11y.disabled,
-            isChecked: { return self.currentStartAtHomeSetting == .disabled },
-            onChecked: {
-                self.currentStartAtHomeSetting = .disabled
-                onOptionSelected(false, .disabled)
+            isChecked: { [weak self] in return self?.currentStartAtHomeSetting == .disabled },
+            onChecked: { [weak self] in
+                let previousOption = self?.currentStartAtHomeSetting
+                self?.currentStartAtHomeSetting = .disabled
+                onOptionSelected(false, .disabled, previousOption)
             })
 
         let section = SettingSection(
@@ -263,7 +276,7 @@ class HomePageSettingViewController: SettingsTableViewController, FeatureFlaggab
 
 // MARK: - TopSitesSettings
 extension HomePageSettingViewController {
-    class TopSitesSettings: Setting, FeatureFlaggable {
+    final class TopSitesSettings: Setting {
         var profile: Profile?
         let windowUUID: WindowUUID
 
@@ -291,49 +304,6 @@ extension HomePageSettingViewController {
             let topSitesVC = TopSitesSettingsViewController(windowUUID: windowUUID)
             topSitesVC.profile = profile
             navigationController?.pushViewController(topSitesVC, animated: true)
-        }
-    }
-}
-
-// MARK: - WallpaperSettings
-extension HomePageSettingViewController {
-    class WallpaperSettings: Setting, FeatureFlaggable {
-        var settings: SettingsTableViewController
-        var tabManager: TabManager
-        var wallpaperManager: WallpaperManagerInterface
-        weak var settingsDelegate: SettingsDelegate?
-
-        override var accessoryType: UITableViewCell.AccessoryType { return .disclosureIndicator }
-        override var accessibilityIdentifier: String? {
-            return AccessibilityIdentifiers.Settings.Homepage.CustomizeFirefox.wallpaper
-        }
-        override var style: UITableViewCell.CellStyle { return .value1 }
-
-        init(settings: SettingsTableViewController,
-             settingsDelegate: SettingsDelegate?,
-             tabManager: TabManager,
-             wallpaperManager: WallpaperManagerInterface = WallpaperManager()
-        ) {
-            self.settings = settings
-            self.settingsDelegate = settingsDelegate
-            self.tabManager = tabManager
-            self.wallpaperManager = wallpaperManager
-            super.init(title: NSAttributedString(string: .Settings.Homepage.CustomizeFirefoxHome.Wallpaper))
-        }
-
-        override func onClick(_ navigationController: UINavigationController?) {
-            guard wallpaperManager.canSettingsBeShown else { return }
-
-            let theme = settings.themeManager.getCurrentTheme(for: settings.windowUUID)
-            let viewModel = WallpaperSettingsViewModel(
-                wallpaperManager: wallpaperManager,
-                tabManager: tabManager,
-                theme: theme,
-                windowUUID: settings.windowUUID
-            )
-            let wallpaperVC = WallpaperSettingsViewController(viewModel: viewModel, windowUUID: tabManager.windowUUID)
-            wallpaperVC.settingsDelegate = settingsDelegate
-            navigationController?.pushViewController(wallpaperVC, animated: true)
         }
     }
 }

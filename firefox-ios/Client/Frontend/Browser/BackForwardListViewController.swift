@@ -8,16 +8,19 @@ import WebKit
 import Storage
 import Common
 
-private struct BackForwardViewUX {
+private enum BackForwardViewUX {
     static let RowHeight: CGFloat = 50
 }
 
 /// Provides information about the size of various BrowserViewController's subviews.
 protocol BrowserFrameInfoProvider: AnyObject {
+    @MainActor
     func getBottomContainerSize() -> CGSize
 
+    @MainActor
     func getHeaderSize() -> CGSize
 
+    @MainActor
     func getOverKeyboardContainerSize() -> CGSize
 }
 
@@ -38,7 +41,7 @@ class BackForwardListViewController: UIViewController,
 
     // MARK: - Theme
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
 
     lazy var tableView: UITableView = .build { tableView in
@@ -93,14 +96,18 @@ class BackForwardListViewController: UIViewController,
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        listenForThemeChange(view)
         setupLayout()
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
+
         scrollTableViewToIndex(currentRow)
         setupDismissTap()
 
-        setupNotifications(forObserver: self,
-                           observing: [UIAccessibility.reduceTransparencyStatusDidChangeNotification])
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [UIAccessibility.reduceTransparencyStatusDidChangeNotification]
+        )
     }
 
     private func setupLayout() {
@@ -341,7 +348,9 @@ extension BackForwardListViewController: Notifiable {
     func handleNotifications(_ notification: Notification) {
         switch notification.name {
         case UIAccessibility.reduceTransparencyStatusDidChangeNotification:
-            reduceTransparencyChanged()
+            ensureMainThread {
+                self.reduceTransparencyChanged()
+            }
         default: break
         }
     }

@@ -32,13 +32,14 @@ extension HistoryPanel: UISearchBarDelegate {
 
         bottomStackView.isHidden = true
         searchBar.resignFirstResponder()
+		updateBottomSearchBarLayout(isHidden: true)
     }
 
     func startSearchState() {
         logger.log("User initiated history search", level: .info, category: .library)
 
         updatePanelState(newState: .history(state: .search))
-        bottomStackView.isHidden = false
+		updateBottomSearchBarLayout(isHidden: false)
         searchbar.becomeFirstResponder()
     }
 
@@ -47,7 +48,8 @@ extension HistoryPanel: UISearchBarDelegate {
         applySnapshot()
         self.searchbar.text = ""
         self.searchbar.resignFirstResponder()
-        bottomStackView.isHidden = true
+		updatePanelState(newState: .history(state: .mainView))
+		updateBottomSearchBarLayout(isHidden: true)
     }
 
     func performSearch(term: String) {
@@ -58,9 +60,11 @@ extension HistoryPanel: UISearchBarDelegate {
 
     func applySearchSnapshot() {
         // Create search results snapshot and apply
-        var snapshot = NSDiffableDataSourceSnapshot<HistoryPanelSections, AnyHashable>()
+        var snapshot = NSDiffableDataSourceSnapshot<HistoryPanelSections, HistoryItem>()
         snapshot.appendSections([HistoryPanelSections.searchResults])
-        snapshot.appendItems(self.viewModel.searchResultSites)
+        snapshot.appendItems(
+            self.viewModel.searchResultSites.map({ HistoryItem.site($0) })
+        )
 
         self.diffableDataSource?.apply(snapshot, animatingDifferences: false)
         self.updateEmptyPanelState()
@@ -72,32 +76,5 @@ extension HistoryPanel: UISearchBarDelegate {
         viewModel.searchResultSites.removeAll()
         applySnapshot()
         updateEmptyPanelState()
-    }
-}
-
-// MARK: - KeyboardHelperDelegate
-extension HistoryPanel: KeyboardHelperDelegate {
-    func keyboardHelper(_ keyboardHelper: KeyboardHelper, keyboardWillShowWithState state: KeyboardState) {
-        keyboardState = state
-        updateLayoutForKeyboard()
-        UIView.animate(
-            withDuration: state.animationDuration,
-            delay: 0,
-            options: [UIView.AnimationOptions(rawValue: UInt(state.animationCurve.rawValue << 16))],
-            animations: {
-                self.bottomStackView.layoutIfNeeded()
-            })
-    }
-
-    func keyboardHelper(_ keyboardHelper: KeyboardHelper, keyboardWillHideWithState state: KeyboardState) {
-        keyboardState = nil
-        updateLayoutForKeyboard()
-        UIView.animate(
-            withDuration: state.animationDuration,
-            delay: 0,
-            options: [UIView.AnimationOptions(rawValue: UInt(state.animationCurve.rawValue << 16))],
-            animations: {
-                self.bottomStackView.layoutIfNeeded()
-            })
     }
 }

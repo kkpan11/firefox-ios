@@ -6,34 +6,48 @@ import Foundation
 import Redux
 import Common
 
-struct AppState: StateType {
-    let activeScreens: ActiveScreensState
+struct AppState: StateType, Sendable {
+    let presentedComponents: PresentedComponentsState
 
-    static let reducer: Reducer<Self> = { state, action in
-        return AppState(activeScreens: ActiveScreensState.reducer(state.activeScreens, action))
+    static let reducer: Reducer<Self> = (legacyReducer, modernReducer)
+
+    static let modernReducer: ReducerMethod<Self> = { state, action, actionWindowUUID in
+        return AppState(
+            presentedComponents: PresentedComponentsState.reducer
+                                 .modernReducer(state.presentedComponents, action, actionWindowUUID)
+        )
     }
 
-    func screenState<S: ScreenState>(_ s: S.Type,
-                                     for screen: AppScreen,
-                                     window: WindowUUID?) -> S? {
-        return activeScreens.screens
+    static let legacyReducer: LegacyReducerMethod<Self> = { state, action in
+        return AppState(
+            presentedComponents: PresentedComponentsState.reducer.legacyReducer(state.presentedComponents, action)
+        )
+    }
+
+    func componentState<S: ScreenState>(_ s: S.Type,
+                                        for component: AppComponent,
+                                        window: WindowUUID?) -> S? {
+        return presentedComponents.components
+            .lazy
             .compactMap {
-                switch ($0, screen) {
+                switch ($0, component) {
                 case (.browserViewController(let state), .browserViewController): return state as? S
                 case (.homepage(let state), .homepage): return state as? S
                 case (.mainMenu(let state), .mainMenu): return state as? S
-                case (.mainMenuDetails(let state), .mainMenuDetails): return state as? S
                 case (.microsurvey(let state), .microsurvey): return state as? S
                 case (.remoteTabsPanel(let state), .remoteTabsPanel): return state as? S
                 case (.tabsPanel(let state), .tabsPanel): return state as? S
                 case (.tabPeek(let state), .tabPeek): return state as? S
                 case (.tabsTray(let state), .tabsTray): return state as? S
-                case (.themeSettings(let state), .themeSettings): return state as? S
+                case (.termsOfUse(let state), .termsOfUse): return state as? S
                 case (.toolbar(let state), .toolbar): return state as? S
                 case (.searchEngineSelection(let state), .searchEngineSelection): return state as? S
                 case (.trackingProtection(let state), .trackingProtection): return state as? S
                 case (.passwordGenerator(let state), .passwordGenerator): return state as? S
                 case (.nativeErrorPage(let state), .nativeErrorPage): return state as? S
+                case (.shortcutsLibrary(let state), .shortcutsLibrary): return state as? S
+                case (.translationSettings(let state), .translationSettings): return state as? S
+                case (.webCompatReporter(let state), .webCompatReporter): return state as? S
                 default: return nil
                 }
             }.first(where: {
@@ -50,16 +64,17 @@ struct AppState: StateType {
     }
 
     static func defaultState(from state: AppState) -> AppState {
-        return AppState(activeScreens: state.activeScreens)
+        return AppState(presentedComponents: state.presentedComponents)
     }
 }
 
 extension AppState {
     init() {
-        activeScreens = ActiveScreensState()
+        presentedComponents = PresentedComponentsState()
     }
 }
 
+@MainActor
 let middlewares = [
     FeltPrivacyMiddleware().privacyManagerProvider,
     MainMenuMiddleware().mainMenuProvider,
@@ -74,23 +89,42 @@ let middlewares = [
     TopSitesMiddleware().topSitesProvider,
     TrackingProtectionMiddleware().trackingProtectionProvider,
     PasswordGeneratorMiddleware().passwordGeneratorProvider,
-    PocketMiddleware().pocketSectionProvider,
+    MerinoMiddleware().pocketSectionProvider,
     NativeErrorPageMiddleware().nativeErrorPageProvider,
     WallpaperMiddleware().wallpaperProvider,
     BookmarksMiddleware().bookmarksProvider,
-    HomepageMiddleware(notificationCenter: NotificationCenter.default).homepageProvider
+    TrackerBlockerModuleMiddleware().trackerBlockerModuleProvider,
+    HomepageMiddleware(notificationCenter: NotificationCenter.default).homepageProvider,
+    QuickAnswersMiddleware().quickAnswersProvider,
+    StartAtHomeMiddleware().startAtHomeProvider,
+    ShortcutsLibraryMiddleware().shortcutsLibraryProvider,
+    SummarizerMiddleware().summarizerProvider,
+    TermsOfUseMiddleware().termsOfUseProvider,
+    TranslationsMiddleware().translationsProvider,
+    TranslationSettingsMiddleware().translationSettingsProvider,
+    VPNMiddleware().vpnProvider,
+    WebCompatReporterMiddleware().webCompatReporterProvider
 ]
 
-// In order for us to mock and test the middlewares easier,
-// we change the store to be instantiated as a variable.
-// For non testing builds, we leave the store as a constant.
-#if TESTING
-var store: any DefaultDispatchStore<AppState> = Store(
+// In order for us to mock and test the middlewares easier, debug builds
+// instantiate the store as a variable. `private(set)` keeps app code from
+// reassigning it; tests go through `replaceStore(_:)` via @testable import.
+// For shipping builds, we leave the store as a constant.
+#if MOCKABLE_STORE
+@MainActor
+private(set) var store: any DefaultDispatchStore<AppState> = Store(
     state: AppState(),
     reducer: AppState.reducer,
     middlewares: AppConstants.isRunningUnitTest ? [] : middlewares
 )
+
+/// Replaces the global store. Intended for tests only.
+@MainActor
+func replaceStore(_ newStore: any DefaultDispatchStore<AppState>) {
+    store = newStore
+}
 #else
+@MainActor
 let store: any DefaultDispatchStore<AppState> = Store(state: AppState(),
                                                       reducer: AppState.reducer,
                                                       middlewares: middlewares)

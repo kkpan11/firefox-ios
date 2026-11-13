@@ -5,12 +5,12 @@
 import UIKit
 
 /// The `ThemeManager` will be responsible for providing the theme throughout the app
+@MainActor
 public final class DefaultThemeManager: ThemeManager, Notifiable {
     // These have been carried over from the legacy system to maintain backwards compatibility
     enum ThemeKeys {
         static let themeName = "prefKeyThemeName"
         static let systemThemeIsOn = "prefKeySystemThemeSwitchOnOff"
-        static let hasMigratedToNewAppearanceMenu = "prefKeyhasMigratedToNewAppearanceMenu"
 
         enum AutomaticBrightness {
             static let isOn = "prefKeyAutomaticSwitchOnOff"
@@ -27,13 +27,14 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
     private var windows: [WindowUUID: UIWindow] = [:]
     private var privateBrowsingState: [WindowUUID: Bool] = [:]
     private var allWindowUUIDs: [WindowUUID] { return Array(windows.keys) }
-    public var notificationCenter: NotificationProtocol
+    public let notificationCenter: NotificationProtocol
 
     private var userDefaults: UserDefaultsInterface
     private var mainQueue: DispatchQueueInterface
     private var sharedContainerIdentifier: String
 
-    private var isNewAppearanceMenuOnClosure: () -> Bool
+    private var isNovaDesignOnClosure: () -> Bool
+    private var isPrivateThemeOverrideEnabledClosure: () -> Bool
 
     private var nightModeIsOn: Bool {
         return userDefaults.bool(forKey: ThemeKeys.NightMode.isOn)
@@ -51,12 +52,12 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
         return userDefaults.float(forKey: ThemeKeys.AutomaticBrightness.thresholdValue)
     }
 
-    public var isNewAppearanceMenuOn: Bool {
-        return isNewAppearanceMenuOnClosure()
+    public var isNovaDesignOn: Bool {
+        return isNovaDesignOnClosure()
     }
 
-    public var hasMigratedToNewAppearanceMenu: Bool {
-        return userDefaults.bool(forKey: ThemeKeys.hasMigratedToNewAppearanceMenu)
+    public var isPrivateThemeOverrideEnabled: Bool {
+        return isPrivateThemeOverrideEnabledClosure()
     }
 
     // MARK: - Initializers
@@ -66,25 +67,31 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
         notificationCenter: NotificationProtocol = NotificationCenter.default,
         mainQueue: DispatchQueueInterface = DispatchQueue.main,
         sharedContainerIdentifier: String,
-        isNewAppearanceMenuOnClosure: @escaping () -> Bool = { false }
+        isNovaDesignOnClosure: @escaping () -> Bool = { false },
+        isPrivateThemeOverrideEnabledClosure: @escaping () -> Bool = { false }
     ) {
         self.userDefaults = userDefaults
         self.notificationCenter = notificationCenter
         self.mainQueue = mainQueue
         self.sharedContainerIdentifier = sharedContainerIdentifier
-        self.isNewAppearanceMenuOnClosure = isNewAppearanceMenuOnClosure
+        self.isNovaDesignOnClosure = isNovaDesignOnClosure
+        self.isPrivateThemeOverrideEnabledClosure = isPrivateThemeOverrideEnabledClosure
 
         self.userDefaults.register(defaults: [
             ThemeKeys.systemThemeIsOn: true,
             ThemeKeys.NightMode.isOn: false
         ])
 
-        setupNotifications(forObserver: self,
-                           observing: [UIScreen.brightnessDidChangeNotification,
-                                       UIApplication.didBecomeActiveNotification])
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [UIScreen.brightnessDidChangeNotification,
+                        UIApplication.didBecomeActiveNotification]
+        )
     }
 
-    // MARK: - Themeing general functions
+    // MARK: - Theming general functions
+    @MainActor
     public func getCurrentTheme(for window: WindowUUID?) -> Theme {
         guard let window else {
             assertionFailure("Attempt to get the theme for a nil window UUID.")
@@ -95,12 +102,13 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
     }
 
     public func resolvedTheme(with shouldShowPrivateTheme: Bool) -> Theme {
-        return shouldShowPrivateTheme ? PrivateModeTheme() : getThemeFrom(type: determineUserTheme())
+        return getThemeFrom(type: shouldShowPrivateTheme ? .privateMode : determineUserTheme())
     }
 
+    @MainActor
     public func applyThemeUpdatesToWindows() {
-        allWindowUUIDs.forEach {
-            applyThemeChanges(for: $0, using: determineThemeType(for: $0))
+        allWindowUUIDs.forEach { windowUUID in
+            applyThemeChanges(for: windowUUID, using: determineThemeType(for: windowUUID))
         }
     }
 
@@ -158,8 +166,8 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
     // MARK: - Window specific functions
     public func windowNonspecificTheme() -> Theme {
         switch getUserManualTheme() {
-        case .dark, .nightMode, .privateMode: return DarkTheme()
-        case .light: return LightTheme()
+        case .dark, .nightMode, .privateMode: return getThemeFrom(type: .dark)
+        case .light: return getThemeFrom(type: .light)
         }
     }
 
@@ -179,21 +187,26 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
         userDefaults.set(newTheme.rawValue, forKey: ThemeKeys.themeName)
     }
 
+    @MainActor
     private func applyThemeChanges(for window: WindowUUID, using newTheme: ThemeType) {
         // Overwrite the user interface style on the window attached to our scene
         // once we have multiple scenes we need to update all of them
-        let style = self.getCurrentTheme(for: window).type.getInterfaceStyle()
+        let theme = self.getCurrentTheme(for: window)
+        let style = theme.type.getInterfaceStyle()
         self.windows[window]?.overrideUserInterfaceStyle = style
+        // Nova only: highlighted text purple tint.
+        let selectedTextTint = theme.isNova ? theme.colors.actionPrimary : nil
+        UITextField.appearance().tintColor = selectedTextTint
+        UITextView.appearance().tintColor = selectedTextTint
         notifyCurrentThemeDidChange(for: window)
     }
 
+    @MainActor
     private func notifyCurrentThemeDidChange(for window: WindowUUID) {
-        mainQueue.ensureMainThread { [weak self] in
-            self?.notificationCenter.post(
-                name: .ThemeDidChange,
-                withUserInfo: window.userInfo
-            )
-        }
+        notificationCenter.post(
+            name: .ThemeDidChange,
+            withUserInfo: window.userInfo
+        )
     }
 
     private func determineThemeType(for window: WindowUUID) -> ThemeType {
@@ -202,11 +215,6 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
     }
 
     private func determineUserTheme() -> ThemeType {
-        // Check if a migration override should be applied. This is mainly done because the new behaviour splits
-        // dark theme appearance of the app and web content. Once FXIOS-11655, both this check and nightMode
-        // in general will be removed.
-        if let migratedTheme = migratedTheme() { return migratedTheme }
-        if !isNewAppearanceMenuOn && nightModeIsOn { return .nightMode }
         if systemThemeIsOn { return getThemeTypeBasedOnSystem() }
         if automaticBrightnessIsOn { return getThemeTypeBasedOnBrightness() }
 
@@ -214,6 +222,10 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
     }
 
     private func getThemeFrom(type: ThemeType) -> Theme {
+        if isNovaDesignOn, let novaTheme = novaTheme(for: type) {
+            return novaTheme
+        }
+
         switch type {
         case .light:
             return LightTheme()
@@ -226,43 +238,30 @@ public final class DefaultThemeManager: ThemeManager, Notifiable {
         }
     }
 
+    private func novaTheme(for type: ThemeType) -> Theme? {
+        switch type {
+        case .light:
+            return NovaLightTheme()
+        case .dark:
+            return NovaDarkTheme()
+        case .nightMode:
+            return NovaNightModeTheme()
+        case .privateMode:
+            return NovaPrivateTheme()
+        }
+    }
+
     // MARK: - Notifiable
 
     public func handleNotifications(_ notification: Notification) {
         switch notification.name {
         case UIScreen.brightnessDidChangeNotification,
             UIApplication.didBecomeActiveNotification:
-            applyThemeUpdatesToWindows()
+            ensureMainThread {
+                self.applyThemeUpdatesToWindows()
+            }
         default:
             return
         }
-    }
-
-    /// Checks if theme migration should override the current theme selection.
-    /// Returns:
-    /// - .dark if migration conditions are met and NightMode is active.
-    /// - nil otherwise.
-    /// NOTE(FXIOS-11655): This code will be removed once the new appearance menu experiment ends.
-    private func migratedTheme() -> ThemeType? {
-        if isNewAppearanceMenuOn && !hasMigratedToNewAppearanceMenu {
-            // Mark that migration has been performed to avoid repeating the process.
-            userDefaults.set(true, forKey: ThemeKeys.hasMigratedToNewAppearanceMenu)
-            if nightModeIsOn {
-                // If nightMode was on, force dark mode in the new UI and update all other themes.
-                updateSavedTheme(to: .dark)
-                setSystemTheme(isOn: false)
-                setAutomaticBrightness(isOn: false)
-                return .dark
-            } else if automaticBrightnessIsOn {
-                // If automaticBrightness was on, apply the computed theme.
-                updateSavedTheme(to: getThemeTypeBasedOnBrightness())
-                setSystemTheme(isOn: false)
-                setAutomaticBrightness(isOn: false)
-            }
-        } else if !isNewAppearanceMenuOn && hasMigratedToNewAppearanceMenu {
-            // Reset the migration flag (mostly for debugging or rare cases).
-            userDefaults.set(false, forKey: ThemeKeys.hasMigratedToNewAppearanceMenu)
-        }
-        return nil
     }
 }

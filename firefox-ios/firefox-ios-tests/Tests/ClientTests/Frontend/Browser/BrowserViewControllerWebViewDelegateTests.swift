@@ -4,6 +4,7 @@
 
 import XCTest
 import Common
+import Glean
 import WebKit
 import Shared
 
@@ -18,23 +19,24 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
     }
     private lazy var allowBlockingUniversalLinksPolicy = WKNavigationActionPolicy(rawValue: allowPolicyRawValue + 2)
 
-    override func setUp() {
-        super.setUp()
-        DependencyHelperMock().bootstrapDependencies()
-        profile = MockProfile()
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
+    override func setUp() async throws {
+        try await super.setUp()
+        await DependencyHelperMock().bootstrapDependencies()
+        profile = makeProfile()
         tabManager = MockTabManager()
         fileManager = MockFileManager()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         profile = nil
         tabManager = nil
         fileManager = nil
-        super.tearDown()
+        DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
     // MARK: - Decide policy for navigation action
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_cancelWhenTabNotInTabManager() {
         let subject = createSubject()
         let url = URL(string: "https://example.com")!
@@ -47,6 +49,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_cancelFacetimeScheme() {
         let subject = createSubject()
         let url = URL(string: "facetime://testuser")!
@@ -60,6 +63,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_cancelFacetimeAudioScheme() {
         let subject = createSubject()
         let url = URL(string: "facetime-audio://testuser")!
@@ -73,6 +77,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_cancelTelScheme() {
         let subject = createSubject()
         let url = URL(string: "tel://3484563742")!
@@ -86,6 +91,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_cancelAppStoreScheme() {
         let subject = createSubject()
         let url = URL(string: "itms-apps://test-app")!
@@ -99,6 +105,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_cancelAppStoreURL() {
         let subject = createSubject()
         let url = URL(string: "https://apps.apple.com/test-app")!
@@ -112,6 +119,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_allowsAnyWebsite_withNormalTabs() {
         let subject = createSubject()
         let tab = createTab()
@@ -125,6 +133,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_allowsAnyWebsiteBlockingUniversalLink_whenOptionEnabled() {
         let subject = createSubject()
         let tab = createTab()
@@ -139,6 +148,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_allowsAnyWebsite_andBlockUniversalLinksWithPrivateTab() {
         let subject = createSubject()
         let tab = createTab(isPrivate: true)
@@ -152,32 +162,41 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_addRequestToPending() {
         let subject = createSubject()
         let tab = createTab()
         let url = URL(string: "https://www.example.com")!
         tabManager.tabs = [tab]
+        let expectation = XCTestExpectation()
 
         subject.webView(tab.webView!,
                         decidePolicyFor: MockNavigationAction(url: url,
                                                               type: .linkActivated)) { _ in
-            XCTAssertNotNil(subject.pendingRequests[url.absoluteString])
+            ensureMainThread {
+                XCTAssertNotNil(subject.pendingRequests[url.absoluteString])
+                expectation.fulfill()
+            }
         }
+
+        wait(for: [expectation])
     }
 
-    func testWebViewDecidePolicyForNavigationAction_allowsLoading_whenBlobSchemeWithNavigationTypeOther() {
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_cancelLoading_whenBlobSchemeWithNavigationTypeOther() {
         let subject = createSubject()
         let tab = createTab()
-        let blob = URL(string: "blob://blobfile")!
+        let blob = URL(string: "blob:https://example.com/4a1b4a40-7aa5-4ff7-a34c-b54c32ce1339")!
         tabManager.tabs = [tab]
 
         subject.webView(tab.webView!,
                         decidePolicyFor: MockNavigationAction(url: blob,
                                                               type: .other)) { policy in
-            XCTAssertEqual(policy, .allow)
+            XCTAssertEqual(policy, .cancel)
         }
     }
 
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_cancelLoading_withBlobScheme() {
         let subject = createSubject()
         let tab = createTab()
@@ -191,22 +210,7 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
-    func testWebViewDecidePolicyForNavigationAction_cancelLoading_whenLoadingLocalPDFurlPreviouslyDeleted() {
-        let subject = createSubject()
-        let tab = createTab()
-
-        let pdfURL = URL(string: "file://test.pdf")!
-        let sourceURL = URL(string: "https://www.example.com")!
-        tab.restoreTemporaryDocumentSession([pdfURL: sourceURL])
-        tabManager.tabs = [tab]
-
-        subject.webView(tab.webView!,
-                        decidePolicyFor: MockNavigationAction(url: pdfURL,
-                                                              type: .other)) { policy in
-            XCTAssertEqual(policy, .cancel)
-        }
-    }
-
+    @MainActor
     func testWebViewDecidePolicyForNavigationAction_allowsLoading_whenLoadingLocalPDFurlPreviouslyDownloaded() {
         let subject = createSubject()
         let tab = createTab()
@@ -221,115 +225,334 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         }
     }
 
-    // MARK: - Decide policy for navigation response
-    func testWebViewDecidePolicyForNavigationResponse_cancelLoading_whenResponseIsPDFThatWasntDownloadedPreviously() {
-        let subject = createSubject()
-        let tab = createTab()
-
-        let pdfURL = URL(string: "https://example.com/test.pdf")!
-        let response = URLResponse(
-            url: pdfURL,
-            mimeType: MIMEType.PDF,
-            expectedContentLength: 0,
-            textEncodingName: nil
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_allowMarketPlaceScheme_whenUserAction() {
+        let subject = MockBrowserViewController(
+            profile: profile,
+            tabManager: tabManager,
+            userInitiatedQueue: MockDispatchQueue()
         )
-        subject.pendingRequests[pdfURL.absoluteString] = URLRequest(url: pdfURL)
-        tabManager.tabs = [tab]
+        subject.mockIsMainFrameNavigation = true
+        trackForMemoryLeaks(subject)
 
-        subject.webView(tab.webView!, decidePolicyFor: MockNavigationResponse(response: response)) { policy in
-            XCTAssertEqual(policy, .cancel)
-        }
-    }
-
-    func testWebViewDecidePolicyForNavigationResponse_allowsLoading_whenResponseIsLocalPDFFileAlreadyDownloaded() {
-        let subject = createSubject()
+        let url = URL(string: "marketplace-kit://install?exampleApp.com")!
         let tab = createTab()
-
-        let pdfURL = URL(string: "https://example.com/test.pdf")!
-        let localPDFURL = URL(string: "file://test.pdf")!
-        let response = URLResponse(
-            url: localPDFURL,
-            mimeType: MIMEType.PDF,
-            expectedContentLength: 0,
-            textEncodingName: nil
-        )
-        fileManager.fileExists = true
-        subject.pendingRequests[pdfURL.absoluteString] = URLRequest(url: pdfURL)
-        tab.restoreTemporaryDocumentSession([localPDFURL: pdfURL])
         tabManager.tabs = [tab]
+        let navigationAction = MockNavigationAction(url: url, type: .linkActivated)
 
-        subject.webView(tab.webView!, decidePolicyFor: MockNavigationResponse(response: response)) { policy in
+        subject.webView(tab.webView!,
+                        decidePolicyFor: navigationAction) { policy in
             XCTAssertEqual(policy, .allow)
         }
     }
 
-    // MARK: - Authentication
-
-    func testWebViewDidReceiveChallenge_MethodServerTrust() {
-        let subject = createSubject()
-
-        subject.webView(
-            anyWebView(),
-            didReceive: anyAuthenticationChallenge(for: "NSURLAuthenticationMethodServerTrust")
-        ) { disposition, credential in
-            XCTAssertEqual(disposition, .performDefaultHandling)
-            XCTAssertNil(credential)
-        }
-    }
-
-    func testWebViewDidReceiveChallenge_MethodHTTPDigest() {
-        let subject = createSubject()
-
-        subject.webView(
-            anyWebView(),
-            didReceive: anyAuthenticationChallenge(for: "NSURLAuthenticationMethodHTTPDigest")
-        ) { disposition, credential in
-            XCTAssertEqual(disposition, .performDefaultHandling)
-            XCTAssertNil(credential)
-        }
-    }
-
-    func testWebViewDidReceiveChallenge_MethodHTTPNTLM() {
-        let subject = createSubject()
-
-        subject.webView(
-            anyWebView(),
-            didReceive: anyAuthenticationChallenge(for: "NSURLAuthenticationMethodNTLM")
-        ) { disposition, credential in
-            XCTAssertEqual(disposition, .performDefaultHandling)
-            XCTAssertNil(credential)
-        }
-    }
-
-    func testWebViewDidReceiveChallenge_MethodHTTPBasic() {
-        let subject = createSubject()
-
-        subject.webView(
-            anyWebView(),
-            didReceive: anyAuthenticationChallenge(for: "NSURLAuthenticationMethodHTTPBasic")
-        ) { disposition, credential in
-            XCTAssertEqual(disposition, .performDefaultHandling)
-            XCTAssertNil(credential)
-        }
-    }
-
-    private func createSubject() -> BrowserViewController {
-        let subject = BrowserViewController(
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_cancelMarketPlaceScheme_whenNotMainFrame() {
+        let subject = MockBrowserViewController(
             profile: profile,
             tabManager: tabManager,
-            mainQueue: MockDispatchQueue(),
             userInitiatedQueue: MockDispatchQueue()
         )
+        subject.mockIsMainFrameNavigation = false
+        trackForMemoryLeaks(subject)
+
+        let url = URL(string: "marketplace-kit://install?exampleApp.com")!
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        let navigationAction = MockNavigationAction(url: url, type: .linkActivated)
+
+        subject.webView(tab.webView!,
+                        decidePolicyFor: navigationAction) { policy in
+            XCTAssertEqual(policy, .cancel)
+        }
+    }
+
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_cancelMarketPlaceScheme_whenReloadAction() {
+        let subject = MockBrowserViewController(
+            profile: profile,
+            tabManager: tabManager,
+            userInitiatedQueue: MockDispatchQueue()
+        )
+        subject.mockIsMainFrameNavigation = true
+        trackForMemoryLeaks(subject)
+
+        let url = URL(string: "marketplace-kit://install?exampleApp.com")!
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        let navigationAction = MockNavigationAction(url: url, type: .reload)
+
+        subject.webView(tab.webView!,
+                        decidePolicyFor: navigationAction) { policy in
+            XCTAssertEqual(policy, .cancel)
+        }
+    }
+
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_allowInternalURL_whenAuthorized() {
+        let subject = createSubject()
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        let internalURL = URL(string: "internal://local/about/home")!
+        let authorizedURL = InternalURL.authorize(url: internalURL)!
+
+        subject.webView(tab.webView!,
+                        decidePolicyFor: MockNavigationAction(url: authorizedURL,
+                                                              type: .linkActivated)) { policy in
+            XCTAssertEqual(policy, .allow)
+        }
+    }
+
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_cancelInternalURL_whenUnprivileged() {
+        let subject = createSubject()
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        let url = URL(string: "internal://local/about/home")!
+
+        subject.webView(tab.webView!,
+                        decidePolicyFor: MockNavigationAction(url: url,
+                                                              type: .linkActivated)) { policy in
+            XCTAssertEqual(policy, .cancel)
+        }
+    }
+
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_allowInternalURL_whenUnprivilegedWithBackForwardNavigation() {
+        let subject = createSubject()
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        let url = URL(string: "internal://local/about/home")!
+
+        subject.webView(tab.webView!,
+                        decidePolicyFor: MockNavigationAction(url: url,
+                                                              type: .backForward)) { policy in
+            XCTAssertEqual(policy, .allow)
+        }
+    }
+
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_cancelInternalURL_whenUnprivilegedReaderModeURL() {
+        let subject = createSubject()
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        let url = URL(string: "http://localhost:6571/reader-mode/page?url=https://accounts.google.com/")!
+
+        subject.webView(tab.webView!,
+                        decidePolicyFor: MockNavigationAction(url: url,
+                                                              type: .linkActivated)) { policy in
+            XCTAssertEqual(policy, .cancel)
+        }
+    }
+
+    @MainActor
+    func testWebViewDecidePolicyForNavigationAction_allowInternalURL_whenAuthorizedReaderModeURL() {
+        let subject = createSubject()
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        let url = URL(string: "http://localhost:6571/reader-mode/page?url=https://mozilla.org/")!
+        let authorizedURL = InternalURL.authorize(url: url)!
+
+        subject.webView(tab.webView!,
+                        decidePolicyFor: MockNavigationAction(url: authorizedURL,
+                                                              type: .other)) { policy in
+            XCTAssertEqual(policy, .allow)
+        }
+    }
+
+    // MARK: - Create web view
+
+    @MainActor
+    func testWebViewCreateWebView_withMailtoScheme_showsMailAlertWithoutOpeningTab() throws {
+        let subject = MockBrowserViewController(profile: profile,
+                                                tabManager: tabManager,
+                                                userInitiatedQueue: MockDispatchQueue())
+        trackForMemoryLeaks(subject)
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        let url = URL(string: "mailto:test@example.com")!
+
+        let newWebView = subject.webView(tab.webView!,
+                                         createWebViewWith: WKWebViewConfiguration(),
+                                         for: MockNavigationAction(url: url, type: .linkActivated),
+                                         windowFeatures: WKWindowFeatures())
+
+        XCTAssertNil(newWebView)
+        XCTAssertTrue(tabManager.lastSelectedTabs.isEmpty)
+        let alert = try XCTUnwrap(subject.presentedViewController as? UIAlertController)
+        XCTAssertEqual(alert.message, .ExternalMailLinkConfirmation)
+        // The alert's action captures the BVC, so drop it to avoid a leak since the mock never dismisses it
+        subject.viewControllerToPresent = nil
+    }
+
+    @MainActor
+    func testWebViewCreateWebView_withSmsScheme_showsSmsAlertWithoutOpeningTab() throws {
+        let subject = MockBrowserViewController(profile: profile,
+                                                tabManager: tabManager,
+                                                userInitiatedQueue: MockDispatchQueue())
+        trackForMemoryLeaks(subject)
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        tabManager.selectedTab = tab
+        let url = URL(string: "sms:+15555555555")!
+
+        let newWebView = subject.webView(tab.webView!,
+                                         createWebViewWith: WKWebViewConfiguration(),
+                                         for: MockNavigationAction(url: url, type: .linkActivated),
+                                         windowFeatures: WKWindowFeatures())
+
+        XCTAssertNil(newWebView)
+        XCTAssertTrue(tabManager.lastSelectedTabs.isEmpty)
+        let alert = try XCTUnwrap(subject.presentedViewController as? UIAlertController)
+        XCTAssertEqual(alert.message, .ExternalSmsLinkConfirmation)
+    }
+
+    // MARK: - Configuration profile
+
+    @MainActor
+    func testPresentConfigurationProfileAlertIfNeeded_withHTTPSProfile_showsAlert() throws {
+        setConfigurationProfileFlag(enabled: true)
+        let subject = MockBrowserViewController(profile: profile,
+                                                tabManager: tabManager,
+                                                userInitiatedQueue: MockDispatchQueue())
+        trackForMemoryLeaks(subject)
+        let response = anyURLResponse(url: "https://www.example.com/profile.mobileconfig",
+                                      mimeType: MIMEType.ConfigurationProfile)
+
+        let didPresent = subject.presentConfigurationProfileAlertIfNeeded(for: response)
+
+        XCTAssertTrue(didPresent)
+        let alert = try XCTUnwrap(subject.presentedViewController as? UIAlertController)
+        XCTAssertEqual(alert.title, .Alerts.ConfigurationProfile.Title)
+        XCTAssertEqual(alert.message, String(format: .Alerts.ConfigurationProfile.Body, "example.com"))
+        XCTAssertEqual(alert.actions.map(\.title), [.Alerts.ConfigurationProfile.CancelButton,
+                                                    .Alerts.ConfigurationProfile.ContinueButton])
+        // The alert's action captures the BVC, so drop it to avoid a leak since the mock never dismisses it
+        subject.viewControllerToPresent = nil
+    }
+
+    @MainActor
+    func testPresentConfigurationProfileAlertIfNeeded_withFlagDisabled_doesNotShowAlert() {
+        setConfigurationProfileFlag(enabled: false)
+        let subject = MockBrowserViewController(profile: profile,
+                                                tabManager: tabManager,
+                                                userInitiatedQueue: MockDispatchQueue())
+        trackForMemoryLeaks(subject)
+        let response = anyURLResponse(url: "https://www.example.com/profile.mobileconfig",
+                                      mimeType: MIMEType.ConfigurationProfile)
+
+        let didPresent = subject.presentConfigurationProfileAlertIfNeeded(for: response)
+
+        XCTAssertFalse(didPresent)
+        XCTAssertNil(subject.presentedViewController)
+    }
+
+    @MainActor
+    func testPresentConfigurationProfileAlertIfNeeded_withBlobProfile_doesNotShowAlert() {
+        setConfigurationProfileFlag(enabled: true)
+        let subject = MockBrowserViewController(profile: profile,
+                                                tabManager: tabManager,
+                                                userInitiatedQueue: MockDispatchQueue())
+        trackForMemoryLeaks(subject)
+        let response = anyURLResponse(url: "blob:https://www.example.com/4c1b3a52-7e7d-4a6f-9b55-1f0f3f1d2e6a",
+                                      mimeType: MIMEType.ConfigurationProfile)
+
+        let didPresent = subject.presentConfigurationProfileAlertIfNeeded(for: response)
+
+        XCTAssertFalse(didPresent)
+        XCTAssertNil(subject.presentedViewController)
+    }
+
+    @MainActor
+    func testPresentConfigurationProfileAlertIfNeeded_withOtherMIMEType_doesNotShowAlert() {
+        setConfigurationProfileFlag(enabled: true)
+        let subject = MockBrowserViewController(profile: profile,
+                                                tabManager: tabManager,
+                                                userInitiatedQueue: MockDispatchQueue())
+        trackForMemoryLeaks(subject)
+        let response = anyURLResponse(url: "https://www.example.com/file.pdf", mimeType: MIMEType.PDF)
+
+        let didPresent = subject.presentConfigurationProfileAlertIfNeeded(for: response)
+
+        XCTAssertFalse(didPresent)
+        XCTAssertNil(subject.presentedViewController)
+    }
+
+    // MARK: - Authentication
+
+    @MainActor
+    func testWebViewDidReceiveChallenge_MethodServerTrust() async {
+        let subject = createSubject()
+
+        let result = await subject.webView(
+            anyWebView(),
+            respondTo: anyAuthenticationChallenge(for: "NSURLAuthenticationMethodServerTrust")
+        )
+
+        XCTAssertEqual(result.0, .performDefaultHandling)
+        XCTAssertNil(result.1)
+    }
+
+    @MainActor
+    func testWebViewDidReceiveChallenge_MethodHTTPDigest() async {
+        let subject = createSubject()
+
+        let result = await subject.webView(
+            anyWebView(),
+            respondTo: anyAuthenticationChallenge(for: "NSURLAuthenticationMethodHTTPDigest")
+        )
+
+        XCTAssertEqual(result.0, .performDefaultHandling)
+        XCTAssertNil(result.1)
+    }
+
+    @MainActor
+    func testWebViewDidReceiveChallenge_MethodHTTPNTLM() async {
+        let subject = createSubject()
+
+        let result = await subject.webView(
+            anyWebView(),
+            respondTo: anyAuthenticationChallenge(for: "NSURLAuthenticationMethodNTLM")
+        )
+
+        XCTAssertEqual(result.0, .performDefaultHandling)
+        XCTAssertNil(result.1)
+    }
+
+    @MainActor
+    func testWebViewDidReceiveChallenge_MethodHTTPBasic() async {
+        let subject = createSubject()
+
+        let result = await subject.webView(
+            anyWebView(),
+            respondTo: anyAuthenticationChallenge(for: "NSURLAuthenticationMethodHTTPBasic")
+        )
+
+        XCTAssertEqual(result.0, .performDefaultHandling)
+        XCTAssertNil(result.1)
+    }
+
+    @MainActor
+    private func createSubject(gleanWrapper: GleanWrapper = DefaultGleanWrapper()) -> BrowserViewController {
+        let subject = BrowserViewController(profile: profile,
+                                            tabManager: tabManager,
+                                            gleanWrapper: gleanWrapper,
+                                            userInitiatedQueue: MockDispatchQueue())
         trackForMemoryLeaks(subject)
         return subject
     }
 
+    @MainActor
     private func anyWebView(url: URL? = nil) -> MockTabWebView {
-        let tab = MockTabWebView(frame: .zero, configuration: WKWebViewConfiguration(), windowUUID: .XCTestDefaultUUID)
+        let tab = MockTabWebView(frame: .zero,
+                                 configuration: WKWebViewConfiguration(),
+                                 windowUUID: .XCTestDefaultUUID,
+                                 certStore: makeProfile().certStore)
         tab.loadedURL = url
         return tab
     }
 
+    @MainActor
     private func createTab(isPrivate: Bool = false) -> Tab {
         let tab = Tab(
             profile: profile,
@@ -340,6 +563,17 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         let webView = MockTabWebView(tab: tab)
         tab.webView = webView
         return tab
+    }
+
+    @MainActor
+    private func setConfigurationProfileFlag(enabled: Bool) {
+        let featureFlags = MockNimbusFeatureFlags()
+        featureFlags.enabledFlags = enabled ? [.configurationProfile] : []
+        DependencyHelperMock().bootstrapDependencies(injectedFeatureFlagProvider: featureFlags)
+    }
+
+    private func anyURLResponse(url: String, mimeType: String) -> URLResponse {
+        return URLResponse(url: URL(string: url)!, mimeType: mimeType, expectedContentLength: 0, textEncodingName: nil)
     }
 
     private func anyAuthenticationChallenge(for authenticationMethod: String) -> URLAuthenticationChallenge {
@@ -361,108 +595,371 @@ class BrowserViewControllerWebViewDelegateTests: XCTestCase {
         let data = try? Data(contentsOf: URL(fileURLWithPath: path!))
         return SecCertificateCreateWithData(nil, data! as CFData)!
     }
-}
 
-class MockNavigationAction: WKNavigationAction {
-    private var type: WKNavigationType?
-    private var urlRequest: URLRequest
+    // MARK: - didCommit
 
-    override var navigationType: WKNavigationType {
-        return type ?? .other
+    @MainActor
+    func testWebViewDidCommit_withNoHandler_clearsTranslationConfiguration() {
+        let subject = createSubject()
+        let tab = createTab()
+        tab.translationConfiguration = TranslationConfiguration(prefs: profile.prefs, state: .inactive)
+        (tab.webView as? MockTabWebView)?.loadedURL = URL(string: "https://example.com")
+        tabManager.tabs = [tab]
+
+        subject.webView(tab.webView!, didCommit: nil)
+
+        XCTAssertNil(tab.translationConfiguration)
     }
 
-    override var request: URLRequest {
-        return urlRequest
+    @MainActor
+    func testWebViewDidCommit_withOnNextCommit_callsHandlerAndPreservesTranslationConfiguration() {
+        let subject = createSubject()
+        let tab = createTab()
+        tab.translationConfiguration = TranslationConfiguration(prefs: profile.prefs, state: .inactive)
+        var handlerCalled = false
+        tab.onNextCommit = { handlerCalled = true }
+        (tab.webView as? MockTabWebView)?.loadedURL = URL(string: "https://example.com")
+        tabManager.tabs = [tab]
+
+        subject.webView(tab.webView!, didCommit: nil)
+
+        XCTAssertTrue(handlerCalled)
+        XCTAssertNil(tab.onNextCommit)
+        XCTAssertNotNil(tab.translationConfiguration)
     }
 
-    init(url: URL, type: WKNavigationType? = nil) {
-        self.type = type
-        self.urlRequest = URLRequest(url: url)
-    }
-}
+    // This test is being skipped because there are some very strange side effects
+    // in webView didFinish because the profile database is not being stubbed out
+    // TODO: FXIOS-13435 to look in to this
+    @MainActor
+    func testWebViewDidFinishNavigation_takeScreenshotWhenTabIsSelected() {
+        let subject = createSubject()
+        let screenshotHelper = MockScreenshotHelper(controller: subject)
+        subject.screenshotHelper = screenshotHelper
 
-class MockNavigationResponse: WKNavigationResponse {
-    private let _response: URLResponse
-    private let _isMainFrame: Bool
-    private let _canShowMIMEType: Bool
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        tabManager.selectedTab = tab
 
-    override var response: URLResponse {
-        return _response
-    }
+        subject.webView(tab.webView!, didFinish: nil)
 
-    override var isForMainFrame: Bool {
-        return _isMainFrame
-    }
-
-    override var canShowMIMEType: Bool {
-        return _canShowMIMEType
+        XCTAssertTrue(screenshotHelper.takeScreenshotCalled)
     }
 
-    init(response: URLResponse,
-         canShowMIMEType: Bool = true,
-         isMainFrame: Bool = true) {
-        self._response = response
-        self._isMainFrame = isMainFrame
-        self._canShowMIMEType = canShowMIMEType
-        super.init()
-    }
-}
+    // MARK: - Google Lens search completion
 
-class MockURLAuthenticationChallengeSender: NSObject, URLAuthenticationChallengeSender {
-    func use(_ credential: URLCredential, for challenge: URLAuthenticationChallenge) {}
+    @MainActor
+    func testWebViewDidFinish_clearsPendingGoogleLensSearch() {
+        let gleanWrapper = MockGleanWrapper()
+        let subject = createSubject(gleanWrapper: gleanWrapper)
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        tabManager.selectedTab = tab
+        subject.googleLensSearches[tab.tabUUID] = GoogleLensSearchState(source: .camera,
+                                                                        searchTimerId: gleanWrapper.savedTimerId)
 
-    func continueWithoutCredential(for challenge: URLAuthenticationChallenge) {}
+        subject.webView(tab.webView!, didFinish: nil)
 
-    func cancel(_ challenge: URLAuthenticationChallenge) {}
-}
-
-class MockFileManager: FileManagerProtocol {
-    var fileExistsCalled = 0
-    var fileExists = false
-    var urlsForDirectoryCalled = 0
-    var contentOfDirectoryCalled = 0
-    var removeItemAtPathCalled = 0
-    var removeItemAtURLCalled = 0
-    var copyItemCalled = 0
-    var createDirectoryCalled = 0
-    var contentOfDirectoryAtPathCalled = 0
-
-    func fileExists(atPath path: String) -> Bool {
-        fileExistsCalled += 1
-        return fileExists
+        XCTAssertNil(subject.googleLensSearches[tab.tabUUID],
+                     "Finishing navigation should report and clear the pending Google Lens search")
+        XCTAssertEqual(gleanWrapper.stopAndAccumulateCalled, 1)
     }
 
-    func urls(for directory: FileManager.SearchPathDirectory,
-              in domainMask: FileManager.SearchPathDomainMask) -> [URL] {
-        urlsForDirectoryCalled += 1
-        return []
+    @MainActor
+    func testWebViewDidFailProvisionalNavigation_clearsPendingGoogleLensSearch() {
+        let gleanWrapper = MockGleanWrapper()
+        let subject = createSubject(gleanWrapper: gleanWrapper)
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        subject.googleLensSearches[tab.tabUUID] = GoogleLensSearchState(source: .photoPicker,
+                                                                        searchTimerId: gleanWrapper.savedTimerId)
+
+        // Code 102 ("Frame load interrupted") makes the delegate return early right after the
+        // Google Lens reporting, keeping the test free of error-page side effects.
+        subject.webView(tab.webView!,
+                        didFailProvisionalNavigation: nil,
+                        withError: NSError(domain: "WebKitErrorDomain", code: 102))
+
+        XCTAssertNil(subject.googleLensSearches[tab.tabUUID],
+                     "A failed navigation should report and clear the pending Google Lens search")
+        XCTAssertEqual(gleanWrapper.stopAndAccumulateCalled, 1)
     }
 
-    func contentsOfDirectory(atPath path: String) throws -> [String] {
-        contentOfDirectoryCalled += 1
-        return []
+    @MainActor
+    func testWebViewDidFinish_withWebpageImageSearch_stopsSearchTimer() {
+        let gleanWrapper = MockGleanWrapper()
+        let subject = createSubject(gleanWrapper: gleanWrapper)
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        tabManager.selectedTab = tab
+        subject.googleLensSearches[tab.tabUUID] = GoogleLensSearchState(source: .contextMenu,
+                                                                        searchTimerId: gleanWrapper.savedTimerId)
+
+        subject.webView(tab.webView!, didFinish: nil)
+
+        let savedMetrics = gleanWrapper.savedEvents.compactMap { $0 as? TimingDistributionMetricType }
+        XCTAssertEqual(gleanWrapper.stopAndAccumulateCalled, 1)
+        XCTAssertTrue(savedMetrics.contains { $0 === GleanMetrics.GoogleLens.webpageImageSearchTime })
     }
 
-    func contentsOfDirectoryAtPath(_ path: String, withFilenamePrefix prefix: String) throws -> [String] {
-        contentOfDirectoryAtPathCalled += 1
-        return []
+    @MainActor
+    func testWebViewDidFail_withWebpageImageSearch_stopsSearchTimer() {
+        let gleanWrapper = MockGleanWrapper()
+        let subject = createSubject(gleanWrapper: gleanWrapper)
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        tabManager.selectedTab = tab
+        subject.googleLensSearches[tab.tabUUID] = GoogleLensSearchState(source: .contextMenu,
+                                                                        searchTimerId: gleanWrapper.savedTimerId)
+
+        subject.webView(tab.webView!,
+                        didFailProvisionalNavigation: nil,
+                        withError: NSError(domain: "WebKitErrorDomain", code: 102))
+
+        let savedMetrics = gleanWrapper.savedEvents.compactMap { $0 as? TimingDistributionMetricType }
+        XCTAssertEqual(gleanWrapper.stopAndAccumulateCalled, 1)
+        XCTAssertTrue(savedMetrics.contains { $0 === GleanMetrics.GoogleLens.webpageImageSearchTime })
     }
 
-    func removeItem(atPath path: String) throws {
-        removeItemAtPathCalled += 1
+    @MainActor
+    func testWebViewDidFinish_withoutPendingGoogleLensSearch_doesNothing() {
+        let subject = createSubject()
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        tabManager.selectedTab = tab
+
+        subject.webView(tab.webView!, didFinish: nil)
+
+        XCTAssertTrue(subject.googleLensSearches.isEmpty)
     }
 
-    func removeItem(at url: URL) throws {
-        removeItemAtURLCalled += 1
+    // MARK: - Context menu element resolution
+    // See FXIOS-14918: WebKit's native long-press gesture isn't synchronized with the page's
+    // touchstart/mousedown listener, so the JS-reported elements can be missing or stale by the time
+    // WebKit asks for a menu. `resolveContextMenuElements` must fall back to native-only data instead
+    // of letting the custom menu (and actions like "Open in Private Tab") be replaced by WebKit's default one.
+
+    @MainActor
+    func testResolveContextMenuElements_noContextHelper_fallsBackToLinkOnly() {
+        let url = URL(string: "https://example.com")!
+
+        let elements = BrowserViewController.resolveContextMenuElements(for: url, from: nil)
+
+        XCTAssertEqual(elements.link, url)
+        XCTAssertNil(elements.image)
+        XCTAssertEqual(elements.title, url.normalizedHost, "Must not fall back to the raw URL as a title")
+        XCTAssertNil(elements.alt)
     }
 
-    func copyItem(at srcURL: URL, to dstURL: URL) throws {
-        copyItemCalled += 1
+    @MainActor
+    func testResolveContextMenuElements_jsElementsNotYetReported_fallsBackToLinkOnly() {
+        let url = URL(string: "https://example.com")!
+        let contextHelper = ContextMenuHelper(tab: createTab())
+
+        let elements = BrowserViewController.resolveContextMenuElements(for: url, from: contextHelper)
+
+        XCTAssertEqual(elements.link, url)
+        XCTAssertEqual(elements.title, url.normalizedHost, "Must not fall back to the raw URL as a title")
     }
 
-    func createDirectory(atPath path: String,
-                         withIntermediateDirectories createIntermediates: Bool,
-                         attributes: [FileAttributeKey: Any]?) throws {
-        createDirectoryCalled += 1
+    @MainActor
+    func testResolveContextMenuElements_jsElementsMatchNativeURL_usesReportedElements() {
+        let url = URL(string: "https://example.com")!
+        let contextHelper = ContextMenuHelper(tab: createTab())
+        contextHelper.elements = ContextMenuHelper.Elements(link: url, image: nil, title: "Example", alt: nil)
+
+        let elements = BrowserViewController.resolveContextMenuElements(for: url, from: contextHelper)
+
+        XCTAssertEqual(elements.title, "Example")
+    }
+
+    @MainActor
+    func testResolveContextMenuElements_jsElementsMatchViaDifferentHostEncoding_usesReportedElements() {
+        // WebKit's native `linkURL` for an internationalized domain is Punycode-encoded, while the JS bridge
+        // percent-encodes the raw Unicode string it reads from the page — the two must still be recognized
+        // as the same link.
+        let nativeURL = URL(string: "https://xn--mnchen-3ya.de/stra%C3%9Fe")!
+        let jsReportedURL = URL(string: "https://m%C3%BCnchen.de/stra%C3%9Fe")!
+        let contextHelper = ContextMenuHelper(tab: createTab())
+        contextHelper.elements = ContextMenuHelper.Elements(link: jsReportedURL, image: nil, title: "München", alt: nil)
+
+        let elements = BrowserViewController.resolveContextMenuElements(for: nativeURL, from: contextHelper)
+
+        XCTAssertEqual(elements.title, "München")
+    }
+
+    @MainActor
+    func testResolveContextMenuElements_jsElementsAreStale_fallsBackToLinkOnly() {
+        let url = URL(string: "https://example.com")!
+        let staleURL = URL(string: "https://previous-long-press.example.com")!
+        let contextHelper = ContextMenuHelper(tab: createTab())
+        contextHelper.elements = ContextMenuHelper.Elements(link: staleURL, image: nil, title: "Stale", alt: nil)
+
+        let elements = BrowserViewController.resolveContextMenuElements(for: url, from: contextHelper)
+
+        XCTAssertEqual(elements.link, url)
+        XCTAssertEqual(
+            elements.title,
+            url.normalizedHost,
+            "Stale JS-reported data for a different link must not be used, and must not fall back to the raw URL"
+        )
+    }
+
+    @MainActor
+    func testContextMenuHelperReset_clearsPreviouslyReportedElements() {
+        let contextHelper = ContextMenuHelper(tab: createTab())
+        contextHelper.elements = ContextMenuHelper.Elements(
+            link: URL(string: "https://example.com"),
+            image: nil,
+            title: "Example",
+            alt: nil
+        )
+
+        contextHelper.reset()
+
+        XCTAssertNil(contextHelper.elements)
+    }
+
+    // MARK: - Context menu dismiss reset guard
+    // See FXIOS-14918 review feedback: a stale dismiss callback for an earlier long press can fire after
+    // a later long press has already reported its own elements over the JS bridge. Resetting unconditionally
+    // in that case would discard the newer data.
+
+    @MainActor
+    func testShouldResetContextMenuElements_matchingLink_returnsTrue() {
+        let url = URL(string: "https://example.com")!
+        let contextHelper = ContextMenuHelper(tab: createTab())
+        contextHelper.elements = ContextMenuHelper.Elements(link: url, image: nil, title: "Example", alt: nil)
+
+        let shouldReset = BrowserViewController.shouldResetContextMenuElements(
+            afterDismissing: url,
+            contextHelper: contextHelper
+        )
+
+        XCTAssertTrue(shouldReset)
+    }
+
+    @MainActor
+    func testShouldResetContextMenuElements_newerLongPressAlreadyOverwroteElements_returnsFalse() {
+        let dismissedURL = URL(string: "https://example.com")!
+        let newerURL = URL(string: "https://newer-long-press.example.com")!
+        let contextHelper = ContextMenuHelper(tab: createTab())
+        contextHelper.elements = ContextMenuHelper.Elements(link: newerURL, image: nil, title: "Newer", alt: nil)
+
+        let shouldReset = BrowserViewController.shouldResetContextMenuElements(
+            afterDismissing: dismissedURL,
+            contextHelper: contextHelper
+        )
+
+        XCTAssertFalse(shouldReset, "Must not discard a newer long press's already-reported elements")
+    }
+
+    @MainActor
+    func testShouldResetContextMenuElements_noElements_returnsFalse() {
+        let url = URL(string: "https://example.com")!
+        let contextHelper = ContextMenuHelper(tab: createTab())
+
+        let shouldReset = BrowserViewController.shouldResetContextMenuElements(
+            afterDismissing: url,
+            contextHelper: contextHelper
+        )
+
+        XCTAssertFalse(shouldReset)
+    }
+
+    @MainActor
+    func testShouldResetContextMenuElements_noContextHelper_returnsFalse() {
+        let url = URL(string: "https://example.com")!
+
+        let shouldReset = BrowserViewController.shouldResetContextMenuElements(
+            afterDismissing: url,
+            contextHelper: nil
+        )
+
+        XCTAssertFalse(shouldReset)
+    }
+
+    // MARK: - Context menu dismiss telemetry origin
+    // See FXIOS-14918 review feedback: the origin must be captured once when the menu is shown and
+    // reused when it's dismissed, rather than re-derived from `ContextMenuHelper.elements`, which the
+    // JS bridge can overwrite while the menu is open.
+
+    @MainActor
+    func testContextMenuDidEnd_bridgeReportsImageMidMenu_dismissedReusesShownOrigin() throws {
+        let gleanWrapper = MockGleanWrapper()
+        let subject = createSubject(gleanWrapper: gleanWrapper)
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        tabManager.selectedTab = tab
+        let url = URL(string: "https://example.com/photo-link")!
+        let contextHelper = ContextMenuHelper(tab: tab)
+        tab.addContentScript(contextHelper, name: ContextMenuHelper.name())
+        subject.pendingContextMenuTelemetry = (url: url, origin: .webLink)
+        contextHelper.elements = ContextMenuHelper.Elements(
+            link: url,
+            image: URL(string: "https://example.com/photo.jpg"),
+            title: "Photo",
+            alt: nil
+        )
+
+        subject.contextMenuDidEnd(for: url)
+
+        let dismissedExtras = try XCTUnwrap(gleanWrapper.savedExtras.last as? GleanMetrics.ContextMenu.DismissedExtra)
+        XCTAssertEqual(
+            dismissedExtras.origin,
+            ContextMenuTelemetry.OriginExtra.webLink.rawValue,
+            "Must reuse the origin captured at show time, not re-derive it from elements the JS bridge overwrote mid-menu"
+        )
+    }
+
+    @MainActor
+    func testContextMenuDidEnd_consumesPendingOrigin() {
+        let subject = createSubject()
+        let url = URL(string: "https://example.com")!
+        subject.pendingContextMenuTelemetry = (url: url, origin: .imageLink)
+
+        subject.contextMenuDidEnd(for: url)
+
+        XCTAssertNil(subject.pendingContextMenuTelemetry, "The captured origin must be consumed on dismiss")
+    }
+
+    @MainActor
+    func testContextMenuDidEnd_noPendingOrigin_recordsNoDismissedEvent() {
+        let gleanWrapper = MockGleanWrapper()
+        let subject = createSubject(gleanWrapper: gleanWrapper)
+
+        subject.contextMenuDidEnd(for: URL(string: "https://example.com")!)
+
+        XCTAssertEqual(gleanWrapper.recordEventCalled, 0, "Dismiss with no matching show must not manufacture an event")
+    }
+
+    @MainActor
+    func testContextMenuDidEnd_staleDismissForEarlierMenu_doesNotStealNewerOrigin() {
+        let gleanWrapper = MockGleanWrapper()
+        let subject = createSubject(gleanWrapper: gleanWrapper)
+        let earlierURL = URL(string: "https://example.com/earlier")!
+        let newerURL = URL(string: "https://example.com/newer")!
+        subject.pendingContextMenuTelemetry = (url: newerURL, origin: .imageLink)
+
+        subject.contextMenuDidEnd(for: earlierURL)
+
+        XCTAssertEqual(gleanWrapper.recordEventCalled, 0, "A dismiss for a superseded long press must not fire")
+        XCTAssertNil(subject.pendingContextMenuTelemetry, "The stale entry must still be cleared")
+    }
+
+    @MainActor
+    func testContextMenuDidEnd_stillResetsMatchingContextHelperElements() {
+        let subject = createSubject()
+        let tab = createTab()
+        tabManager.tabs = [tab]
+        tabManager.selectedTab = tab
+        let url = URL(string: "https://example.com")!
+        let contextHelper = ContextMenuHelper(tab: tab)
+        contextHelper.elements = ContextMenuHelper.Elements(link: url, image: nil, title: "Example", alt: nil)
+        tab.addContentScript(contextHelper, name: ContextMenuHelper.name())
+
+        subject.contextMenuDidEnd(for: url)
+
+        XCTAssertNil(contextHelper.elements, "The telemetry refactor must not change the existing reset behavior")
     }
 }

@@ -4,7 +4,7 @@
 
 import Foundation
 
-class AutofillCreditCardSettings: Setting, FeatureFlaggable {
+class AutofillCreditCardSettings: Setting {
     private weak var settingsDelegate: PrivacySettingsDelegate?
     weak var settings: AppSettingsTableViewController?
 
@@ -22,7 +22,7 @@ class AutofillCreditCardSettings: Setting, FeatureFlaggable {
         self.settings = settings as? AppSettingsTableViewController
         self.settingsDelegate = settingsDelegate
 
-        let theme = settings.themeManager.getCurrentTheme(for: settings.windowUUID)
+        let theme = settings.currentTheme()
         super.init(
             title: NSAttributedString(
                 string: .SettingsAutofillCreditCard,

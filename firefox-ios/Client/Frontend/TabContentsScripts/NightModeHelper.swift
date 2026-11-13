@@ -7,7 +7,7 @@ import WebKit
 import Shared
 import Common
 
-class NightModeHelper: TabContentScript, FeatureFlaggable {
+class NightModeHelper: TabContentScript {
     private enum NightModeKeys {
         static let Status = "profile.NightModeStatus"
         static let DarkThemeEnabled = "NightModeEnabledDarkTheme"
@@ -36,12 +36,14 @@ class NightModeHelper: TabContentScript, FeatureFlaggable {
         )
     }
 
+    @MainActor
     static func toggle(
         _ userDefaults: UserDefaultsInterface = UserDefaults.standard
     ) {
         setNightMode(userDefaults, enabled: !NightModeHelper.isActivated())
     }
 
+    @MainActor
     static func setNightMode(
         _ userDefaults: UserDefaultsInterface = UserDefaults.standard,
         enabled: Bool
@@ -65,6 +67,7 @@ class NightModeHelper: TabContentScript, FeatureFlaggable {
     // and will be removed once a decision from that experiment is reached.
     // TODO: https://mozilla-hub.atlassian.net/browse/FXIOS-8475
     // Reminder: Any future refactors for 8475 need to work with multi-window.
+    @MainActor
     static func turnOff(
         _ userDefaults: UserDefaultsInterface = UserDefaults.standard
     ) {

@@ -1,0 +1,305 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/
+
+import Common
+import UIKit
+import Shared
+
+@MainActor
+final class BrowserViewControllerLayoutManager {
+    private unowned let parentView: UIView
+    private unowned let headerView: UIView
+    private unowned let bottomContainer: BaseAlphaStackView
+    private unowned let overKeyboardContainer: BaseAlphaStackView
+    private unowned let bottomContentStackView: BaseAlphaStackView
+    private unowned let navigationToolbarContainer: UIView
+    private let toolbarHelper: ToolbarHelperInterface
+    private weak var scrollController: LegacyTabScrollProvider?
+
+    /// Anchor to keep `overKeyboardContainer` testable. Injectable so tests can supply a fake, fully
+    /// controllable guide instead of depending on a real system keyboard. `nil` in production for now.
+    /// Allows us to have a baseline test before integrating `keyboardLayoutGuide`
+    private let keyboardTopAnchor: NSLayoutYAxisAnchor?
+
+    // Constraints to store - header
+    private var headerTopConstraint: NSLayoutConstraint?
+    private var headerHeightConstraint: NSLayoutConstraint?
+    private var systemTopBarLayoutGuide: UILayoutGuide?
+    private weak var addressToolbar: UIView?
+
+    // Constraints to store - bottom container
+    var overKeyboardContainerConstraint: NSLayoutConstraint?
+    var bottomContainerConstraint: NSLayoutConstraint?
+    private var bottomContentStackViewKeyboardConstraint: NSLayoutConstraint?
+    private var bottomContentStackViewBasicConstraint: NSLayoutConstraint?
+    private var bottomContentStackViewOverKeyboardConstraint: NSLayoutConstraint?
+    private var overKeyboardContainerTopZoomHeightConstraint: NSLayoutConstraint?
+    private var overKeyboardContainerTopHeightConstraint: NSLayoutConstraint?
+    private var overKeyboardContainerKeyboardConstraint: NSLayoutConstraint?
+
+    init(parentView: UIView,
+         headerView: UIView,
+         bottomContainer: BaseAlphaStackView,
+         overKeyboardContainer: BaseAlphaStackView,
+         bottomContentStackView: BaseAlphaStackView,
+         navigationToolbarContainer: UIView,
+         toolbarHelper: ToolbarHelperInterface = ToolbarHelper(),
+         keyboardTopAnchor: NSLayoutYAxisAnchor? = nil) {
+        self.parentView = parentView
+        self.headerView = headerView
+        self.bottomContainer = bottomContainer
+        self.overKeyboardContainer = overKeyboardContainer
+        self.bottomContentStackView = bottomContentStackView
+        self.navigationToolbarContainer = navigationToolbarContainer
+        self.toolbarHelper = toolbarHelper
+        self.keyboardTopAnchor = keyboardTopAnchor
+    }
+
+    func setScrollController(_ scrollController: LegacyTabScrollProvider?) {
+        self.scrollController = scrollController
+    }
+
+    // MARK: - Header Constraints
+
+    func setupHeaderConstraints(isBottomSearchBar: Bool) {
+        NSLayoutConstraint.activate([
+            headerView.leadingAnchor.constraint(equalTo: parentView.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: parentView.trailingAnchor),
+        ])
+        headerTopConstraint = makeHeaderPositionConstraint(isBottomSearchBar: isBottomSearchBar)
+        headerTopConstraint?.isActive = true
+
+        if isBottomSearchBar {
+            updateHeaderHeightConstraint(isBottomSearchBar: isBottomSearchBar)
+        }
+
+        updateScrollControllerHeaderConstraint()
+    }
+
+    func updateHeaderConstraints(isBottomSearchBar: Bool) {
+        updateHeaderHeightConstraint(isBottomSearchBar: isBottomSearchBar)
+
+        // Preserve current offset
+        let currentConstant = headerTopConstraint?.constant ?? 0
+        headerTopConstraint?.isActive = false
+
+        // Create constraint with new correct anchor
+        headerTopConstraint = makeHeaderPositionConstraint(isBottomSearchBar: isBottomSearchBar)
+        headerTopConstraint?.constant = currentConstant
+        headerTopConstraint?.isActive = true
+
+        updateScrollControllerHeaderConstraint()
+    }
+
+    func updateHeaderBarLayout(isBottomSearchBar: Bool, addressToolbar: UIView) -> UILayoutGuide? {
+        var guide: UILayoutGuide?
+        #if compiler(>=6.4)
+        let traits = parentView.traitCollection
+        if #available(iOS 27.1, *),
+           !isBottomSearchBar,
+           !addressToolbar.isHidden,
+           addressToolbar.isDescendant(of: parentView),
+           traits.userInterfaceIdiom == .phone,
+           traits.hasVerticalSystemBar || traits.duoExpanded {
+            // Use the iOS 27.1 bar layout API to keep address controls clear of iPhone Duo's status area.
+            // Only the region's center is used. The region is at least the height the status bar items are
+            // centered in, and a larger extent grows it downward, moving the center away from them.
+            // The smallest extent keeps the region at that minimum height.
+            guide = parentView.layoutGuide(for: .bar(onEdge: UIRectEdge.top, extent: 1))
+        }
+        #endif
+
+        if systemTopBarLayoutGuide !== guide {
+            systemTopBarLayoutGuide = guide
+            self.addressToolbar = addressToolbar
+            updateHeaderConstraints(isBottomSearchBar: isBottomSearchBar)
+        }
+        return guide
+    }
+
+    func addReaderModeBarHeight(_ readerModeBar: ReaderModeBarView) {
+        readerModeBar.heightAnchor.constraint(equalToConstant: UIConstants.ToolbarHeight).isActive = true
+    }
+
+    // MARK: - Bottom Container Setup
+
+    func setupBottomContainerConstraints() {
+        NSLayoutConstraint.activate([
+            bottomContainer.leadingAnchor.constraint(equalTo: parentView.leadingAnchor),
+            bottomContainer.trailingAnchor.constraint(equalTo: parentView.trailingAnchor),
+        ])
+        let constraint = bottomContainer.bottomAnchor.constraint(equalTo: parentView.bottomAnchor)
+        constraint.isActive = true
+
+        scrollController?.bottomContainerConstraint = constraint
+        bottomContainerConstraint = constraint
+    }
+
+    func setupOverKeyboardContainerConstraints() {
+        NSLayoutConstraint.activate([
+            overKeyboardContainer.leadingAnchor.constraint(equalTo: parentView.leadingAnchor),
+            overKeyboardContainer.trailingAnchor.constraint(equalTo: parentView.trailingAnchor),
+        ])
+
+        let constraint = overKeyboardContainer.bottomAnchor.constraint(equalTo: bottomContainer.topAnchor)
+        constraint.priority = .defaultHigh
+        constraint.isActive = true
+
+        scrollController?.overKeyboardContainerConstraint = constraint
+        overKeyboardContainerConstraint = constraint
+
+        if let keyboardTopAnchor {
+            overKeyboardContainerKeyboardConstraint = overKeyboardContainer.bottomAnchor.constraint(
+                lessThanOrEqualTo: keyboardTopAnchor
+            )
+        }
+
+        overKeyboardContainerTopZoomHeightConstraint = overKeyboardContainer.heightAnchor.constraint(
+            greaterThanOrEqualToConstant: 0
+        )
+        overKeyboardContainerTopHeightConstraint = overKeyboardContainer.heightAnchor.constraint(
+            equalToConstant: 0
+        )
+    }
+
+    func setupBottomContentStackViewConstraints() {
+        // Default constraints 
+        NSLayoutConstraint.activate([
+            bottomContentStackView.leadingAnchor.constraint(equalTo: parentView.safeAreaLayoutGuide.leadingAnchor),
+            bottomContentStackView.trailingAnchor.constraint(equalTo: parentView.safeAreaLayoutGuide.trailingAnchor),
+            bottomContentStackView.heightAnchor.constraint(equalToConstant: 0).priority(.defaultLow)
+        ])
+
+        // above the address bar area (or toolbar when top search bar)
+        bottomContentStackViewOverKeyboardConstraint = bottomContentStackView.bottomAnchor.constraint(
+            equalTo: overKeyboardContainer.topAnchor
+        )
+
+        // above the keyboard (only top search bar — keyboard covers everything else)
+        // on update the constant is updated to show above keyboard by bottom = parentView.bottom - keyboardHeight
+        bottomContentStackViewKeyboardConstraint = bottomContentStackView.bottomAnchor.constraint(
+            equalTo: parentView.bottomAnchor
+        )
+
+        // Fallback for iPad with top search bar + no toolbar + no keyboard
+        bottomContentStackViewBasicConstraint = bottomContentStackView.bottomAnchor.constraint(
+            equalTo: parentView.safeAreaLayoutGuide.bottomAnchor
+        )
+
+        bottomContentStackView.setContentHuggingPriority(.defaultHigh, for: .vertical)
+    }
+
+    // MARK: - Bottom Container Updates
+
+    func updateOverKeyboardContainerConstraints(isBottomSearchBar: Bool, hasZoomPageBar: Bool) {
+        overKeyboardContainerTopZoomHeightConstraint?.isActive = false
+        overKeyboardContainerTopHeightConstraint?.isActive = false
+        overKeyboardContainerKeyboardConstraint?.isActive = isBottomSearchBar
+
+        guard !isBottomSearchBar else { return }
+
+        if hasZoomPageBar {
+            overKeyboardContainerTopZoomHeightConstraint?.isActive = true
+        } else {
+            overKeyboardContainerTopHeightConstraint?.isActive = true
+        }
+    }
+
+    /// Activates the correct bottom constraint for `bottomContentStackView` (login snackbar, FindInPageBar).
+    /// Must be called on keyboard and toolbar changes. Bottom search bar relies on `overKeyboardContainer`
+    /// growing with the keyboard spacer. Top search bar needs an explicit keyboard constraint because
+    /// `overKeyboardContainer` collapses to `height = 0`, leaving its top below the keyboard frame.
+    func updateBottomContentStackViewConstraints(shouldPushAboveKeyboardContainer: Bool,
+                                                 keyboardState: KeyboardState?) {
+        // Deactivate all mutually exclusive constraints before activating the appropriate one.
+        bottomContentStackViewOverKeyboardConstraint?.isActive = false
+        bottomContentStackViewKeyboardConstraint?.isActive = false
+        bottomContentStackViewBasicConstraint?.isActive = false
+
+        guard !shouldPushAboveKeyboardContainer else {
+            pinBottomContentAboveOverKeyboardContainer()
+            return
+        }
+
+        pinBottomContentAboveKeyboardOrToolbar(keyboardState: keyboardState)
+    }
+
+    private func pinBottomContentAboveOverKeyboardContainer() {
+        bottomContentStackViewOverKeyboardConstraint?.isActive = true
+    }
+
+    private func pinBottomContentAboveKeyboardOrToolbar(keyboardState: KeyboardState?) {
+        let keyboardHeight = keyboardState?.intersectionHeightForView(parentView) ?? 0
+        let isKeyboardVisible = keyboardHeight > 0
+
+        if isKeyboardVisible {
+            bottomContentStackViewKeyboardConstraint?.constant = -keyboardHeight
+            bottomContentStackViewKeyboardConstraint?.isActive = true
+        } else if !navigationToolbarContainer.isHidden {
+            bottomContentStackViewOverKeyboardConstraint?.isActive = true
+        } else {
+            bottomContentStackViewBasicConstraint?.isActive = true
+        }
+    }
+
+    // MARK: - Private helpers (header)
+
+    private func updateHeaderHeightConstraint(isBottomSearchBar: Bool) {
+        guard isBottomSearchBar else {
+            headerHeightConstraint?.isActive = false
+            return
+        }
+
+        guard headerHeightConstraint == nil else {
+            headerHeightConstraint?.isActive = true
+            return
+        }
+
+        // The status bar is covered by the statusBarOverlay,
+        // if we don't have the URL bar at the top then header height is 0
+        headerHeightConstraint = headerView.heightAnchor.constraint(equalToConstant: 0)
+        headerHeightConstraint?.isActive = true
+    }
+
+    /// Returns the constraint whose constant the scroll controller adjusts to move the header.
+    private func makeHeaderPositionConstraint(isBottomSearchBar: Bool) -> NSLayoutConstraint {
+        if !isBottomSearchBar, let systemTopBarLayoutGuide, let addressToolbar {
+            // Centers the address toolbar on the system bar region, in line with the status bar items.
+            // The header follows the toolbar, as the toolbar is one of its arranged views.
+            return addressToolbar.centerYAnchor.constraint(equalTo: systemTopBarLayoutGuide.centerYAnchor)
+        }
+        return headerView.topAnchor.constraint(equalTo: getHeaderTopAnchor(isBottomSearchBar: isBottomSearchBar))
+    }
+
+    /// Returns the correct top anchor for the header based on search bar position and trait collection
+    /// - Parameter isBottomSearchBar: Whether the search bar is positioned at the bottom
+    /// - Returns: The appropriate NSLayoutYAxisAnchor to constrain the header to
+    private func getHeaderTopAnchor(isBottomSearchBar: Bool) -> NSLayoutYAxisAnchor {
+        // Bottom toolbar always uses safeArea
+        guard !isBottomSearchBar else {
+            return parentView.safeAreaLayoutGuide.topAnchor
+        }
+
+        // Regular-height layouts need the safe area even when the top tabs bar is hidden.
+        let isNavToolbar = toolbarHelper.shouldShowNavigationToolbar(for: parentView.traitCollection)
+        let shouldShowTabStrip = toolbarHelper.shouldShowTabStrip(for: parentView.traitCollection)
+        let isRegularHeight = parentView.traitCollection.verticalSizeClass == .regular
+
+        // TODO: [iOS 26 Bug] - Remove this workaround when Apple fixes safe area inset updates.
+        // Bug: Safe area top inset doesn't update correctly on landscape rotation (remains 20pt)
+        // on iOS 26. Prior to iOS 26, safe area inset was updating correctly on rotation.
+        // Impact: Header remains partially visible when scrolling.
+        // Workaround: Use the view's top edge in compact-height layouts.
+        // Related Bug: https://mozilla-hub.atlassian.net/browse/FXIOS-13756
+        // Apple Developer Forums: https://developer.apple.com/forums/thread/798014
+        let usesSafeArea = isNavToolbar || shouldShowTabStrip || isRegularHeight
+        return usesSafeArea ? parentView.safeAreaLayoutGuide.topAnchor : parentView.topAnchor
+    }
+
+    private func updateScrollControllerHeaderConstraint() {
+        guard let scrollController = scrollController,
+              let constraint = headerTopConstraint else { return }
+        scrollController.headerTopConstraint = constraint
+    }
+}

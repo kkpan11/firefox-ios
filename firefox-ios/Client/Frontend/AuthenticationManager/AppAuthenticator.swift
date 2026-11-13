@@ -7,7 +7,7 @@ import WebKit
 
 enum AuthenticationError: Error {
     case failedEvaluation(message: String)
-    case failedAutentication(message: String)
+    case failedAuthentication(message: String)
 }
 
 enum AuthenticationState {
@@ -16,37 +16,68 @@ enum AuthenticationState {
     case passCodeRequired
 }
 
+@MainActor
 protocol AppAuthenticationProtocol {
     var canAuthenticateDeviceOwner: Bool { get }
+    var isAuthenticating: Bool { get }
 
-    func getAuthenticationState(completion: @escaping (AuthenticationState) -> Void)
-    func authenticateWithDeviceOwnerAuthentication(_ completion: @escaping (Result<Void, AuthenticationError>) -> Void)
+    func getAuthenticationState(completion: @MainActor @escaping (AuthenticationState) -> Void)
+    func authenticateWithDeviceOwnerAuthentication(
+        _ completion: @MainActor @escaping (Result<Void, AuthenticationError>) -> Void
+    )
 }
 
-class AppAuthenticator: AppAuthenticationProtocol {
-    func getAuthenticationState(completion: @escaping (AuthenticationState) -> Void) {
+protocol LocalAuthenticationContextProvider {
+    var context: LAContextProtocol { get }
+}
+
+final class DefaultLAContextProvider: LocalAuthenticationContextProvider {
+    var context: LAContextProtocol {
+        return LAContext()
+    }
+}
+
+final class AppAuthenticator: AppAuthenticationProtocol {
+    private(set) var isAuthenticating = false
+    private let contextProvider: LocalAuthenticationContextProvider
+
+    init(contextProvider: LocalAuthenticationContextProvider = DefaultLAContextProvider()) {
+        self.contextProvider = contextProvider
+    }
+
+    func getAuthenticationState(completion: @MainActor @escaping (AuthenticationState) -> Void) {
         if canAuthenticateDeviceOwner {
+            isAuthenticating = true
             authenticateWithDeviceOwnerAuthentication { result in
-                switch result {
-                case .success:
-                    completion(.deviceOwnerAuthenticated)
-                case .failure:
-                    completion(.deviceOwnerFailed)
+                DispatchQueue.main.async {
+                    self.isAuthenticating = false
+                    switch result {
+                    case .success:
+                        completion(.deviceOwnerAuthenticated)
+                    case .failure:
+                        completion(.deviceOwnerFailed)
+                    }
                 }
             }
         } else {
-            completion(.passCodeRequired)
+            DispatchQueue.main.async {
+                self.isAuthenticating = false
+                completion(.passCodeRequired)
+            }
         }
     }
 
     func authenticateWithDeviceOwnerAuthentication(
-        _ completion: @escaping (Result<Void, AuthenticationError>) -> Void
+        _ completion: @MainActor @escaping (Result<Void, AuthenticationError>) -> Void
     ) {
         // Get a fresh context for each login. If you use the same context on multiple attempts
-        //  (by commenting out the next line), then a previously successful authentication
-        //  causes the next policy evaluation to succeed without testing biometry again.
-        //  That's usually not what you want.
-        let context = LAContext()
+        // (by commenting out the next line), then a previously successful authentication
+        // causes the next policy evaluation to succeed without testing biometry again.
+        // That's usually not what you want.
+        // The default context provider will return a new LAContext().
+        let context = contextProvider.context
+
+        isAuthenticating = true
 
         // First check if we have the needed hardware support.
         var error: NSError?
@@ -58,26 +89,34 @@ class AppAuthenticator: AppAuthenticationProtocol {
             ) { success, error in
                 if success {
                     DispatchQueue.main.async {
+                        self.isAuthenticating = false
                         completion(.success(()))
                     }
                 } else {
                     DispatchQueue.main.async {
+                        self.isAuthenticating = false
                         completion(
                             .failure(
-                                .failedAutentication(message: error?.localizedDescription ?? "Failed to authenticate")
+                                .failedAuthentication(message: error?.localizedDescription ?? "Failed to authenticate")
                             )
                         )
                     }
                 }
             }
         } else {
+            let failureError = error
             DispatchQueue.main.async {
-                completion(.failure(.failedEvaluation(message: error?.localizedDescription ?? "Can't evaluate policy")))
+                self.isAuthenticating = false
+                completion(.failure(
+                    .failedEvaluation(
+                        message: failureError?.localizedDescription ?? "Can't evaluate policy"
+                    )
+                ))
             }
         }
     }
 
     var canAuthenticateDeviceOwner: Bool {
-        return LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)
+        return contextProvider.context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)
     }
 }

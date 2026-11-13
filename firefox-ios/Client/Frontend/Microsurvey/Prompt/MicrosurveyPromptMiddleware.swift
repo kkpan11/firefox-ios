@@ -6,6 +6,7 @@ import Foundation
 import Redux
 import Common
 
+@MainActor
 final class MicrosurveyPromptMiddleware {
     private let microsurveyManager: MicrosurveyManager
 
@@ -13,7 +14,13 @@ final class MicrosurveyPromptMiddleware {
         self.microsurveyManager = microsurveyManager
     }
 
-    lazy var microsurveyProvider: Middleware<AppState> = { state, action in
+    lazy var microsurveyProvider: Middleware<AppState> = (legacyProvider, modernProvider)
+
+    lazy var modernProvider: MiddlewareClosure<AppState> = { [self] state, action, windowUUID in
+        // Does not test any modern actions
+    }
+
+    lazy var legacyProvider: LegacyMiddlewareClosure<AppState> = { [self] state, action in
         let windowUUID = action.windowUUID
 
         switch action.actionType {
@@ -50,6 +57,7 @@ final class MicrosurveyPromptMiddleware {
         microsurveyManager.handleMessageDismiss()
     }
 
+    @MainActor
     private func openSurvey() {
         microsurveyManager.handleMessagePressed()
     }

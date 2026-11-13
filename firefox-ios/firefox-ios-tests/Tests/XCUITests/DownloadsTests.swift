@@ -13,7 +13,15 @@ let testBLOBURL = "http://bennadel.github.io/JavaScript-Demos/demos/href-downloa
 let testBLOBFileSize = "35 bytes"
 
 class DownloadsTests: BaseTestCase {
-    override func tearDown() {
+    var downloadsScreen: DownloadsScreen!
+    var browserScreen: BrowserScreen!
+
+    override func tearDown() async throws {
+        guard let navigator = navigator else {
+            print("⚠️ Navigator is nil in tearDown — skipping cleanup.")
+            return
+        }
+
         // The downloaded file has to be removed between tests
         app.terminate()
         app.launch()
@@ -26,15 +34,15 @@ class DownloadsTests: BaseTestCase {
             for _ in 0...list-1 {
                 mozWaitForElementToExist(app.tables["DownloadsTable"].cells.element(boundBy: 0))
                 app.tables["DownloadsTable"].cells.element(boundBy: 0).swipeLeft(velocity: 200)
-                app.tables.cells.buttons["Delete"].waitAndTap()
+                app.tables["DownloadsTable"].buttons["Delete"].waitAndTap()
             }
         }
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func deleteItem(itemName: String) {
         app.tables.cells.staticTexts[itemName].swipeLeft(velocity: 200)
-        app.tables.cells.buttons["Delete"].waitAndTap()
+        app.buttons["Delete"].waitAndTap()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306896
@@ -48,6 +56,7 @@ class DownloadsTests: BaseTestCase {
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306897
+    // Regression
     func testDownloadFileContextMenu() {
         navigator.openURL(testURL)
         waitUntilPageLoad()
@@ -74,19 +83,14 @@ class DownloadsTests: BaseTestCase {
     // https://mozilla.testrail.io/index.php?/cases/view/2306898
     // Smoketest
     func testDownloadFile() {
+        downloadsScreen = DownloadsScreen(app: app)
         downloadFile(fileName: testFileName, numberOfDownloads: 1)
         navigator.goto(BrowserTabMenu)
         navigator.goto(LibraryPanel_Downloads)
 
-        mozWaitForElementToExist(app.tables["DownloadsTable"])
+        downloadsScreen.assertNumberOfDownloadedItems(expectedCount: 1)
         // There should be one item downloaded. It's name and size should be shown
-        checkTheNumberOfDownloadedItems(items: 1)
-        waitForElementsToExist(
-            [
-                app.tables.cells.staticTexts[testFileNameDownloadPanel],
-                app.tables.cells.staticTexts[testFileSize]
-            ]
-        )
+        downloadsScreen.assertDownloadedFileDetailsAreVisible(fileName: testFileNameDownloadPanel, fileSize: testFileSize)
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306899
@@ -104,6 +108,7 @@ class DownloadsTests: BaseTestCase {
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306900
+    // Regression
     func testDeleteDownloadedFile() throws {
         downloadFile(fileName: testFileName, numberOfDownloads: 1)
         navigator.goto(BrowserTabMenu)
@@ -135,7 +140,14 @@ class DownloadsTests: BaseTestCase {
                 app.tables["DownloadsTable"].staticTexts[testFileNameDownloadPanel]
             ]
         )
-        if #available(iOS 17, *) {
+        if #available(iOS 26, *) {
+            waitForElementsToExist(
+                [
+                    app.collectionViews.cells["Copy"],
+                    app.collectionViews.cells["Save to Files"]
+                ]
+            )
+        } else if #available(iOS 17, *) {
             waitForElementsToExist(
                 [
                     app.collectionViews.cells["Copy"],
@@ -148,7 +160,9 @@ class DownloadsTests: BaseTestCase {
         } else {
             mozWaitForElementToExist(app.collectionViews.buttons["Copy"])
         }
-        if !iPad() {
+        if #available(iOS 26, *) {
+            app.buttons["Done"].waitAndTap()
+        } else if !iPad() {
             app.navigationBars["UIActivityContentView"].buttons["Close"].waitAndTap()
         } else {
             // Workaround to close the context menu.
@@ -158,6 +172,7 @@ class DownloadsTests: BaseTestCase {
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306902
+    // Regression
     func testLongPressOnDownloadedFile() {
         downloadFile(fileName: testFileName, numberOfDownloads: 1)
         navigator.goto(BrowserTabMenu)
@@ -172,7 +187,14 @@ class DownloadsTests: BaseTestCase {
                 app.tables["DownloadsTable"].staticTexts[testFileNameDownloadPanel]
             ]
         )
-        if #available(iOS 17, *) {
+        if #available(iOS 26, *) {
+            waitForElementsToExist(
+                [
+                    app.collectionViews.cells["Copy"],
+                    app.collectionViews.cells["Save to Files"]
+                ]
+            )
+        } else if #available(iOS 17, *) {
             waitForElementsToExist(
                 [
                     app.collectionViews.cells["Copy"],
@@ -185,7 +207,9 @@ class DownloadsTests: BaseTestCase {
         } else {
             mozWaitForElementToExist(app.collectionViews.buttons["Copy"])
         }
-        if !iPad() {
+        if #available(iOS 26, *) {
+            app.buttons["Done"].waitAndTap()
+        } else if !iPad() {
             app.navigationBars["UIActivityContentView"].buttons["Close"].waitAndTap()
         } else {
             // Workaround to close the context menu.
@@ -213,8 +237,7 @@ class DownloadsTests: BaseTestCase {
         navigator.openURL(testBLOBURL)
         waitUntilPageLoad()
         mozWaitForElementToExist(app.webViews.links["Download Text"])
-        app.webViews.links["Download Text"].press(forDuration: 1)
-        app.buttons["Download Link"].waitAndTap()
+        app.webViews.links["Download Text"].tap()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306903
@@ -228,6 +251,7 @@ class DownloadsTests: BaseTestCase {
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306904
+    // Regression
     func testRemoveUserDataRemovesDownloadedFiles() {
         navigator.nowAt(NewTabScreen)
         // The option to remove downloaded files from clear private data is off by default
@@ -236,6 +260,7 @@ class DownloadsTests: BaseTestCase {
         XCTAssertTrue(app.cells.switches["Downloaded Files"].isEnabled, "The switch is not set correctly by default")
 
         // Change the value of the setting to on (make an action for this)
+        navigator.goto(HomePanelsScreen)
         downloadFile(fileName: testFileName, numberOfDownloads: 1)
 
         // Check there is one item
@@ -247,8 +272,6 @@ class DownloadsTests: BaseTestCase {
 
         // Remove private data once the switch to remove downloaded files is enabled
         navigator.goto(NewTabScreen)
-        mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Browser.UrlBar.cancelButton])
-        navigator.performAction(Action.CloseURLBarOpen)
         navigator.nowAt(NewTabScreen)
         navigator.goto(ClearPrivateDataSettings)
         app.cells.switches["Downloaded Files"].waitAndTap()
@@ -270,9 +293,10 @@ class DownloadsTests: BaseTestCase {
     // https://mozilla.testrail.io/index.php?/cases/view/2306895
     // Smoketest
     func testToastButtonToGoToDownloads() {
+        browserScreen = BrowserScreen(app: app)
+        downloadsScreen = DownloadsScreen(app: app)
         downloadFile(fileName: testFileName, numberOfDownloads: 1)
-        app.buttons["Downloads"].waitAndTap()
-        mozWaitForElementToExist(app.tables["DownloadsTable"])
-        checkTheNumberOfDownloadedItems(items: 1)
+        browserScreen.tapDownloadsToastButton()
+        downloadsScreen.assertNumberOfDownloadedItems(expectedCount: 1)
     }
 }

@@ -4,6 +4,7 @@
 
 import SwiftUI
 import Common
+import ComponentLibrary
 
 struct LoginAutofillView: View {
     let windowUUID: WindowUUID
@@ -29,7 +30,9 @@ struct LoginAutofillView: View {
             )
         }
         .padding()
-        .background(backgroundColor)
+        .if(!isIOS26OrLater) { view in
+            view.background(backgroundColor)
+        }
         .onAppear {
             applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
         }
@@ -52,7 +55,7 @@ struct LoginAutofillView: View {
             tabURL: URL(string: "http://www.example.com")!,
             field: FocusFieldType.username,
             loginStorage: MockLoginStorage(),
-            logger: MockLogger(),
+            logger: MockLoginLogger(),
             onLoginCellTap: { _ in },
             manageLoginInfoAction: { }
         )

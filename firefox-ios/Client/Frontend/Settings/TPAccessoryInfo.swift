@@ -7,6 +7,9 @@ import Common
 
 // MARK: Additional information shown when the info accessory button is tapped.
 class TPAccessoryInfo: ThemedTableViewController {
+    override var shouldUsePrivateOverride: Bool { return true }
+    override var shouldBeInPrivateTheme: Bool { return false }
+
     var isStrictMode = false
 
     override func viewDidLoad() {
@@ -19,12 +22,9 @@ class TPAccessoryInfo: ThemedTableViewController {
 
         tableView.sectionHeaderHeight = 0
         tableView.sectionFooterHeight = 0
-        applyTheme()
-        listenForThemeChange(view)
-    }
 
-    func currentTheme() -> Theme {
-        return themeManager.getCurrentTheme(for: windowUUID)
+        listenForThemeChanges(withNotificationCenter: NotificationCenter.default)
+        applyTheme()
     }
 
     func headerView() -> UIView {

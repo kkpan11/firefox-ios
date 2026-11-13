@@ -7,12 +7,13 @@ import XCTest
 
 @testable import Client
 
-final class MicrosurveyPromptMiddlewareTests: XCTestCase {
+@MainActor
+final class MicrosurveyPromptMiddlewareTests: XCTestCase, StoreTestUtility {
     private var mockMicrosurveyManager: MockMicrosurveySurfaceManager!
     var mockStore: MockStoreForMiddleware<AppState>!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         let model = MicrosurveyModel(
             id: "survey-id",
             promptTitle: "title",
@@ -31,10 +32,10 @@ final class MicrosurveyPromptMiddlewareTests: XCTestCase {
         setupStore()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
         resetStore()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testShowPromptAction_withInvalidModel() {
@@ -45,7 +46,7 @@ final class MicrosurveyPromptMiddlewareTests: XCTestCase {
             actionType: MicrosurveyPromptActionType.showPrompt
         )
 
-        subject.microsurveyProvider(AppState(), action)
+        subject.microsurveyProvider.legacyMiddleware(AppState(), action)
 
         XCTAssertEqual(mockStore.dispatchedActions.count, 0)
         XCTAssertEqual(mockMicrosurveyManager.handleMessageDisplayedCount, 0)
@@ -58,7 +59,7 @@ final class MicrosurveyPromptMiddlewareTests: XCTestCase {
             actionType: MicrosurveyPromptActionType.showPrompt
         )
 
-        subject.microsurveyProvider(AppState(), action)
+        subject.microsurveyProvider.legacyMiddleware(AppState(), action)
 
         let actionCalled = try XCTUnwrap(mockStore.dispatchedActions.first as? MicrosurveyPromptMiddlewareAction)
         let actionType = try XCTUnwrap(actionCalled.actionType as? MicrosurveyPromptMiddlewareActionType)
@@ -75,7 +76,7 @@ final class MicrosurveyPromptMiddlewareTests: XCTestCase {
             actionType: MicrosurveyPromptActionType.closePrompt
         )
 
-        subject.microsurveyProvider(AppState(), action)
+        subject.microsurveyProvider.legacyMiddleware(AppState(), action)
 
         XCTAssertEqual(mockStore.dispatchedActions.count, 0)
         XCTAssertEqual(mockMicrosurveyManager.handleMessageDismissCount, 1)
@@ -88,7 +89,7 @@ final class MicrosurveyPromptMiddlewareTests: XCTestCase {
             actionType: MicrosurveyPromptActionType.continueToSurvey
         )
 
-        subject.microsurveyProvider(AppState(), action)
+        subject.microsurveyProvider.legacyMiddleware(AppState(), action)
 
         XCTAssertEqual(mockStore.dispatchedActions.count, 0)
         XCTAssertEqual(mockMicrosurveyManager.handleMessagePressedCount, 1)
@@ -102,8 +103,8 @@ final class MicrosurveyPromptMiddlewareTests: XCTestCase {
     // MARK: StoreTestUtility
     func setupAppState() -> AppState {
         return AppState(
-            activeScreens: ActiveScreensState(
-                screens: [
+            presentedComponents: PresentedComponentsState(
+                components: [
                     .microsurvey(
                         MicrosurveyState(
                             windowUUID: .XCTestDefaultUUID
@@ -112,14 +113,5 @@ final class MicrosurveyPromptMiddlewareTests: XCTestCase {
                 ]
             )
         )
-    }
-
-    func setupStore() {
-        mockStore = MockStoreForMiddleware(state: setupAppState())
-        StoreTestUtilityHelper.setupStore(with: mockStore)
-    }
-
-    func resetStore() {
-        StoreTestUtilityHelper.resetStore()
     }
 }

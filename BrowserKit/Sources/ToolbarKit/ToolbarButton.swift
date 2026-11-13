@@ -5,17 +5,21 @@
 import Common
 import UIKit
 
-public enum ToolbarButtonGesture {
+public enum ToolbarButtonGesture: Sendable {
     case tap
     case longPress
 }
 
-class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
-    private struct UX {
+class ToolbarButton: UIButton,
+                     ThemeApplicable,
+                     UIGestureRecognizerDelegate,
+                     Notifiable {
+    private enum UX {
         static let verticalInset: CGFloat = 10
         static let horizontalInset: CGFloat = 10
         static let horizontalTextInset: CGFloat = 5
         static let badgeIconSize = CGSize(width: 20, height: 20)
+        static let bottomBadgeIconSize = CGSize(width: 10, height: 10)
         static let defaultMinimumPressDuration: TimeInterval = 0.5
         static let minimumPressDurationWithLargeContentViewer: TimeInterval = 1.5
     }
@@ -29,6 +33,7 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
 
     private var badgeImageView: UIImageView?
     private var maskImageView: UIImageView?
+    private var bottomBadgeImageView: UIImageView?
 
     private var longPressRecognizer: UILongPressGestureRecognizer?
     private var onLongPress: ((UIButton) -> Void)?
@@ -37,6 +42,12 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
 
     private var isTextButton = false
     private var hasCustomColor = false
+    private var hasHighlightedColor = true
+    // Used to determine whether we want to generate a new image
+    // based on change in icon name
+    private var lastIconName: String?
+    // Cache the current element to avoid unnecessary reconfiguration.
+    private var currentElement: ToolbarElement?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -53,14 +64,27 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
         element: ToolbarElement,
         notificationCenter: NotificationProtocol = NotificationCenter.default) {
         guard var config = configuration else { return }
+
+        // Skip reconfiguration if the element hasn't changed.
+        if let currentElement, currentElement == element { return }
+        currentElement = element
+
         removeLongPressGestureRecognizer()
         configureLongPressGestureRecognizerIfNeeded(for: element, notificationCenter: notificationCenter)
         configureCustomA11yActionIfNeeded(for: element)
         isSelected = element.isSelected
         isTextButton = element.title != nil
         hasCustomColor = element.hasCustomColor
+        hasHighlightedColor = element.hasHighlightedColor
+
         self.notificationCenter = notificationCenter
 
+        // TODO: FXIOS-13949 - To investigate if there's a better way to show loading spinner
+        if let isLoading = element.loadingConfig?.isLoading, isLoading {
+            makeLoadingButton()
+        } else {
+            hideLoadingIcon()
+        }
         let image = imageConfiguredForRTL(for: element)
         let action = UIAction(title: element.title ?? element.a11yLabel,
                               image: image,
@@ -91,40 +115,44 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
         accessibilityLabel = element.a11yLabel
         accessibilityHint = element.a11yHint
 
-        // Remove all existing actions for .touchUpInside before adding the new one
-        // This ensures that we do not accumulate multiple actions for the same event,
-        // which can cause the action to be called multiple times when the button is tapped.
-        // By removing all existing actions first, we guarantee that only the new action
-        // will be associated with the .touchUpInside event.
+        // Remove all existing actions before adding the new one. This ensures that we do
+        // not accumulate multiple actions for the same event, which can cause the action to
+        // be called multiple times when the button is tapped. A button uses either
+        // .touchUpInside (regular buttons) or .menuActionTriggered (menu buttons), so we
+        // clear both to guarantee that only the new action remains.
         removeTarget(nil, action: nil, for: .touchUpInside)
-        addAction(action, for: .touchUpInside)
+        removeTarget(nil, action: nil, for: .menuActionTriggered)
+        configureMenuIfNeeded(for: element)
+        if element.menuElements.isEmpty {
+            addAction(action, for: .touchUpInside)
+        } else {
+            addAction(action, for: .menuActionTriggered)
+        }
 
         showsLargeContentViewer = true
         largeContentTitle = element.a11yLabel
         largeContentImage = image
 
         configuration = config
-        if let badgeName = element.badgeImageName {
+        removeBadgeAndMaskFromSuperview()
+
+        if let buttonBadgeImage = element.bottomBadgeImage {
+            addBottomBadgeImage(buttonBadgeImage)
+        } else if let badgeName = element.badgeImageName {
             addBadgeIcon(imageName: badgeName)
             if let maskImageName = element.maskImageName {
                 addMaskIcon(maskImageName: maskImageName)
-            }
-        } else {
-            // Remove badge & mask icons
-            imageView?.subviews.forEach { view in
-                guard view as? UIImageView != nil else { return }
-                view.removeFromSuperview()
+            } else {
+                maskImageView?.removeFromSuperview()
+                maskImageView = nil
             }
         }
+
         layoutIfNeeded()
     }
 
     public required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-
-    deinit {
-        notificationCenter?.removeObserver(self)
     }
 
     override public func updateConfiguration() {
@@ -135,11 +163,14 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
             updatedConfiguration.baseForegroundColor = isTextButton ?
                                                         foregroundTitleColorHighlighted :
                                                         foregroundColorHighlighted
+            bottomBadgeImageView?.tintColor = isTextButton ? foregroundTitleColorHighlighted : foregroundColorHighlighted
         case .disabled:
             updatedConfiguration.baseForegroundColor = foregroundColorDisabled
+            bottomBadgeImageView?.tintColor = foregroundColorDisabled
         default:
             let iconButtonColor = isSelected ? foregroundColorHighlighted : foregroundColorNormal
             let textButtonColor = isSelected ? foregroundTitleColorHighlighted : foregroundTitleColorNormal
+            bottomBadgeImageView?.tintColor = isTextButton ? textButtonColor : iconButtonColor
             updatedConfiguration.baseForegroundColor = isTextButton ? textButtonColor : iconButtonColor
         }
 
@@ -147,38 +178,57 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
         configuration = updatedConfiguration
     }
 
-    private func addBadgeIcon(imageName: String) {
-        badgeImageView = UIImageView(image: UIImage(named: imageName))
-        guard let badgeImageView, configuration?.image != nil else { return }
+    private func addBottomBadgeImage(_ image: UIImage) {
+        // check for the image in the configuration otherwise imageView is not part of the button's view hierarchy.
+        guard configuration?.image != nil else { return }
+        let badgeImageView = UIImageView(image: image)
+        bottomBadgeImageView = badgeImageView
         badgeImageView.translatesAutoresizingMaskIntoConstraints = false
 
         imageView?.addSubview(badgeImageView)
+        NSLayoutConstraint.activate([
+            badgeImageView.leadingAnchor.constraint(equalTo: centerXAnchor),
+            badgeImageView.topAnchor.constraint(equalTo: centerYAnchor),
+            badgeImageView.widthAnchor.constraint(equalToConstant: UX.bottomBadgeIconSize.width),
+            badgeImageView.heightAnchor.constraint(equalToConstant: UX.bottomBadgeIconSize.height)
+        ])
+    }
+
+    private func addBadgeIcon(imageName: String) {
+        badgeImageView = .build(nil) { UIImageView(image: UIImage(named: imageName)) }
+        guard let badgeImageView else { return }
+
+        badgeContainerView().addSubview(badgeImageView)
         applyBadgeConstraints(to: badgeImageView)
     }
 
     private func addMaskIcon(maskImageName: String) {
-        maskImageView = UIImageView(image: UIImage(named: maskImageName))
+        maskImageView = .build(nil) { UIImageView(image: UIImage(named: maskImageName)) }
         guard let maskImageView, let badgeImageView else { return }
-        maskImageView.translatesAutoresizingMaskIntoConstraints = false
 
+        badgeContainerView().addSubview(maskImageView)
         maskImageView.addSubview(badgeImageView)
-        imageView?.addSubview(maskImageView)
         applyBadgeConstraints(to: maskImageView)
     }
 
     private func applyBadgeConstraints(to imageView: UIImageView) {
-        NSLayoutConstraint.activate([
-            imageView.widthAnchor.constraint(equalToConstant: UX.badgeIconSize.width),
-            imageView.heightAnchor.constraint(equalToConstant: UX.badgeIconSize.height),
+        let positionConstraints: [NSLayoutConstraint] = configuration?.image != nil ? [
             imageView.leadingAnchor.constraint(equalTo: centerXAnchor),
             imageView.bottomAnchor.constraint(equalTo: centerYAnchor)
+        ] : [
+            imageView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            imageView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ]
+        NSLayoutConstraint.activate(positionConstraints + [
+            imageView.widthAnchor.constraint(equalToConstant: UX.badgeIconSize.width),
+            imageView.heightAnchor.constraint(equalToConstant: UX.badgeIconSize.height)
         ])
     }
 
     private func configureLongPressGestureRecognizerIfNeeded(for element: ToolbarElement,
                                                              notificationCenter: NotificationProtocol) {
-        guard element.onLongPress != nil else { return }
-        onLongPress = element.onLongPress
+        guard case let .action(action) = element.longPressBehavior else { return }
+        onLongPress = action
         let longPressRecognizer = UILongPressGestureRecognizer(
             target: self,
             action: #selector(handleLongPress)
@@ -192,11 +242,10 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
         self.largeContentViewerInteraction = largeContentViewerInteraction
         addInteraction(largeContentViewerInteraction)
 
-        notificationCenter.addObserver(
-            self,
-            selector: #selector(largeContentViewerInteractionDidChange),
-            name: UILargeContentViewerInteraction.enabledStatusDidChangeNotification,
-            object: nil
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [UILargeContentViewerInteraction.enabledStatusDidChangeNotification]
         )
     }
 
@@ -210,10 +259,132 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
         accessibilityCustomActions = [a11yAction]
     }
 
+    private func configureMenuIfNeeded(for element: ToolbarElement) {
+        // 1. Long press menu action handling
+        if case .menu = element.longPressBehavior {
+            menu = nil
+            showsMenuAsPrimaryAction = false
+            isContextMenuInteractionEnabled = true
+            return
+        }
+
+        guard !element.menuElements.isEmpty else {
+            showsMenuAsPrimaryAction = false
+            menu = nil
+            isContextMenuInteractionEnabled = false
+            return
+        }
+
+        // 2. Primary action menu handling
+        let actions: [UIMenuElement] = element.menuElements.map { menuElement in
+            let action = UIAction(
+                title: menuElement.title,
+                image: menuElement.imageName.flatMap {
+                    UIImage(named: $0)?.withRenderingMode(.alwaysTemplate)
+                },
+                handler: { [weak self] _ in
+                    guard let self else { return }
+                    menuElement.onSelected?(self)
+                }
+            )
+            action.accessibilityIdentifier = menuElement.a11yIdentifier
+            return action
+        }
+
+        menu = UIMenu(children: actions)
+        showsMenuAsPrimaryAction = true
+    }
+
+    override func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard case let .menu(provider) = currentElement?.longPressBehavior else {
+            return super.contextMenuInteraction(interaction, configurationForMenuAtLocation: location)
+        }
+        guard let menu = provider(), !menu.children.isEmpty else { return nil }
+        let configuration = UIContextMenuConfiguration(actionProvider: { _ in
+            return menu
+        })
+        if #available(iOS 16.0, *) {
+            configuration.preferredMenuElementOrder = .fixed
+        }
+        return configuration
+    }
+
+    override func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        willDisplayMenuFor configuration: UIContextMenuConfiguration,
+        animator: (any UIContextMenuInteractionAnimating)?
+    ) {
+        super.contextMenuInteraction(interaction, willDisplayMenuFor: configuration, animator: animator)
+        guard case .menu = currentElement?.longPressBehavior else { return }
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+    }
+
     private func imageConfiguredForRTL(for element: ToolbarElement) -> UIImage? {
-        guard let iconName = element.iconName else { return nil }
-        let image = UIImage(named: iconName)?.withRenderingMode(.alwaysTemplate)
-        return element.isFlippedForRTL ? image?.imageFlippedForRightToLeftLayoutDirection() : image
+        // Avoid creating a new image if existing image exists and the icon name is the same
+        if element.iconName == lastIconName, let existingImage = configuration?.image {
+            return existingImage
+        }
+
+        guard let iconName = element.iconName, let baseImage = UIImage(named: iconName) else {
+            return nil
+        }
+        let image = element.templateModeForImage
+            ? baseImage.withRenderingMode(.alwaysTemplate)
+            : baseImage
+
+        lastIconName = element.iconName
+
+        return element.isFlippedForRTL ? image.imageFlippedForRightToLeftLayoutDirection() : image
+    }
+
+    // MARK: - Helpers
+    private func badgeContainerView() -> UIView {
+        return configuration?.image != nil ? (imageView ?? self) : self
+    }
+
+    private func removeBadgeAndMaskFromSuperview() {
+        bottomBadgeImageView?.removeFromSuperview()
+        badgeImageView?.removeFromSuperview()
+        maskImageView?.removeFromSuperview()
+        badgeImageView = nil
+        bottomBadgeImageView = nil
+        maskImageView = nil
+    }
+
+    // MARK: - Loading Icon for Translation Button
+    // TODO: FXIOS-13949 - To investigate if there's a better way to show loading spinner
+    private var spinner: UIActivityIndicatorView?
+
+    private func makeLoadingButton(style: UIActivityIndicatorView.Style = .medium) {
+        let isNewSpinner = spinner == nil
+        if spinner == nil {
+            let loadingView = UIActivityIndicatorView(style: style)
+            loadingView.translatesAutoresizingMaskIntoConstraints = false
+            loadingView.isAccessibilityElement = false
+            addSubview(loadingView)
+            NSLayoutConstraint.activate([
+                loadingView.centerXAnchor.constraint(equalTo: centerXAnchor),
+                loadingView.centerYAnchor.constraint(equalTo: centerYAnchor)
+            ])
+            spinner = loadingView
+        }
+        spinner?.startAnimating()
+        if isNewSpinner && UIAccessibility.isVoiceOverRunning {
+            UIAccessibility.post(notification: .layoutChanged, argument: self)
+        }
+    }
+
+    private func hideLoadingIcon() {
+        let hadSpinner = spinner != nil
+        spinner?.stopAnimating()
+        spinner?.removeFromSuperview()
+        spinner = nil
+        if hadSpinner && UIAccessibility.isVoiceOverRunning {
+            UIAccessibility.post(notification: .layoutChanged, argument: self)
+        }
     }
 
     private func removeLongPressGestureRecognizer() {
@@ -250,16 +421,20 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
         }
     }
 
-    @objc
-    private func largeContentViewerInteractionDidChange() {
-        setMinimumPressDuration()
+    // MARK: Notifiable
+    func handleNotifications(_ notification: Notification) {
+        guard notification.name == UILargeContentViewerInteraction.enabledStatusDidChangeNotification else { return }
+
+        ensureMainThread {
+            self.setMinimumPressDuration()
+        }
     }
 
     // MARK: - ThemeApplicable
     public func applyTheme(theme: Theme) {
         let colors = theme.colors
         foregroundColorNormal = hasCustomColor ? colors.iconSecondary : colors.iconPrimary
-        foregroundColorHighlighted = colors.actionPrimary
+        foregroundColorHighlighted = hasHighlightedColor ? colors.actionPrimary : foregroundColorNormal
         foregroundColorDisabled = colors.iconDisabled
         backgroundColorNormal = .clear
 
@@ -268,10 +443,9 @@ class ToolbarButton: UIButton, ThemeApplicable, UIGestureRecognizerDelegate {
 
         badgeImageView?.layer.borderColor = colors.layer1.cgColor
         badgeImageView?.backgroundColor = maskImageView == nil ? colors.layer1 : .clear
-        badgeImageView?.tintColor = maskImageView == nil ? .clear : colors.actionInformation
+        badgeImageView?.tintColor = maskImageView == nil ?
+                                    .clear : (theme.isNova ? colors.iconPrivate : colors.actionInformation)
         maskImageView?.tintColor = colors.layer1
-
-        layoutIfNeeded()
         setNeedsUpdateConfiguration()
     }
 

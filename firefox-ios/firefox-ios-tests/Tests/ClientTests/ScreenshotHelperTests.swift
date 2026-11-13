@@ -6,24 +6,29 @@ import XCTest
 
 @testable import Client
 
+@MainActor
 final class ScreenshotHelperTests: XCTestCase, StoreTestUtility {
-    let profile = MockProfile()
-    let tabManager = MockTabManager()
+    var profile: MockProfile!
+    var tabManager: MockTabManager!
     var mockVC: MockBrowserViewController!
     var mockStore: MockStoreForMiddleware<AppState>!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
+        profile = makeProfile()
+        tabManager = MockTabManager()
         DependencyHelperMock().bootstrapDependencies()
         mockVC = MockBrowserViewController(profile: profile, tabManager: tabManager)
         setupStore()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        profile = nil
         DependencyHelperMock().reset()
         mockVC = nil
+        tabManager = nil
         resetStore()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testTakeScreenshotForHomepage() {
@@ -31,12 +36,13 @@ final class ScreenshotHelperTests: XCTestCase, StoreTestUtility {
         let tab = Tab(profile: profile, windowUUID: .XCTestDefaultUUID)
         let homeURL = URL(string: "internal://local/about/home")
         let mockTabWebView = MockTabWebView(tab: tab)
+        tabManager.selectedTab = tab
 
         mockTabWebView.loadedURL = homeURL
         tab.webView = mockTabWebView
         tab.url = homeURL
 
-        subject.takeScreenshot(tab, windowUUID: .XCTestDefaultUUID)
+        subject.takeScreenshot(tab, windowUUID: .XCTestDefaultUUID, screenshotBounds: .zero)
 
         guard let screenshotAction = mockStore.dispatchedActions.first as? ScreenshotAction else {
             XCTFail("fired action was not of the expected type")
@@ -59,7 +65,7 @@ final class ScreenshotHelperTests: XCTestCase, StoreTestUtility {
         tab.webView = mockTabWebView
         tab.url = homeURL
 
-        subject.takeScreenshot(tab, windowUUID: .XCTestDefaultUUID)
+        subject.takeScreenshot(tab, windowUUID: .XCTestDefaultUUID, screenshotBounds: .zero)
 
         guard let screenshotAction = mockStore.dispatchedActions.first as? ScreenshotAction else {
             XCTFail("fired action was not of the expected type")
@@ -81,7 +87,7 @@ final class ScreenshotHelperTests: XCTestCase, StoreTestUtility {
         tab.webView = mockTabWebView
         tab.url = homeURL
 
-        subject.takeScreenshot(tab, windowUUID: .XCTestDefaultUUID)
+        subject.takeScreenshot(tab, windowUUID: .XCTestDefaultUUID, screenshotBounds: .zero)
 
         guard let screenshotAction = mockStore.dispatchedActions.first as? ScreenshotAction else {
             XCTFail("fired action was not of the expected type")
@@ -95,19 +101,12 @@ final class ScreenshotHelperTests: XCTestCase, StoreTestUtility {
     }
 
     private func createSubject() -> ScreenshotHelper {
-        return ScreenshotHelper(controller: mockVC)
+        let subject = ScreenshotHelper(controller: mockVC)
+        trackForMemoryLeaks(subject)
+        return subject
     }
 
     func setupAppState() -> AppState {
         return AppState()
-    }
-
-    func setupStore() {
-        mockStore = MockStoreForMiddleware(state: setupAppState())
-        StoreTestUtilityHelper.setupStore(with: mockStore)
-    }
-
-    func resetStore() {
-        StoreTestUtilityHelper.resetStore()
     }
 }

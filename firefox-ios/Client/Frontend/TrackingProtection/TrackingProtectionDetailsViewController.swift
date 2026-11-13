@@ -31,14 +31,17 @@ struct TrackingProtectionDetailsModel {
 }
 
 class TrackingProtectionDetailsViewController: UIViewController, Themeable {
-    private struct UX {
+    private enum UX {
         static let baseCellHeight: CGFloat = 44
         static let baseDistance: CGFloat = 20
     }
     private let telemetryWrapper = TrackingProtectionTelemetry()
 
     // MARK: - UI
-    private let scrollView: UIScrollView = .build { scrollView in }
+    private let scrollView: UIScrollView = .build { scrollView in
+        scrollView.accessibilityIdentifier = AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen.scrollView
+    }
+
     private let baseView: UIStackView = .build { stackView in
         stackView.axis = .vertical
         stackView.accessibilityIdentifier = AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen.containerView
@@ -51,7 +54,9 @@ class TrackingProtectionDetailsViewController: UIViewController, Themeable {
     private let connectionView: TrackingProtectionStatusView = .build { view in
         view.accessibilityIdentifier = AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen.connectionView
     }
-    private let verifiedByView: TrackingProtectionVerifiedByView = .build()
+    private let verifiedByView: TrackingProtectionVerifiedByView = .build { view in
+        view.accessibilityIdentifier = AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen.verifiedByView
+    }
 
     // MARK: See Certificates View
     private lazy var viewCertificatesButton: LinkButton = .build { button in
@@ -66,7 +71,7 @@ class TrackingProtectionDetailsViewController: UIViewController, Themeable {
     var model: TrackingProtectionDetailsModel
     var notificationCenter: NotificationProtocol
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { return windowUUID }
 
@@ -87,20 +92,17 @@ class TrackingProtectionDetailsViewController: UIViewController, Themeable {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
-        notificationCenter.removeObserver(self)
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateViewDetails()
-        listenForThemeChange(view)
-        applyTheme()
     }
 
     private func setupView() {
@@ -126,8 +128,8 @@ class TrackingProtectionDetailsViewController: UIViewController, Themeable {
             scrollView.bottomAnchor.constraint(
                 greaterThanOrEqualTo: view.bottomAnchor
             ),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             baseView.topAnchor.constraint(
                 equalTo: scrollView.topAnchor,
                 constant: UX.baseDistance
@@ -147,8 +149,8 @@ class TrackingProtectionDetailsViewController: UIViewController, Themeable {
     private func setupHeaderView() {
         view.addSubview(headerView)
         let headerConstraints = [
-            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             headerView.topAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.topAnchor,
                 constant: TPMenuUX.UX.popoverTopDistance
@@ -191,14 +193,21 @@ class TrackingProtectionDetailsViewController: UIViewController, Themeable {
 
     // MARK: Accessibility
     private func setupAccessibilityIdentifiers() {
+        typealias A11y = AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen
         view.accessibilityIdentifier = AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen.mainView
         headerView.setupAccessibility(
             closeButtonA11yLabel: .Menu.EnhancedTrackingProtection.AccessibilityLabels.CloseButton,
-            closeButtonA11yId: AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen.closeButton,
-            titleA11yId: AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen.titleLabel,
+            closeButtonA11yId: A11y.closeButton,
+            titleA11yId: A11y.titleLabel,
             backButtonA11yLabel: .Menu.EnhancedTrackingProtection.AccessibilityLabels.BackButton,
-            backButtonA11yId: AccessibilityIdentifiers.EnhancedTrackingProtection.DetailsScreen.backButton
+            backButtonA11yId: A11y.backButton
         )
+        connectionView.setupAccessibilityIdentifiers(
+            connectionImageA11yId: A11y.connectionImage,
+            connectionStatusLabelA11yId: A11y.connectionStatusLabel,
+            dividerViewA11yId: A11y.dividerView
+        )
+        verifiedByView.setupAccessibilityIdentifiers(verifiedByLabelA11yId: A11y.verifiedByLabel)
     }
 
     // MARK: View Transitions
@@ -257,7 +266,7 @@ class TrackingProtectionDetailsViewController: UIViewController, Themeable {
 extension TrackingProtectionDetailsViewController {
     func applyTheme() {
         let theme = currentTheme()
-        view.backgroundColor =  theme.colors.layer3
+        view.backgroundColor = theme.isNova ? theme.colors.layer1 : theme.colors.layer3
         connectionView.connectionImage.image = model.getLockIcon(theme.type)
         verifiedByView.applyTheme(theme: theme)
         viewCertificatesButton.applyTheme(theme: theme)

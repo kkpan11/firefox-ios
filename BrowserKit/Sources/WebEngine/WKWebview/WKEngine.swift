@@ -6,7 +6,8 @@ import Common
 import Foundation
 import WebKit
 
-public class WKEngine: Engine {
+@MainActor
+public final class WKEngine: Engine {
     private let sourceTimerFactory: DispatchSourceTimerFactory
     private var shutdownWebServerTimer: DispatchSourceInterface?
     private let userScriptManager: WKUserScriptManager
@@ -14,8 +15,7 @@ public class WKEngine: Engine {
     private let engineDependencies: EngineDependencies
     private let configProvider: WKEngineConfigurationProvider
 
-    // TODO: With Swift 6 we can use default params in the init
-    @MainActor
+    // TODO: FXIOS-13670 With Swift 6 we can use default params in the init
     public static func factory(engineDependencies: EngineDependencies) -> WKEngine {
         let configProvider = DefaultWKEngineConfigurationProvider()
         let userScriptManager = DefaultUserScriptManager()
@@ -29,7 +29,6 @@ public class WKEngine: Engine {
         )
     }
 
-    @MainActor
     init(userScriptManager: WKUserScriptManager,
          webServerUtil: WKWebServerUtil,
          sourceTimerFactory: DispatchSourceTimerFactory,
@@ -45,10 +44,9 @@ public class WKEngine: Engine {
     }
 
     public func createView() -> EngineView {
-        return WKEngineView(frame: .zero)
+        return WKEngineView.factory(frame: .zero)
     }
 
-    @MainActor
     public func createSession(dependencies: EngineSessionDependencies) throws -> EngineSession {
         guard let session = WKEngineSession.sessionFactory(userScriptManager: userScriptManager,
                                                            dependencies: dependencies,
@@ -90,20 +88,21 @@ public class WKEngine: Engine {
     }
 
     public func clearCookies() {
-        let dataTypes = Set(
-            [
-                WKWebsiteDataTypeCookies,
-                WKWebsiteDataTypeLocalStorage,
-                WKWebsiteDataTypeSessionStorage,
-                WKWebsiteDataTypeWebSQLDatabases,
-                WKWebsiteDataTypeIndexedDBDatabases
-            ]
-        )
+        // Include localStorage; some sites store authentication/session
+        // state there in addition to cookies. Clearing cookies should remove
+        // login state, not just WK cookie records.
+        let dataTypes = Set([WKWebsiteDataTypeCookies, WKWebsiteDataTypeLocalStorage])
         WKWebsiteDataStore.default().removeData(ofTypes: dataTypes, modifiedSince: .distantPast, completionHandler: {})
     }
 
     public func clearOfflineWebsiteData() {
-        let dataTypes = Set([WKWebsiteDataTypeOfflineWebApplicationCache])
+        let dataTypes = Set([
+            WKWebsiteDataTypeLocalStorage,
+            WKWebsiteDataTypeSessionStorage,
+            WKWebsiteDataTypeWebSQLDatabases,
+            WKWebsiteDataTypeIndexedDBDatabases,
+            WKWebsiteDataTypeFetchCache,
+        ])
         WKWebsiteDataStore.default().removeData(ofTypes: dataTypes, modifiedSince: .distantPast, completionHandler: {})
     }
 

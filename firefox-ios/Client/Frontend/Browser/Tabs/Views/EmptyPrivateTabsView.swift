@@ -9,12 +9,14 @@ import Shared
 import ComponentLibrary
 
 protocol EmptyPrivateTabsViewDelegate: AnyObject {
+    @MainActor
     func didTapLearnMore(urlRequest: URLRequest)
 }
 
 // View we display when there are no private tabs created
-class EmptyPrivateTabsView: UIView, EmptyPrivateTabView {
-    struct UX {
+class EmptyPrivateTabsView: UIView,
+                            EmptyPrivateTabView {
+    enum UX {
         static let paddingInBetweenItems: CGFloat = 15
         static let verticalPadding: CGFloat = 20
         static let horizontalPadding: CGFloat = 24
@@ -23,6 +25,7 @@ class EmptyPrivateTabsView: UIView, EmptyPrivateTabView {
 
     // MARK: - Properties
 
+    var needsSafeArea: Bool { false }
     weak var delegate: EmptyPrivateTabsViewDelegate?
 
     // UI
@@ -133,10 +136,15 @@ class EmptyPrivateTabsView: UIView, EmptyPrivateTabView {
 
     @objc
     private func didTapLearnMore() {
-        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        if let langID = Locale.preferredLanguages.first {
-            let learnMoreRequest = URLRequest(url: "https://support.mozilla.org/1/mobile/\(appVersion ?? "0.0")/iOS/\(langID)/private-browsing-ios".asURL!)
-            delegate?.didTapLearnMore(urlRequest: learnMoreRequest)
-        }
+        guard let url = SupportUtils.URLForTopic("private-browsing-ios") else { return }
+        let request = URLRequest(url: url)
+        delegate?.didTapLearnMore(urlRequest: request)
+    }
+
+    // MARK: - InsetUpdatable
+
+    func updateInsets(top: CGFloat, bottom: CGFloat) {
+        scrollView.contentInset.top = top
+        scrollView.contentInset.bottom = bottom
     }
 }

@@ -8,12 +8,12 @@ extension BrowserViewController {
     func updateFindInPageVisibility(isVisible: Bool, tab: Tab? = nil, withSearchText searchText: String? = nil) {
         // TODO: The find interactions for iOS 16 close themselves, so once the min deployment target is iOS 16,
         // we may be able to remove the `isVisible` flag and let the system manage dismissal.
+        tabManager.selectedTab?.isFindInPageMode = isVisible && isBottomSearchBar
         if #available(iOS 16, *) {
             useSystemFindInteraction(isVisible: isVisible, withSearchText: searchText)
         } else {
             useCustomFindInteraction(isVisible: isVisible, tab: tab)
         }
-        tabManager.selectedTab?.isFindInPageMode = isVisible && isBottomSearchBar
     }
 
     @available(iOS 16, *)
@@ -21,6 +21,7 @@ extension BrowserViewController {
         guard let webView = tabManager.selectedTab?.webView else { return }
 
         if isVisible {
+            webView.scrollView.keyboardDismissMode = .none
             webView.isFindInteractionEnabled = true
             webView.findInteraction?.searchText = searchText ?? ""
             webView.findInteraction?.presentFindNavigator(showingReplace: false)
@@ -30,19 +31,22 @@ extension BrowserViewController {
         }
     }
 
+    // Used only on iOS 15
     private func useCustomFindInteraction(isVisible: Bool, tab: Tab? = nil) {
         if isVisible {
-            if findInPageBar == nil { setupFindInPage() }
+            if iOS15FindInPageBar == nil {
+                setupFindInPage()
+            }
 
-            self.findInPageBar?.becomeFirstResponder()
-        } else if let findInPageBar = self.findInPageBar {
+            self.iOS15FindInPageBar?.becomeFirstResponder()
+        } else if let findInPageBar = self.iOS15FindInPageBar {
             removeFindInPage(findInPageBar, tab: tab)
         }
     }
 
     private func setupFindInPage() {
         let findInPageBar = FindInPageBar()
-        self.findInPageBar = findInPageBar
+        self.iOS15FindInPageBar = findInPageBar
         findInPageBar.delegate = self
 
         bottomContentStackView.addArrangedViewToBottom(findInPageBar, animated: false, completion: {
@@ -55,8 +59,6 @@ extension BrowserViewController {
 
         findInPageBar.applyTheme(theme: currentTheme())
 
-        updateViewConstraints()
-
         // We make the find-in-page bar the first responder below, causing the keyboard delegates
         // to fire. This, in turn, will animate the Find in Page container since we use the same
         // delegate to slide the bar up and down with the keyboard. We don't want to animate the
@@ -66,32 +68,29 @@ extension BrowserViewController {
     }
 
     private func removeFindInPage(_ findInPageBar: FindInPageBar, tab: Tab? = nil) {
+        self.iOS15FindInPageBar = nil
         findInPageBar.endEditing(true)
         let tab = tab ?? tabManager.selectedTab
         guard let webView = tab?.webView else { return }
         webView.evaluateJavascriptInDefaultContentWorld("__firefox__.findDone()")
         bottomContentStackView.removeArrangedView(findInPageBar)
-        self.findInPageBar = nil
-        updateViewConstraints()
     }
 }
 
 extension BrowserViewController: FindInPageBarDelegate, FindInPageHelperDelegate {
-    func findInPage(_ findInPage: FindInPageBar, didTextChange text: String) {
+    func findInPage(didTextChange text: String) {
         find(text, function: "find")
     }
 
-    func findInPage(_ findInPage: FindInPageBar, didFindNextWithText text: String) {
-        findInPageBar?.endEditing(true)
+    func findInPage(didFindNextWithText text: String) {
         find(text, function: "findNext")
     }
 
-    func findInPage(_ findInPage: FindInPageBar, didFindPreviousWithText text: String) {
-        findInPageBar?.endEditing(true)
+    func findInPage(didFindPreviousWithText text: String) {
         find(text, function: "findPrevious")
     }
 
-    func findInPageDidPressClose(_ findInPage: FindInPageBar) {
+    func findInPageDidPressClose() {
         updateFindInPageVisibility(isVisible: false)
     }
 
@@ -101,11 +100,11 @@ extension BrowserViewController: FindInPageBarDelegate, FindInPageHelperDelegate
         webView.evaluateJavascriptInDefaultContentWorld("__firefox__.\(function)(\"\(escaped)\")")
     }
 
-    func findInPageHelper(_ findInPageHelper: FindInPageHelper, didUpdateCurrentResult currentResult: Int) {
-        findInPageBar?.currentResult = currentResult
+    func findInPageHelper(didUpdateCurrentResult currentResult: Int) {
+        iOS15FindInPageBar?.currentResult = currentResult
     }
 
-    func findInPageHelper(_ findInPageHelper: FindInPageHelper, didUpdateTotalResults totalResults: Int) {
-        findInPageBar?.totalResults = totalResults
+    func findInPageHelper(didUpdateTotalResults totalResults: Int) {
+        iOS15FindInPageBar?.totalResults = totalResults
     }
 }

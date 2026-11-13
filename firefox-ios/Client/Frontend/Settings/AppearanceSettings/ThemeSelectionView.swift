@@ -15,10 +15,10 @@ struct ThemeSelectionView: View {
     var onThemeSelected: ((ThemeOption) -> Void)?
 
     var backgroundColor: Color {
-        return Color(theme?.colors.layer2 ?? UIColor.clear)
+        return Color(theme?.colors.layer5 ?? UIColor.clear)
     }
 
-    private struct UX {
+    private enum UX {
         static let spacing: CGFloat = 36
         static let sectionPadding: CGFloat = 16
         static let dividerHeight: CGFloat = 0.7
@@ -44,7 +44,7 @@ struct ThemeSelectionView: View {
     var body: some View {
         HStack(spacing: UX.spacing) {
             ForEach(ThemeOption.allCases, id: \.rawValue) { themeOption in
-                ThemeOptionView(theme: themeOption, isSelected: selectedThemeOption == themeOption) {
+                ThemeOptionView(themeOption: themeOption, theme: theme, isSelected: selectedThemeOption == themeOption) {
                     selectedThemeOption = themeOption
                     onThemeSelected?(themeOption)
                 }

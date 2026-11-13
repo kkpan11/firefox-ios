@@ -10,9 +10,9 @@ struct GenericButtonCellView: View {
     private let title: String
     private let onTap: () -> Void
 
-    private struct UX {
+    private enum UX {
         static let dividerHeight: CGFloat = 0.5
-        static var buttonPadding: CGFloat = 4
+        static let buttonPadding: CGFloat = 4
     }
 
     init(theme: Theme, title: String, onTap: @escaping () -> Void) {
@@ -22,25 +22,35 @@ struct GenericButtonCellView: View {
     }
 
     var body: some View {
-        VStack {
-            Divider()
-                .frame(height: UX.dividerHeight)
-                .background(theme.colors.borderPrimary.color)
+        if #available(iOS 26.0, *) {
+            actionButtonView
+        } else {
+            VStack {
+                dividerView
 
-            Button(action: {
-                onTap()
-            }) {
-                Text(title)
-                    .foregroundColor(theme.colors.textCritical.color)
-                    .font(.callout)
+                actionButtonView
+                    .background(theme.colors.layer5.color)
+
+                dividerView
             }
             .background(theme.colors.layer5.color)
-            .padding([.top, .bottom], UX.buttonPadding)
-
-            Divider()
-                .frame(height: UX.dividerHeight)
-                .background(theme.colors.borderPrimary.color)
         }
-        .background(theme.colors.layer5.color)
+    }
+
+    private var actionButtonView: some View {
+        Button(action: {
+            onTap()
+        }) {
+            Text(title)
+                .foregroundColor(theme.colors.textCritical.color)
+                .font(FXFontStyles.Regular.callout.scaledSwiftUIFont())
+        }
+        .padding([.top, .bottom], UX.buttonPadding)
+    }
+
+    private var dividerView: some View {
+        Divider()
+            .frame(height: UX.dividerHeight)
+            .background(theme.colors.borderPrimary.color)
     }
 }

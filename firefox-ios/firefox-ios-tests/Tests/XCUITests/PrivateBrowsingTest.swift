@@ -2,24 +2,58 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import Common
 import XCTest
 
 let url1 = "example.com"
-let url2 = path(forTestPage: "test-mozilla-org.html")
-let url3 = path(forTestPage: "test-example.html")
+let url2 = path(forTestPage: TestPages.mozillaOrg)
+let url3 = path(forTestPage: TestPages.exampleHTML)
 let urlIndexedDB = path(forTestPage: "test-indexeddb-private.html")
 
-let url1And3Label = "Example Domain"
-let url2Label = "Internet for people, not profit — Mozilla"
+let url1And3Label = TestLabels.exampleDomain
+let url2Label = "Mozilla - Internet for people, not profit (US)"
+let url3Label = "Internet for people, not profit — Mozilla"
+let url4Label = "Form Autofill Demo: Basic @autocomplete"
 
 class PrivateBrowsingTest: BaseTestCase {
     typealias HistoryPanelA11y = AccessibilityIdentifiers.LibraryPanels.HistoryPanel
+    private var settingScreen: SettingScreen!
+    private var tabTray: TabTrayScreen!
+    private var browserScreen: BrowserScreen!
+    private var homePageScreen: HomePageScreen!
+    private var contextMenuScreen: ContextMenuScreen!
+    private var toolbarScreen: ToolbarScreen!
+    private var springboardScreen: SpringboardScreen!
+
+    override func setUp() async throws {
+        // Tabs are only saved once a restore has run, so the force close tests need session restore
+        // from the very first launch, not just from the relaunch.
+        launchArguments.append(LaunchArguments.EnableSessionRestore)
+        try await super.setUp()
+        settingScreen = SettingScreen(app: app)
+        tabTray = TabTrayScreen(app: app)
+        browserScreen = BrowserScreen(app: app)
+        homePageScreen = HomePageScreen(app: app)
+        contextMenuScreen = ContextMenuScreen(app: app)
+        toolbarScreen = ToolbarScreen(app: app)
+        springboardScreen = SpringboardScreen()
+    }
+
+    /// The force close tests launch the app themselves, straight into Settings through a deeplink.
+    override func setUpApp() {
+        if name.contains("testMultipleTabsPrivateBrowsingClose") {
+            setUpAppWithoutLaunching()
+        } else {
+            super.setUpApp()
+        }
+    }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2307004
+    // Regression
     func testPrivateTabDoesNotTrackHistory() {
         navigator.openURL(url1)
         waitForTabsButton()
-        navigator.goto(BrowserTabMenu)
+        navigator.nowAt(NewTabScreen)
         // Go to History screen
         navigator.goto(LibraryPanel_History)
         waitForElementsToExist(
@@ -34,8 +68,12 @@ class PrivateBrowsingTest: BaseTestCase {
         XCTAssertEqual(history, 1, "History entries in regular browsing do not match")
 
         // Go to Private browsing to open a website and check if it appears on History
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
 
+        if userState.isPrivate {
+            app.buttons[AccessibilityIdentifiers.TabTray.newTabButton].waitAndTap()
+            navigator.nowAt(BrowserTab)
+        }
         navigator.openURL(url2)
         mozWaitForValueContains(app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField],
                                 value: "localhost")
@@ -56,23 +94,23 @@ class PrivateBrowsingTest: BaseTestCase {
     // https://mozilla.testrail.io/index.php?/cases/view/2307005
     func testTabCountShowsOnlyNormalOrPrivateTabCount() {
         // Open two tabs in normal browsing and check the number of tabs open
-        navigator.nowAt(NewTabScreen)
-        navigator.openNewURL(urlString: url2)
+        navigator.openURL(url2)
         waitUntilPageLoad()
+        navigator.performAction(Action.OpenNewTabFromTabTray)
         waitForTabsButton()
         navigator.goto(TabTray)
         mozWaitForElementToExist(app.otherElements[tabsTray])
-        XCTAssertNotNil(
-            app.otherElements[tabsTray].collectionViews.cells.staticTexts
-                .element(boundBy: 1).label
-                .range(of: url2Label)
-        )
+        mozWaitForElementToExist(app.cells.elementContainingText(url3Label))
         let numTabs = app.otherElements[tabsTray].cells.count
         XCTAssertEqual(numTabs, 2, "The number of regular tabs is not correct")
 
         // Open one tab in private browsing and check the total number of tabs
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
 
+        if userState.isPrivate {
+            app.buttons[AccessibilityIdentifiers.TabTray.newTabButton].waitAndTap()
+            navigator.nowAt(BrowserTab)
+        }
         navigator.goto(URLBarOpen)
         waitUntilPageLoad()
         navigator.openURL(url3)
@@ -81,51 +119,40 @@ class PrivateBrowsingTest: BaseTestCase {
         navigator.nowAt(NewTabScreen)
         waitForTabsButton()
         navigator.goto(TabTray)
-        mozWaitForElementToExist(app.otherElements[tabsTray].cells.staticTexts[url1And3Label])
+        mozWaitForElementToExist(app.cells.elementContainingText(url1And3Label))
         let numPrivTabs = app.otherElements[tabsTray].cells.count
         XCTAssertEqual(numPrivTabs, 1, "The number of private tabs is not correct")
         // Go back to regular mode and check the total number of tabs
-        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleRegularMode)
+        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleExperimentRegularMode)
 
         mozWaitForElementToExist(app.otherElements[tabsTray])
-        XCTAssertNotNil(
-            app.otherElements[tabsTray].collectionViews.cells.staticTexts
-                .element(boundBy: 1).label
-                .range(of: url2Label)
-        )
-        mozWaitForElementToNotExist(app.otherElements[tabsTray].collectionViews.cells.staticTexts[url1And3Label])
+        mozWaitForElementToExist(app.cells.elementContainingText(url3Label))
         let numRegularTabs = app.otherElements[tabsTray].cells.count
         XCTAssertEqual(numRegularTabs, 2, "The number of regular tabs is not correct")
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2307006
     func testClosePrivateTabsOptionClosesPrivateTabs() {
-        // Check that Close Private Tabs when closing the Private Browsing Button is off by default
-        navigator.nowAt(NewTabScreen)
-        mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Toolbar.settingsMenuButton])
-        navigator.goto(SettingsScreen)
-
-        // FXIOS-8672: "Close Private Tabs" has been removed from the settings.
-
         //  Open a Private tab
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        if userState.isPrivate {
+            app.buttons[AccessibilityIdentifiers.TabTray.newTabButton].waitAndTap()
+            navigator.nowAt(BrowserTab)
+        }
         navigator.openURL(url2)
         waitUntilPageLoad()
         waitForTabsButton()
 
         // Go back to regular browser
-        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleRegularMode)
-        app.cells.staticTexts["Homepage"].waitAndTap()
-        navigator.nowAt(NewTabScreen)
+        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleExperimentRegularMode)
+        app.otherElements[tabsTray].cells.firstMatch.waitAndTap()
+        navigator.nowAt(BrowserTab)
+        waitForTabsButton()
+        navigator.goto(TabTray)
 
         // Go back to private browsing and check that the tab has been closed
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
-        waitForElementsToExist(
-            [
-                app.otherElements[tabsTray],
-                app.staticTexts["Private Browsing"]
-            ]
-        )
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        mozWaitForElementToExist(app.otherElements[tabsTray])
         checkOpenTabsBeforeClosingPrivateMode()
     }
 
@@ -136,11 +163,13 @@ class PrivateBrowsingTest: BaseTestCase {
      */
     // https://mozilla.testrail.io/index.php?/cases/view/2307011
     func testClearIndexedDB() {
-        navigator.nowAt(NewTabScreen)
-
         // FXIOS-8672: "Close Private Tabs" has been removed from the settings.
 
         func checkIndexedDBIsCreated() {
+            if userState.isPrivate {
+                app.buttons[AccessibilityIdentifiers.TabTray.newTabButton].waitAndTap()
+                navigator.nowAt(BrowserTab)
+            }
             navigator.openURL(urlIndexedDB)
             waitUntilPageLoad()
             waitForElementsToExist(
@@ -151,23 +180,24 @@ class PrivateBrowsingTest: BaseTestCase {
             )
         }
 
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
         checkIndexedDBIsCreated()
 
-        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleRegularMode)
+        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleExperimentRegularMode)
         // FXIOS-8672: "Close Private Tabs" has been removed from the settings.
         // checkIndexedDBIsCreated()
 
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
         // FXIOS-8672: "Close Private Tabs" has been removed from the settings.
         // checkIndexedDBIsCreated()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2307007
+    // Regression
     func testPrivateBrowserPanelView() {
         navigator.nowAt(NewTabScreen)
         // If no private tabs are open, there should be a initial screen with label Private Browsing
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
 
         let numPrivTabsFirstTime = app.otherElements[tabsTray].cells.count
         XCTAssertEqual(
@@ -178,116 +208,271 @@ class PrivateBrowsingTest: BaseTestCase {
 
         // If a private tab is open Private Browsing screen is not shown anymore
 
-        navigator.openURL(path(forTestPage: "test-mozilla-org.html"))
+        if userState.isPrivate {
+            app.buttons[AccessibilityIdentifiers.TabTray.newTabButton].waitAndTap()
+            navigator.nowAt(BrowserTab)
+        }
+        navigator.openURL(path(forTestPage: TestPages.mozillaOrg))
         // Wait until the page loads and go to regular browser
         waitUntilPageLoad()
         waitForTabsButton()
-        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleRegularMode)
+        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
 
         // Go back to private browsing
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
 
         navigator.nowAt(TabTray)
         let numPrivTabsOpen = app.otherElements[tabsTray].cells.count
         XCTAssertEqual(numPrivTabsOpen, 1, "The number of private tabs is not correct")
     }
 
+    // https://mozilla.testrail.io/index.php?/cases/view/3168523
+    // Regression
+    func testLeaveNoTracesMessageIsDisplayed() {
+        // Step 1: private browsing mode is displayed
+        enterPrivateBrowsingMode()
+
+        // Step 2: the homepage card shows the "Leave no traces on this device" message
+        browserScreen.assertPrivateModeMessageCardExists(verifyingCopy: true)
+
+        // Step 3: the message survives a rotation to landscape
+        settingScreen.rotateDevice(to: .landscapeLeft)
+        waitForRotation(to: .landscapeLeft)
+        browserScreen.assertPrivateModeMessageCardExists(verifyingCopy: true)
+        // Taps sent before the rotation settles resolve against the landscape frame and miss
+        settingScreen.rotateDevice(to: .portrait)
+        waitForRotation(to: .portrait)
+        waitForTabsButtonHittable()
+
+        // Step 4: it survives leaving and re-entering private browsing
+        leaveAndReenterPrivateBrowsingMode()
+        browserScreen.assertPrivateModeMessageCardExists(verifyingCopy: true)
+
+        // Step 5: it survives an interrupt that backgrounds and resumes the app
+        restartInBackground()
+        browserScreen.assertPrivateModeMessageCardExists(verifyingCopy: true)
+
+        // Step 6: it survives closing and re-opening the app. The relaunch lands in regular
+        // browsing, so private browsing is entered again before observing the message
+        forceCloseAndRelaunchApp()
+        waitForTabsButtonHittable()
+        enterPrivateBrowsingMode()
+        browserScreen.assertPrivateModeMessageCardExists(verifyingCopy: true)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3168524
+    // Regression
+    func testWhoMightSeeMyActivityLink() {
+        let toolbarScreen = ToolbarScreen(app: app)
+
+        // Step 1: private browsing mode is displayed
+        enterPrivateBrowsingMode()
+
+        // Step 2: the "Leave no traces on this device" card is shown on the homepage
+        browserScreen.assertPrivateModeMessageCardExists()
+
+        // Step 3: the link opens the common myths support page in a new private tab
+        browserScreen.tapPrivateModeActivityLink()
+        waitUntilPageLoad()
+        browserScreen.assertAddressBarContains(value: "support.mozilla.org")
+        toolbarScreen.assertTabsButtonValue(expectedCount: "2")
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3168528
+    // Regression
+    func testPrivateTabCounterIsUpdated() {
+        let toolbarScreen = ToolbarScreen(app: app)
+
+        // Step 1: private browsing mode is displayed
+        enterPrivateBrowsingMode()
+
+        // Step 2: the search is performed
+        browserScreen.tapOnAddressBar()
+        browserScreen.typeOnSearchBar(text: "mozilla\r")
+        waitUntilPageLoad()
+        waitForTabsButton()
+
+        // Step 3: the counter displays the single open private tab
+        toolbarScreen.assertTabsButtonValue(expectedCount: "1")
+
+        // Steps 4 and 5: the counter increments for every new private tab
+        for expectedCount in ["2", "3", "4"] {
+            navigator.performAction(Action.OpenNewTabFromTabTray)
+            navigator.nowAt(BrowserTab)
+            waitForTabsButton()
+            toolbarScreen.assertTabsButtonValue(expectedCount: expectedCount)
+        }
+
+        // Step 6: the counter is updated after closing private tabs
+        navigator.goto(TabTray)
+        tabTray.closeFirstTab()
+        tabTray.closeFirstTab()
+        tabTray.tapDoneButton()
+        navigator.nowAt(BrowserTab)
+        waitForTabsButton()
+        toolbarScreen.assertTabsButtonValue(expectedCount: "2")
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3168534
+    // Regression
+    func testDeeplinkOpensInPrivateBrowsing() {
+        guard #available(iOS 16.4, *) else { return }
+
+        // Precondition: private browsing with a website already open
+        enterPrivateBrowsingMode()
+        navigator.openURL(path(forTestPage: TestPages.mozillaBook))
+        waitUntilPageLoad()
+
+        // Step 1: a deeplink from outside Firefox opens its website in a new tab. Links tapped inside a
+        // private tab never leave the web view, so the deeplink has to come from the system
+        let exampleDeeplink = Deeplink.openURL(path(forTestPage: TestPages.exampleHTML), isPrivate: nil)
+        springboardScreen.openDeeplinkFromOutsideApp(deeplinkURL(exampleDeeplink))
+        navigator.nowAt(BrowserTab)
+        waitUntilPageLoad()
+        browserScreen.assertExampleDomainPageDisplayed()
+        toolbarScreen.assertTabsButtonValue(expectedCount: "2")
+
+        // The deeplink carries no private parameter, so it must reuse the private browsing mode: its tab
+        // shares the panel with the page only ever opened in private, while regular browsing has just one tab
+        navigator.goto(TabTray)
+        tabTray.assertCellExists(named: TestLabels.mozillaBook)
+        tabTray.assertCellExists(named: TestLabels.exampleDomain)
+        tabTray.assertTabCount(2)
+
+        // Step 2: the first opened website is still displayed in private browsing
+        tabTray.tapOnCell(named: TestLabels.mozillaBook)
+        navigator.nowAt(BrowserTab)
+        browserScreen.assertBookOfMozillaPageDisplayed()
+        toolbarScreen.assertTabsButtonValue(expectedCount: "2")
+    }
+
     // https://mozilla.testrail.io/index.php?/cases/view/2307012
     // Smoketest
     func testLongPressLinkOptionsPrivateMode() {
-        navigator.nowAt(NewTabScreen)
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
-
-        navigator.openURL(path(forTestPage: "test-example.html"))
+        enterPrivateBrowsingMode()
+        navigator.openURL(path(forTestPage: TestPages.exampleHTML))
         mozWaitForElementToExist(app.webViews.links[website_2["link"]!])
-        app.webViews.links[website_2["link"]!].press(forDuration: 2)
-        mozWaitForElementToExist(
-            app.collectionViews.staticTexts[website_2["moreLinkLongPressUrl"]!]
-        )
-        mozWaitForElementToNotExist(app.buttons["Open in New Tab"])
-        waitForElementsToExist(
-            [
-                app.buttons["Open in New Private Tab"],
-                app.buttons["Copy Link"],
-                app.buttons["Download Link"]
-            ]
-        )
+        browserScreen.longPressLink(named: website_2["link"]!)
+        browserScreen.waitForLinkPreview(named: website_2["moreLinkLongPressUrl"]!)
+
+        contextMenuScreen.assertPrivateModeOptionsVisible()
     }
 
-    // https://mozilla.testrail.io/index.php?/cases/view/2497357
-    func testAllPrivateTabsRestore() {
-        // Several tabs opened in private tabs tray. Tap on the trashcan
-        navigator.nowAt(NewTabScreen)
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
-        for _ in 1...4 {
-            navigator.createNewTab()
-            if app.keyboards.element.isVisible() && !iPad() {
-                mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Browser.UrlBar.cancelButton])
-                navigator.performAction(Action.CloseURLBarOpen)
-            }
-        }
-        navigator.goto(TabTray)
-        var numTab = app.otherElements[tabsTray].cells.count
-        XCTAssertEqual(4, numTab, "The number of counted tabs is not equal to \(String(describing: numTab))")
-        app.buttons[AccessibilityIdentifiers.TabTray.closeAllTabsButton].waitAndTap()
-
-        // Validate Close All Tabs and Cancel options
-        mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.TabTray.deleteCloseAllButton])
-        if !iPad() {
-            mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.TabTray.deleteCancelButton])
-        }
-
-        // Tap on "Close All Tabs"
-        app.buttons[AccessibilityIdentifiers.TabTray.deleteCloseAllButton].waitAndTap()
-        if #unavailable(iOS 16) {
-            // Wait for the screen to refresh first.
-            mozWaitForElementToExist(
-                app.staticTexts["Firefox won’t remember any of your history or cookies, but new bookmarks will be saved."])
-        }
-        // The private tabs are closed
-        waitForElementsToExist(
-            [
-                app.staticTexts["Private Browsing"],
-                app.otherElements[tabsTray]
-            ]
-        )
-        numTab = app.otherElements[tabsTray].cells.count
-        XCTAssertEqual(0, numTab, "The number of counted tabs is not equal to \(String(describing: numTab))")
-        mozWaitForElementToExist(app.staticTexts["Private Browsing"])
-
-        app.buttons["Undo"].waitAndTap()
-
-        // All the private tabs are restored
-        navigator.goto(TabTray)
-        numTab = app.otherElements[tabsTray].cells.count
-        XCTAssertEqual(4, numTab, "The number of counted tabs is not equal to \(String(describing: numTab))")
+    // Smoketest
+    // https://mozilla.testrail.io/index.php?/cases/view/3168541
+    func testMultipleTabsPrivateBrowsingCloseEnabled() {
+        openMultipleTabsInPrivateModeAndForceRestart()
+        // None of the previously opened tabs are displayed
+        browserScreen.assertPrivateBrowsingLabelExist()
     }
 
-    // https://mozilla.testrail.io/index.php?/cases/view/2307003
-    func testHamburgerMenuNewPrivateTab() {
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
-        navigator.openURL(urlExample)
+    // Smoketest
+    // https://mozilla.testrail.io/index.php?/cases/view/3168545
+    func testMultipleTabsPrivateBrowsingCloseDisabled() {
+        openMultipleTabsInPrivateModeAndForceRestart(isClosePrivateTabEnabled: false)
+        // All of the previously opened tabs are displayed
+        tabTray.assertTabCount(2)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3168540
+    // Regression
+    func testForceCloseDuringPrivateBrowsingSession() {
+        browseInPrivateModeAndForceCloseApp(isClosePrivateTabEnabled: true)
+        // The previously opened private browsing tabs are not displayed
+        browserScreen.assertPrivateBrowsingLabelExist()
+
+        // Repeat the steps from above but with Close Private Tabs disabled
+        tabTray.switchToRegularBrowsing()
+        tabTray.tapDoneButton()
+        browseInPrivateModeAndForceCloseApp(isClosePrivateTabEnabled: false)
+        // The previously opened private browsing tabs are displayed. The page a restored tab was left
+        // on is not asserted on, as its reload can beat the fixture server and land on an error page.
+        tabTray.assertTabCount(2)
+        tabTray.tapTabAtIndex(index: 0)
         waitUntilPageLoad()
-        navigator.goto(BrowserTabMenu)
-        // Validate menu option New Private Tab
-        let newPrivateTab = app.staticTexts["New Private Tab"]
-        mozWaitForElementToExist(newPrivateTab)
-        scrollToElement(newPrivateTab)
-        // Tap on "New private tab" option
-        newPrivateTab.waitAndTap()
-        // Tap on "New private tab" option
+        toolbarScreen.tapBackButton()
+        waitUntilPageLoad()
+        browserScreen.assertWebPageText(with: TestLabels.exampleDomain)
+    }
+
+    private func browseInPrivateModeAndForceCloseApp(isClosePrivateTabEnabled: Bool) {
         navigator.nowAt(NewTabScreen)
-        if #available(iOS 16, *) {
-            navigator.performAction(Action.CloseURLBarOpen)
-            waitForTabsButton()
-            navigator.goto(TabTray)
-            let numTab = app.otherElements[tabsTray].cells.count
-            XCTAssertEqual(2, numTab, "The number of counted tabs is not equal to \(String(describing: numTab))")
+        navigator.goto(SettingsScreen)
+        if isClosePrivateTabEnabled {
+            settingScreen.enableClosePrivateTabs()
+        } else {
+            settingScreen.disableClosePrivateTabs()
         }
+        // Browse several websites, one per tab. The first tab browses onwards to a second website so
+        // the private session also has back history to restore.
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        openNewTabAndLoadURL(URL: path(forTestPage: TestPages.exampleHTML))
+        navigator.nowAt(BrowserTab)
+        navigator.openURL(path(forTestPage: TestPages.mozillaOrg))
+        mozWaitForElementToExist(app.webViews.firstMatch)
+        openNewTabAndLoadURL(URL: path(forTestPage: TestPages.mozillaBook))
+        waitForTabsButton()
+        // Force close Firefox while the private session is still open, then re-open it
+        forceCloseAndRelaunchApp()
+        toolbarScreen.assertTabsButtonExists()
+        toolbarScreen.tapOnTabsButton()
+        tabTray.switchToPrivateBrowsing()
+    }
+
+    private func openMultipleTabsInPrivateModeAndForceRestart(isClosePrivateTabEnabled: Bool = true) {
+        launchIntoSettings()
+        if isClosePrivateTabEnabled {
+            settingScreen.enableClosePrivateTabs()
+        } else {
+            settingScreen.disableClosePrivateTabs()
+        }
+        // Go to Private mode and open multiple tabs with different websites
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        openNewTabAndLoadURL(URL: urlExample)
+        openNewTabAndLoadURL(URL: path(forTestPage: url_2["url"]!))
+        waitForTabsButton()
+        navigator.goto(TabTray)
+        // The multiple tabs with different websites are correctly displayed
+        tabTray.assertTabCount(2)
+        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleExperimentRegularMode)
+        navigator.goto(NewTabScreen)
+        // Force close and reopen Firefox
+        restartInBackground()
+        navigator.nowAt(NewTabScreen)
+        homePageScreen.assertTabsButtonExists()
+        homePageScreen.waitUntilTabsButtonHittable()
+        navigator.goto(TabTray)
+        navigator.nowAt(TabTray)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+    }
+
+    private func openNewTabAndLoadURL(URL: String) {
+        navigator.performAction(Action.OpenNewTabFromTabTray)
+        navigator.nowAt(BrowserTab)
+        navigator.openURL(URL)
+        mozWaitForElementToExist(app.webViews.firstMatch)
     }
 }
 
 fileprivate extension BaseTestCase {
+    /// Switches to private browsing and lands on a fresh private tab, the starting point every
+    /// private browsing test shares.
+    func enterPrivateBrowsingMode() {
+        navigator.nowAt(NewTabScreen)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        navigator.performAction(Action.OpenNewTabFromTabTray)
+        navigator.nowAt(BrowserTab)
+    }
+
+    /// Switches to regular browsing and back, returning to the private tab that was left open.
+    func leaveAndReenterPrivateBrowsingMode() {
+        navigator.toggleOff(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
+        navigator.nowAt(TabTray)
+        TabTrayScreen(app: app).tapDoneButton()
+        navigator.nowAt(BrowserTab)
+    }
+
     func checkOpenTabsBeforeClosingPrivateMode() {
         let numPrivTabs = app.otherElements[tabsTray].cells.count
         XCTAssertEqual(
@@ -309,36 +494,38 @@ fileprivate extension BaseTestCase {
     }
 }
 
-class PrivateBrowsingTestIphone: IphoneOnlyTestCase {
+class PrivateBrowsingTestIphone: BaseTestCase {
+    override func setUp() async throws {
+        specificForPlatform = .phone
+        if !iPad() {
+            try await super.setUp()
+        }
+    }
+
+    /// The test launches the app itself, with its first page already open in private mode through a deeplink.
+    override func setUpApp() {
+        setUpAppWithoutLaunching()
+    }
+
     // This test is disabled for iPad because the toast menu is not shown there
     // https://mozilla.testrail.io/index.php?/cases/view/2307013
     // Smoketest
     func testSwitchBetweenPrivateTabsToastButton() {
         if skipPlatform { return }
 
+        let browserScreen = BrowserScreen(app: app)
+        let contextMenuScreen = ContextMenuScreen(app: app)
+        let toolbarScreen = ToolbarScreen(app: app)
+
         // Go to Private mode
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
-        navigator.openURL(urlExample)
-        waitUntilPageLoad()
-        mozWaitForElementToExist(app.webViews.links.firstMatch)
-        app.webViews.links.firstMatch.press(forDuration: 1)
-        mozWaitForElementToExist(app.buttons["Open in New Private Tab"])
-        app.buttons["Open in New Private Tab"].press(forDuration: 1)
-        app.buttons["Switch"].waitAndTap()
+        launchOpening(urlExample, isPrivate: true)
+        browserScreen.longPressFirstLink()
+        contextMenuScreen.openInNewPrivateTabAndSwitch()
 
         // Check that the tab has changed
         waitUntilPageLoad()
-        mozWaitForElementToExist(app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField])
-        mozWaitForValueContains(app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField],
-                                value: "iana")
-        waitForElementsToExist(
-            [
-                app.links["RFC 2606"],
-                app.buttons[AccessibilityIdentifiers.Toolbar.tabsButton]
-            ]
-        )
-        let numPrivTab = app.buttons[AccessibilityIdentifiers.Toolbar.tabsButton].value as? String
-        XCTAssertEqual("2", numPrivTab)
+        browserScreen.assertReservedTLDNamesLinkExist()
+        toolbarScreen.assertTabsButtonValue(expectedCount: "2")
     }
 }
 
@@ -347,17 +534,21 @@ class PrivateBrowsingTestIpad: IpadOnlyTestCase {
 
     // This test is only enabled for iPad. Shortcut does not exists on iPhone
     // https://mozilla.testrail.io/index.php?/cases/view/2307008
+    // Regression
     func testClosePrivateTabsOptionClosesPrivateTabsShortCutiPad() {
         if skipPlatform { return }
         waitForTabsButton()
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
         navigator.openURL(url2)
         mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Toolbar.settingsMenuButton])
 
         // Leave PM by tapping on PM shourt cut
         navigator.toggleOff(userState.isPrivate, withAction: Action.TogglePrivateModeFromTabBarHomePanel)
         waitForTabsButton()
-        navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateMode)
+        navigator.nowAt(BrowserTab)
+        waitForTabsButton()
+        navigator.goto(TabTray)
+        navigator.toggleOn(userState.isPrivate, withAction: Action.ToggleExperimentPrivateMode)
         checkOpenTabsBeforeClosingPrivateMode()
     }
 
@@ -389,8 +580,8 @@ class PrivateBrowsingTestIpad: IpadOnlyTestCase {
     // https://mozilla.testrail.io/index.php?/cases/view/2307010
     func testiPadDirectAccessPrivateModeBrowserTab() {
         if skipPlatform { return }
-        navigator.openURL("www.mozilla.org")
-        waitForTabsButton()
+        navigator.openURL("https://mozilla.github.io/form-fill-examples/basic.html")
+        waitUntilPageLoad()
         navigator.toggleOn(userState.isPrivate, withAction: Action.TogglePrivateModeFromTabBarBrowserTab)
 
         // A Tab opens directly in HomePanels view
@@ -398,6 +589,7 @@ class PrivateBrowsingTestIpad: IpadOnlyTestCase {
 
         // Open website and check it does not appear under history once going back to regular mode
         navigator.openURL("http://example.com")
+        waitUntilPageLoad()
         navigator.toggleOff(userState.isPrivate, withAction: Action.TogglePrivateModeFromTabBarBrowserTab)
         navigator.goto(LibraryPanel_History)
         mozWaitForElementToExist(app.tables[HistoryPanelA11y.tableView])
@@ -408,6 +600,6 @@ class PrivateBrowsingTestIpad: IpadOnlyTestCase {
             .cells.element(boundBy: 1)
             .staticTexts.element(boundBy: 1)
         mozWaitForElementToExist(savedToHistory)
-        XCTAssertNotNil(savedToHistory.label.range(of: url2Label))
+        XCTAssertNotNil(savedToHistory.label.range(of: url4Label))
     }
 }

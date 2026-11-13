@@ -6,6 +6,7 @@ import Storage
 import Common
 
 class DependencyHelper {
+    @MainActor
     func bootstrapDependencies() {
         guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
             // Fatal error here so we can gather info as this would cause a crash down the line anyway
@@ -13,7 +14,10 @@ class DependencyHelper {
         }
 
         let profile: Profile = appDelegate.profile
-        AppContainer.shared.register(service: profile)
+        AppContainer.shared.register(service: profile as Profile)
+
+        let featureFlagsProvider = FeatureFlagsProvider(prefs: profile.prefs)
+        AppContainer.shared.register(service: featureFlagsProvider as FeatureFlagProviding)
 
         AppContainer.shared.register(service: appDelegate.searchEnginesManager)
 
@@ -21,27 +25,27 @@ class DependencyHelper {
         DefaultDiskImageStore(files: profile.files,
                               namespace: TabManagerConstants.tabScreenshotNamespace,
                               quality: UIConstants.ScreenshotQuality)
-        AppContainer.shared.register(service: diskImageStore)
+        AppContainer.shared.register(service: diskImageStore as DiskImageStore)
 
         let appSessionProvider: AppSessionProvider = appDelegate.appSessionManager
-        AppContainer.shared.register(service: appSessionProvider)
+        AppContainer.shared.register(service: appSessionProvider as AppSessionProvider)
 
         let downloadQueue: DownloadQueue = appDelegate.appSessionManager.downloadQueue
         AppContainer.shared.register(service: downloadQueue)
 
         let windowManager: WindowManager = appDelegate.windowManager
-        AppContainer.shared.register(service: windowManager)
+        AppContainer.shared.register(service: windowManager as WindowManager)
 
         let themeManager: ThemeManager = appDelegate.themeManager
-        AppContainer.shared.register(service: themeManager)
+        AppContainer.shared.register(service: themeManager as ThemeManager)
 
         let microsurveyManager: MicrosurveyManager = MicrosurveySurfaceManager()
-        AppContainer.shared.register(service: microsurveyManager)
+        AppContainer.shared.register(service: microsurveyManager as MicrosurveyManager)
 
-        let pocketManager: PocketManagerProvider = PocketManager(
-            pocketAPI: PocketProvider(prefs: profile.prefs)
+        let merinoManager: MerinoManagerProvider = MerinoManager(
+            storyProvider: StoryProvider(merinoAPI: MerinoProvider(prefs: profile.prefs))
         )
-        AppContainer.shared.register(service: pocketManager)
+        AppContainer.shared.register(service: merinoManager as MerinoManagerProvider)
 
         let documentLogger = appDelegate.documentLogger
         AppContainer.shared.register(service: documentLogger)
@@ -49,6 +53,13 @@ class DependencyHelper {
         let gleanUsageReportingMetricsService: GleanUsageReportingMetricsService =
         appDelegate.gleanUsageReportingMetricsService
         AppContainer.shared.register(service: gleanUsageReportingMetricsService)
+
+        AppContainer.shared.register(service: appDelegate.installationTelemetryService)
+
+        AppContainer.shared.register(service: appDelegate.shareTelemetry)
+
+        let userFeaturePreferenceManager = UserFeaturePreferenceManager(prefs: profile.prefs)
+        AppContainer.shared.register(service: userFeaturePreferenceManager as UserFeaturePreferring)
 
         // Tell the container we are done registering
         AppContainer.shared.bootstrap()

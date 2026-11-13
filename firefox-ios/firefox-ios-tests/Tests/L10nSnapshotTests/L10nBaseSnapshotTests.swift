@@ -5,6 +5,7 @@
 import MappaMundi
 import XCTest
 import Shared
+import Common
 
 let testPageBase = "http://www.example.com"
 let loremIpsumURL = "\(testPageBase)"
@@ -19,11 +20,14 @@ class L10nBaseSnapshotTests: XCTestCase {
                 LaunchArguments.SkipETPCoverSheet,
                 LaunchArguments.SkipIntro,
                 LaunchArguments.SkipContextualHints,
-                LaunchArguments.DisableAnimations]
+                LaunchArguments.DisableAnimations,
+                // Turn off the microsurvey so its "Help us make Firefox better" prompt isn't in the screenshots
+                "\(LaunchArguments.LoadExperiment)defaultEnabledOff",
+                "\(LaunchArguments.ExperimentFeatureName)microsurvey-feature"]
 
     @MainActor
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         continueAfterFailure = false
         app = XCUIApplication()
         setupSnapshot(app)
@@ -38,6 +42,14 @@ class L10nBaseSnapshotTests: XCTestCase {
         navigator.synchronizeWithUserState()
     }
 
+    @MainActor
+    override func tearDown() async throws {
+        navigator = nil
+        userState = nil
+        app = nil
+        try await super.tearDown()
+    }
+
     func springboardStart(_ app: XCUIApplication, args: [String] = []) {
         XCUIDevice.shared.press(.home)
         app.launchArguments += [LaunchArguments.Test] + args
@@ -47,7 +59,7 @@ class L10nBaseSnapshotTests: XCTestCase {
     func waitForExistence(
         _ element: XCUIElement,
         timeout: TimeInterval = 5.0,
-        file: String = #file,
+        file: String = #filePath,
         line: UInt = #line
     ) {
             waitFor(element, with: "exists == true", timeout: timeout, file: file, line: line)
@@ -96,7 +108,7 @@ class L10nBaseSnapshotTests: XCTestCase {
     func waitForNoExistence(
         _ element: XCUIElement,
         timeoutValue: TimeInterval = 5.0,
-        file: String = #file,
+        file: String = #filePath,
         line: UInt = #line
     ) {
         waitFor(element, with: "exists != true", timeout: timeoutValue, file: file, line: line)
@@ -128,24 +140,5 @@ class L10nBaseSnapshotTests: XCTestCase {
         let app = XCUIApplication()
         let progressIndicator = app.progressIndicators.element(boundBy: 0)
         mozWaitForElementToNotExist(progressIndicator, timeout: 30.0)
-    }
-}
-
-extension XCUIElement {
-    func tapOnApp() {
-        coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-    }
-
-    /// Waits for the UI element and then taps if it exists.
-    func waitAndTap(timeout: TimeInterval? = TIMEOUT) {
-        L10nBaseSnapshotTests().mozWaitForElementToExist(self, timeout: timeout)
-        self.tap()
-    }
-
-    /// Waits for the UI element and then taps and types the provided text if it exists.
-    func tapAndTypeText(_ text: String, timeout: TimeInterval? = TIMEOUT) {
-        L10nBaseSnapshotTests().mozWaitForElementToExist(self, timeout: timeout)
-        self.tap()
-        self.typeText(text)
     }
 }

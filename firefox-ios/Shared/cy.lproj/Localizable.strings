@@ -137,7 +137,7 @@
 "Brightness" = "Disgleirdeb";
 
 /* Label for Cancel button */
-"Cancel" = "Diddymu";
+"Cancel" = "Na";
 
 /* Accessibility hint for the color theme setting buttons in reader mode display settings */
 "Changes color theme." = "Newid lliw'r thema.";
@@ -257,7 +257,7 @@
 "Downloads.Alert.DownloadNow" = "Llwytho i Lawr Nawr";
 
 /* Button confirming the cancellation of the download. */
-"Downloads.CancelDialog.Cancel" = "Diddymu";
+"Downloads.CancelDialog.Cancel" = "Na";
 
 /* Alert dialog body when the user taps the cancel download icon. */
 "Downloads.CancelDialog.Message" = "Ydych chi'n siŵr eich bod eisiau diddymu'r llwytho i lawr?";
@@ -346,6 +346,9 @@
 /* When a user taps and holds on an item from the Recently Visited section, this label will appear indicating the option to remove that item. */
 "FirefoxHome.RecentHistory.Remove" = "Tynnu";
 
+/* On each Story on the Firefox Homepage, this label appears and indicates the number of minutes to read an article. Minutes should be abbreviated due to space constraints. %d represents the number of minutes */
+"FirefoxHome.Stories.Minutes.v140" = "mun: %d";
+
 /* Label showing how many pages there is in a search group. %d represents a number */
 "FirefoxHomepage.Common.PagesCount.v112" = "Tudalennau: %d";
 
@@ -369,6 +372,9 @@
 
 /* This string will show under a shortcuts tile on the firefox home page, indicating that the tile is a sponsored tile. Space is limited, please keep as short as possible. */
 "FirefoxHomepage.Shortcuts.Sponsored.v100" = "Noddwyd";
+
+/* This string will show under the description on pocket story, indicating that the story is sponsored. */
+"FirefoxHomepage.Stories.Sponsored.v140" = "Noddwyd";
 
 /* Accessibility Label for the tab toolbar Forward button */
 "Forward" = "Ymlaen";
@@ -593,7 +599,7 @@
 "LibraryPanel.Accessibility.History.v106" = "Hanes";
 
 /* Within the History Panel, users can delete search group sites history. They can cancel this action by pressing a cancel button. */
-"LibraryPanel.History.ClearGroupedTabsCancel.v100" = "Diddymu";
+"LibraryPanel.History.ClearGroupedTabsCancel.v100" = "Na";
 
 /* Within the History Panel, users can delete search group sites history. They need to confirm the action by pressing the delete button. */
 "LibraryPanel.History.ClearGroupedTabsDelete.v100" = "Dileu";
@@ -680,7 +686,7 @@
 "LoginsList.NoMatchingResult.Subtitle" = "Does dim canlyniadau sy'n cyfateb i'ch chwiliad.";
 
 /* Title for cancel button for user to stop searching for a particular login */
-"LoginsList.Search.Cancel" = "Diddymu";
+"LoginsList.Search.Cancel" = "Na";
 
 /* Label displaying select a password to fill instruction */
 "LoginsList.SelectPassword.Title" = "Dewiswch gyfrinair i'w lenwi";
@@ -962,7 +968,7 @@
 "Remove from Reading List" = "Tynnu o'r Rhestr Ddarllen";
 
 /* Cancel button text shown in reopen-alert at home page. */
-"ReopenAlert.Actions.Cancel" = "Diddymu";
+"ReopenAlert.Actions.Cancel" = "Na";
 
 /* Reopen button text shown in reopen-alert at home page. */
 "ReopenAlert.Actions.Reopen" = "Ailagor";
@@ -1016,7 +1022,7 @@
 "Search.ThirdPartyEngines.AddTitle" = "Ychwanegu Darparwr Chwilio?";
 
 /* The cancel button if you do not want to add a search engine. */
-"Search.ThirdPartyEngines.Cancel" = "Diddymu";
+"Search.ThirdPartyEngines.Cancel" = "Na";
 
 /* A message explaining fault in custom search engine form. */
 "Search.ThirdPartyEngines.DuplicateErrorMessage" = "Mae peiriant chwilio gyda'r teitl hwn neu URL eisioes wedi ei ychwanegu.";
@@ -1049,7 +1055,7 @@
 "Send Report" = "Anfon Adroddiad";
 
 /* Button title for cancelling share screen */
-"SendTo.Cancel.Button" = "Diddymu";
+"SendTo.Cancel.Button" = "Na";
 
 /* Close button in top navigation bar */
 "SendTo.Close.Button" = "Cau";
@@ -1193,7 +1199,7 @@
 "Settings.Disconnect.Button" = "Datgysylltu Sync";
 
 /* Cancel action button in alert when user is prompted for disconnect */
-"Settings.Disconnect.CancelButton" = "Diddymu";
+"Settings.Disconnect.CancelButton" = "Na";
 
 /* Destructive action button in alert when user is prompted for disconnect */
 "Settings.Disconnect.DestructiveButton" = "Datgysylltu";
@@ -1495,6 +1501,9 @@
 /* Button label that appears in the settings to prompt the user to sign in to Firefox for iOS sync service to sync and save data. */
 "Settings.Sync.ButtonTitle.v103" = "Cydweddu a Chadw Data";
 
+/* In the settings account row, shown transiently while the user is being signed out of their account. */
+"Settings.Sync.SigningOut.Title.v154" = "Yn allgofnodi…";
+
 /* Title for the page where the user sign in to their Firefox Sync account. */
 "Settings.Sync.SignInView.Title.v103" = "Cydweddu a Chadw Data";
 
@@ -1775,7 +1784,7 @@
 "Wallpaper.Download.Error.Title.v106" = "Methu Llwytho Papur Wal i Lawr";
 
 /* An action for the error displayed to a user when they trying to change a wallpaper failed. */
-"Wallpaper.Error.Dismiss.v106" = "Diddymu";
+"Wallpaper.Error.Dismiss.v106" = "Na";
 
 /* Action displayed when changing wallpaper fails. */
 "Wallpaper.Error.TryAgain.v106" = "Ceisiwch eto";

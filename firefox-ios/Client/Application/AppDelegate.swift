@@ -8,31 +8,22 @@ import UIKit
 import Common
 import Glean
 import TabDataStore
+import TipKit
 
+import class Account.Autopush
+import class Account.RustFirefoxAccounts
 import class MozillaAppServices.Viaduct
 
-class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
+class AppDelegate: UIResponder,
+                   UIApplicationDelegate,
+                   FeatureFlaggable {
     let logger = DefaultLogger.shared
     var notificationCenter: NotificationProtocol = NotificationCenter.default
     var orientationLock = UIInterfaceOrientationMask.all
 
-    private let rustKeychainEnabled = FxNimbus.shared
-        .features
-        .rustKeychainRefactor
-        .value()
-        .rustKeychainEnabled
-
-    private let loginsVerificationEnabled = FxNimbus.shared
-        .features
-        .loginsVerification
-        .value()
-        .loginsVerificationEnabled
-
     lazy var profile: Profile = BrowserProfile(
         localName: "profile",
-        fxaCommandsDelegate: UIApplication.shared.fxaCommandsDelegate,
-        rustKeychainEnabled: rustKeychainEnabled,
-        loginsVerificationEnabled: loginsVerificationEnabled)
+        fxaCommandsDelegate: UIApplication.shared.fxaCommandsDelegate)
 
     lazy var searchEnginesManager = SearchEnginesManager(
         prefs: profile.prefs,
@@ -41,24 +32,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
 
     lazy var themeManager: ThemeManager = DefaultThemeManager(
         sharedContainerIdentifier: AppInfo.sharedContainerIdentifier,
-        isNewAppearanceMenuOnClosure: { self.featureFlags.isFeatureEnabled(.appearanceMenu, checking: .buildOnly) }
+        isNovaDesignOnClosure: { self.featureFlagsProvider.isEnabled(.novaDesign) },
+        isPrivateThemeOverrideEnabledClosure: {
+            self.featureFlagsProvider.isEnabled(.novaDesign) &&
+            self.featureFlagsProvider.isEnabled(.novaPrivateThemeOverride)
+        }
     )
     lazy var documentLogger = DocumentLogger(logger: logger)
     lazy var appSessionManager: AppSessionProvider = AppSessionManager()
     lazy var notificationSurfaceManager = NotificationSurfaceManager()
     lazy var tabDataStore = DefaultTabDataStore()
     lazy var windowManager = WindowManagerImplementation()
+    lazy var relayController: RelayControllerProtocol = RelayController()
     lazy var backgroundTabLoader: BackgroundTabLoader = {
         return DefaultBackgroundTabLoader(tabQueue: (AppContainer.shared.resolve() as Profile).queue)
     }()
     lazy var shareTelemetry = ShareTelemetry()
     lazy var gleanUsageReportingMetricsService = GleanUsageReportingMetricsService(profile: profile)
+    lazy var installationTelemetryService = InstallationTelemetryService(profilePrefs: profile.prefs)
     private var isLoadingBackgroundTabs = false
 
     private var shutdownWebServer: DispatchSourceTimer?
     private var webServerUtil: WebServerUtil?
     private var appLaunchUtil: AppLaunchUtil?
     private var backgroundWorkUtility: BackgroundFetchAndProcessingUtility?
+    private var suggestBackgroundUtility: BackgroundFirefoxSuggestIngestUtility?
+    private var suggestBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private static let suggestBackgroundTaskName = "SuggestIngest"
+    private var webServerShutdownTaskID: UIBackgroundTaskIdentifier = .invalid
+    private static let webServerShutdownTaskName = "WebServerShutdown"
     private var widgetManager: TopSitesWidgetManager?
     private var menuBuilderHelper: MenuBuilderHelper?
     private lazy var metricKitWrapper = MetricKitWrapper()
@@ -69,7 +71,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
         willFinishLaunchingWithOptions
         launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        startRecordingStartupOpenURLTime()
+        shareTelemetry.recordOpenDeeplinkTime()
         // Configure app information for BrowserKit, needed for logger
         BrowserKitInformation.shared.configure(buildChannel: AppConstants.buildChannel,
                                                nightlyAppVersion: AppConstants.nightlyAppVersion,
@@ -77,11 +79,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
 
         // Set-up Rust network stack. Note that this has to be called
         // before any Application Services component gets used.
-        Viaduct.shared.useReqwestBackend()
+        Viaduct.shared.initialize(userAgent: UserAgent.fxaUserAgent)
 
-        // Configure logger so we can start tracking logs early
-        logger.configure(crashManager: DefaultCrashManager())
-        initializeRustErrors(logger: logger)
         logger.log("willFinishLaunchingWithOptions begin",
                    level: .info,
                    category: .lifecycle)
@@ -95,11 +94,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
             .browserIsReady
         ])
 
-        // Initialize the feature flag subsystem.
-        // Among other things, it toggles on and off Nimbus, Contile, Adjust.
-        // i.e. this must be run before initializing those systems.
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
-
         // Then setup dependency container as it's needed for everything else
         DependencyHelper().bootstrapDependencies()
 
@@ -108,7 +102,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
 
         // Set up a web server that serves us static content.
         // Do this early so that it is ready when the UI is presented.
-        webServerUtil = WebServerUtil(profile: profile)
+        webServerUtil = WebServerUtil(readerModeHandler: ReaderModeHandlers(), profile: profile)
         webServerUtil?.setUpWebServer()
 
         menuBuilderHelper = MenuBuilderHelper()
@@ -117,25 +111,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
                    level: .info,
                    category: .lifecycle)
 
-        return true
-    }
+        // Perform migration of changed UA file
+        Tab.ChangeUserAgent.performMigration()
 
-    private func startRecordingStartupOpenURLTime() {
-        shareTelemetry.recordOpenDeeplinkTime()
-        var recordCompleteToken: ActionToken?
-        var recordCancelledToken: ActionToken?
-        recordCompleteToken = AppEventQueue.wait(for: .recordStartupTimeOpenDeeplinkComplete) { [weak self] in
-            self?.shareTelemetry.sendOpenDeeplinkTimeRecord()
-            guard let recordCancelledToken, let recordCompleteToken  else { return }
-            AppEventQueue.cancelAction(token: recordCancelledToken)
-            AppEventQueue.cancelAction(token: recordCompleteToken)
-        }
-        recordCancelledToken = AppEventQueue.wait(for: .recordStartupTimeOpenDeeplinkCancelled) { [weak self] in
-            self?.shareTelemetry.cancelOpenURLTimeRecord()
-            guard let recordCancelledToken, let recordCompleteToken  else { return }
-            AppEventQueue.cancelAction(token: recordCancelledToken)
-            AppEventQueue.cancelAction(token: recordCompleteToken)
-        }
+        return true
     }
 
     func application(
@@ -155,11 +134,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
         backgroundWorkUtility = BackgroundFetchAndProcessingUtility()
         backgroundWorkUtility?.registerUtility(BackgroundSyncUtility(profile: profile, application: application))
         backgroundWorkUtility?.registerUtility(BackgroundNotificationSurfaceUtility())
-        if let firefoxSuggest = profile.firefoxSuggest {
-            backgroundWorkUtility?.registerUtility(BackgroundFirefoxSuggestIngestUtility(
-                firefoxSuggest: firefoxSuggest
-            ))
-        }
+        suggestBackgroundUtility = BackgroundFirefoxSuggestIngestUtility(firefoxSuggest: profile.firefoxSuggest)
+
+        metricKitWrapper.beginObservingMXPayloads()
 
         let topSitesProvider = TopSitesProviderImplementation(
             placesFetcher: profile.places,
@@ -169,7 +146,31 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
 
         widgetManager = TopSitesWidgetManager(topSitesProvider: topSitesProvider)
 
+        if featureFlagsProvider.isEnabled(.backgroundAudio) {
+            BackgroundAudioHelper.shared.configure(prefs: profile.prefs)
+        }
+
         addObservers()
+
+        /// Prewarm translation resources off the main thread
+        /// This will fetch the translator WASM and model attachments for the device language.
+        /// Running this on a utility QoS to avoid impacting app launch time.
+        if featureFlagsProvider.isEnabled(.translation) {
+            Task(priority: .utility) {
+                await ASTranslationModelsFetcher().prewarmResourcesForStartup()
+            }
+        }
+
+        if #available(iOS 17.0, *) {
+            ResetTipsSetting.resetDatastoreIfNeeded(prefs: profile.prefs)
+            do {
+                try Tips.configure()
+            } catch {
+                logger.log("Failed to configure TipKit: \(error.localizedDescription)",
+                           level: .warning,
+                           category: .lifecycle)
+            }
+        }
 
         logger.log("didFinishLaunchingWithOptions end",
                    level: .info,
@@ -194,10 +195,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
             profile.removeAccount()
         }
 
+        installationTelemetryService.update()
+
         profile.syncManager?.applicationDidBecomeActive()
         webServerUtil?.setUpWebServer()
 
+        // Process any pending app extension telemetry events (e.g., from Share Extension)
+        TelemetryWrapper.shared.processPendingAppExtensionTelemetry(profile: profile)
+
         TelemetryWrapper.recordEvent(category: .action, method: .foreground, object: .app)
+
+        ConversionActivityLogger().recordActiveToday()
+        ConversionEventTracker().recordActivityEvents()
 
         // update top sites widget
         updateTopSitesWidget()
@@ -207,21 +216,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
             self?.profile.cleanupHistoryIfNeeded()
         }
 
-        DispatchQueue.global().async { [weak self] in
-            self?.profile.pollCommands(forcePoll: false)
+        DispatchQueue.global().async { [weak profile] in
+            profile?.pollCommands(forcePoll: false)
         }
 
+        verifyAutopushSubscriptions()
+        prefetchMerinoStories()
         updateWallpaperMetadata()
         loadBackgroundTabs()
-        /// On first run (when suggest‑data.db is empty) this populates the db; later calls are no‑ops due to `emptyOnly`.
-        /// For details, see:
-        ///     https://github.com/mozilla/application-services/blob/5aade8c09653ad2a2ec02746dc6bcf80dc8434c2/components/suggest/src/store.rs#L597-L599
-        /// Actual periodic refreshing happens in the background in `BackgroundFirefoxSuggestIngestUtility.swift`.
-        /// `.utility` priority is used here because this blocks on network calls and would otherwise trigger a
-        /// priority‑inversion warning if run at user‑initiated QoS.
-        Task(priority: .utility) {
-            try await self.profile.firefoxSuggest?.ingest(emptyOnly: true)
-        }
+        ingestFirefoxSuggestions(in: application)
+
         logger.log("applicationDidBecomeActive end",
                    level: .info,
                    category: .lifecycle)
@@ -244,15 +248,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
         // 2 seconds is ample for a localhost request to be completed by GCDWebServer.
         // <500ms is expected on newer devices.
         singleShotTimer.schedule(deadline: .now() + 2.0, repeating: .never)
-        singleShotTimer.setEventHandler {
-            WebServer.sharedInstance.server.stop()
+        singleShotTimer.setEventHandler { [weak self] in
+            guard let self else { return }
             self.shutdownWebServer = nil
+            // Stop the server off the main thread so a slow shutdown can't trip the watchdog.
+            // Hold a background task so iOS lets the stop finish while we're backgrounded, and
+            // end it both when the stop completes and if the OS deadline expires first.
+            // End any task still outstanding from a previous, slow shutdown so we don't clobber
+            // and leak its identifier.
+            self.endWebServerShutdownTask()
+            self.webServerShutdownTaskID = application.beginBackgroundTask(
+                withName: Self.webServerShutdownTaskName) { [weak self] in
+                self?.endWebServerShutdownTask()
+            }
+            WebServer.sharedInstance.stop { [weak self] in
+                Task { @MainActor in self?.endWebServerShutdownTask() }
+            }
         }
         singleShotTimer.resume()
         shutdownWebServer = singleShotTimer
         backgroundWorkUtility?.scheduleOnAppBackground()
 
         logger.log("applicationDidEnterBackground end", level: .info, category: .lifecycle)
+    }
+
+    @MainActor
+    private func endWebServerShutdownTask() {
+        guard webServerShutdownTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(webServerShutdownTaskID)
+        webServerShutdownTaskID = .invalid
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -264,6 +288,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
 
     func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
         logger.log("Received memory warning", level: .info, category: .lifecycle)
+        Task {
+            for uuid in windowManager.allWindowUUIDs(includingReserved: false) {
+                await windowManager.tabManager(for: uuid)?.offloadBackgroundWebViews()
+            }
+        }
     }
 
     private func updateTopSitesWidget() {
@@ -282,8 +311,75 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
         requiredEvents += windowManager.allWindowUUIDs(includingReserved: true).map { .tabRestoration($0) }
         isLoadingBackgroundTabs = true
         AppEventQueue.wait(for: requiredEvents) { [weak self] in
-            self?.isLoadingBackgroundTabs = false
-            self?.backgroundTabLoader.loadBackgroundTabs()
+            ensureMainThread { [weak self] in
+                self?.isLoadingBackgroundTabs = false
+                self?.backgroundTabLoader.loadBackgroundTabs()
+            }
+        }
+    }
+
+    private func verifyAutopushSubscriptions() {
+        guard Autopush.shouldVerifySubscriptions(prefs: profile.prefs) else { return }
+
+        Task { [profile] in
+            do {
+                let autopush = try await Autopush(files: profile.files)
+                let newSubscriptions = try await autopush.verifyActiveSubscriptions(prefs: profile.prefs)
+                if let fxaSubscription = newSubscriptions[RustFirefoxAccounts.pushScope] {
+                    RustFirefoxAccounts.shared.pushNotifications.updatePushRegistration(
+                        subscriptionResponse: fxaSubscription
+                    )
+                }
+            } catch let error {
+                logger.log(
+                    "Failed to verify push subscriptions",
+                    level: .warning,
+                    category: .setup,
+                    description: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    private func prefetchMerinoStories() {
+        Task(priority: .utility) {
+            let merinoManager: MerinoManagerProvider = AppContainer.shared.resolve()
+            await merinoManager.prefetchStories()
+        }
+    }
+
+    private func ingestFirefoxSuggestions(in application: UIApplication) {
+        /// Start a background task so that the ingest task doesn't get killed
+        /// immediately if the app goes to the background before ingest finishes. iOS will kill
+        /// our process as soon as we hit background if we don't have a background task running.
+        suggestBackgroundTaskID = application.beginBackgroundTask(
+            withName: Self.suggestBackgroundTaskName) { [weak self, application] in
+            guard let self = self else { return }
+            self.profile.firefoxSuggest?.interruptEverything()
+            application.endBackgroundTask(self.suggestBackgroundTaskID)
+            self.suggestBackgroundTaskID = .invalid
+        }
+
+        /// On first run (when suggest‑data.db is empty) this populates the db; later calls are no‑ops due to `emptyOnly`.
+        /// For details, see:
+        ///     https://github.com/mozilla/application-services/blob/5aade8c09653ad2a2ec02746dc6bcf80dc8434c2/components/suggest/src/store.rs#L597-L599
+        /// Actual periodic refreshing happens in the background in `BackgroundFirefoxSuggestIngestUtility.swift`.
+        /// `.utility` priority is used here because this blocks on network calls and would otherwise trigger a
+        /// priority‑inversion warning if run at user‑initiated QoS.
+        Task(priority: .utility) { [profile] in
+            do {
+                try await profile.firefoxSuggest?.ingest(emptyOnly: true)
+            } catch {
+                self.logger.log("Suggest ingest failed: \(error)", level: .warning, category: .storage)
+            }
+            /// Only schedule the periodic BGProcessingTask after the
+            /// initial on-launch ingest completes, to avoid double scheduling
+            /// or racing against our own background task.
+            self.suggestBackgroundUtility?.scheduleTaskOnAppBackground()
+            if self.suggestBackgroundTaskID != .invalid {
+                application.endBackgroundTask(self.suggestBackgroundTaskID)
+                self.suggestBackgroundTaskID = .invalid
+            }
         }
     }
 
@@ -311,23 +407,30 @@ class AppDelegate: UIResponder, UIApplicationDelegate, FeatureFlaggable {
 
 extension AppDelegate: Notifiable {
     private func addObservers() {
-        setupNotifications(forObserver: self, observing: [UIApplication.didBecomeActiveNotification,
-                                                          UIApplication.willResignActiveNotification,
-                                                          UIApplication.didEnterBackgroundNotification])
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [UIApplication.didBecomeActiveNotification,
+                        UIApplication.willResignActiveNotification,
+                        UIApplication.didEnterBackgroundNotification]
+        )
     }
 
     /// When migrated to Scenes, these methods aren't called.
     /// Consider this a temporary solution to calling into those methods.
     func handleNotifications(_ notification: Notification) {
-        switch notification.name {
-        case UIApplication.didBecomeActiveNotification:
-            applicationDidBecomeActive(UIApplication.shared)
-        case UIApplication.willResignActiveNotification:
-            applicationWillResignActive(UIApplication.shared)
-        case UIApplication.didEnterBackgroundNotification:
-            applicationDidEnterBackground(UIApplication.shared)
+        let name = notification.name
+        ensureMainThread {
+            switch name {
+            case UIApplication.didBecomeActiveNotification:
+                self.applicationDidBecomeActive(UIApplication.shared)
+            case UIApplication.willResignActiveNotification:
+                self.applicationWillResignActive(UIApplication.shared)
+            case UIApplication.didEnterBackgroundNotification:
+                self.applicationDidEnterBackground(UIApplication.shared)
 
-        default: break
+            default: break
+            }
         }
     }
 }

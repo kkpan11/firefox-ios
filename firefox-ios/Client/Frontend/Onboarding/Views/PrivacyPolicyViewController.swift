@@ -14,7 +14,7 @@ class PrivacyPolicyViewController: UIViewController, Themeable {
 
     var notificationCenter: NotificationProtocol
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
 
     init(
         url: URL,
@@ -36,9 +36,9 @@ class PrivacyPolicyViewController: UIViewController, Themeable {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        listenForThemeChange(view)
         setupView()
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
     }
 
@@ -64,7 +64,11 @@ class PrivacyPolicyViewController: UIViewController, Themeable {
     // MARK: - Theming
     func applyTheme() {
         let theme = themeManager.getCurrentTheme(for: windowUUID)
-        navigationItem.rightBarButtonItem?.tintColor = theme.colors.actionPrimary
+        if #available(iOS 26.0, *) {
+            navigationItem.rightBarButtonItem?.tintColor = theme.colors.textOnLight
+        } else {
+            navigationItem.rightBarButtonItem?.tintColor = theme.colors.actionPrimary
+        }
     }
 }
 

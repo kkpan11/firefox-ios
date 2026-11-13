@@ -3,11 +3,12 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import UIKit
+import Common
 
 import protocol MozillaAppServices.NimbusApi
 import struct MozillaAppServices.AvailableExperiment
 
-class ExperimentsViewController: UIViewController {
+final class ExperimentsViewController: UIViewController {
     private let experimentsView = ExperimentsTableView()
     private let experiments: NimbusApi
     private var availableExperiments: [AvailableExperiment]
@@ -19,12 +20,27 @@ class ExperimentsViewController: UIViewController {
         super.init(nibName: nil, bundle: nil)
 
         navigationItem.title = "Experiments"
-        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .edit) { item in
-            self.showSettings()
-        }
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .edit,
+            target: self,
+            action: #selector(closeExperimentsPressed)
+        )
 
-        NotificationCenter.default.addObserver(forName: .nimbusExperimentsApplied, object: nil, queue: .main) { _ in
-            self.onExperimentsApplied()
+        NotificationCenter.default.addObserver(
+            forName: .nimbusExperimentsApplied,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            ensureMainThread {
+                self?.onExperimentsApplied()
+            }
+        }
+    }
+
+    @objc // Note: objc methods should always be marked nonisolated as `@MainActor` isolation can't be guaranteed
+    nonisolated func closeExperimentsPressed(_ sender: UIBarButtonItem) {
+        ensureMainThread {
+            self.showSettings()
         }
     }
 

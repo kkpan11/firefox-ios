@@ -112,11 +112,11 @@ struct CreditCardInputField: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 20)
         .onAppear {
-            applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            applyTheme(theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false))
         }
         .onReceive(NotificationCenter.default.publisher(for: .ThemeDidChange)) { notification in
             guard let uuid = notification.windowUUID, uuid == windowUUID else { return }
-            applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            applyTheme(theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false))
         }
     }
 
@@ -127,7 +127,7 @@ struct CreditCardInputField: View {
         errorColor = Color(color.textCritical)
         titleColor = Color(color.textSecondary)
         textFieldColor = Color(color.textPrimary)
-        backgroundColor = Color(color.layer2)
+        backgroundColor = Color(theme.isNova ? color.layerSurfaceMedium : color.layer2)
     }
 
     // MARK: Views

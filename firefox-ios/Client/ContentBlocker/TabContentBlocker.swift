@@ -11,19 +11,25 @@ extension Notification.Name {
 }
 
 protocol ContentBlockerTab: AnyObject {
+    @MainActor
+    var isPrivate: Bool { get }
+    @MainActor
     func currentURL() -> URL?
+    @MainActor
     func currentWebView() -> WKWebView?
+    @MainActor
     func imageContentBlockingEnabled() -> Bool
 }
 
-class TabContentBlocker {
+@MainActor
+class TabContentBlocker: Notifiable {
     weak var tab: ContentBlockerTab?
     let logger: Logger
+
     var isEnabled: Bool {
         return false
     }
 
-    @objc
     func notifiedTabSetupRequired() {}
 
     func currentlyEnabledLists() -> [String] {
@@ -52,14 +58,19 @@ class TabContentBlocker {
 
     var stats = TPPageStats()
 
+    /// Persists blocked-tracker stats long term. Set by subclasses that have
+    /// access to prefs; left nil when long-term recording is not desired.
+    var statsRecorder: TrackerBlockStatsStore?
+
     init(tab: ContentBlockerTab, logger: Logger = DefaultLogger.shared) {
         self.tab = tab
         self.logger = logger
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(notifiedTabSetupRequired),
-            name: .contentBlockerTabSetupRequired,
-            object: nil
+        startObservingNotifications(
+            withNotificationCenter: NotificationCenter.default,
+            forObserver: self,
+            observing: [
+                .contentBlockerTabSetupRequired
+            ]
         )
     }
 
@@ -74,5 +85,18 @@ class TabContentBlocker {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Notifiable
+
+    public func handleNotifications(_ notification: Notification) {
+        switch notification.name {
+        case .contentBlockerTabSetupRequired:
+            ensureMainThread {
+                self.notifiedTabSetupRequired()
+            }
+        default:
+            return
+        }
     }
 }

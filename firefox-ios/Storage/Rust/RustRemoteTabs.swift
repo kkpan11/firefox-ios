@@ -14,7 +14,8 @@ import struct MozillaAppServices.ClientRemoteTabs
 import struct MozillaAppServices.RemoteTabRecord
 import struct MozillaAppServices.PendingCommand
 
-public class RustRemoteTabs {
+// TODO: FXIOS-13209 Make RustRemoteTabs actually sendable
+public class RustRemoteTabs: @unchecked Sendable {
     let databasePath: String
     let queue: DispatchQueue
     var store: TabsStore?
@@ -130,7 +131,7 @@ public class RustRemoteTabs {
         }
     }
 
-    public func getClientGUIDs(completion: @escaping (Set<GUID>?, Error?) -> Void) {
+    public func getClientGUIDs(completion: @escaping @Sendable (Set<GUID>?, Error?) -> Void) {
         self.getAll().upon { result in
             if let failureValue = result.failureValue {
                 completion(nil, failureValue)
@@ -163,9 +164,9 @@ public class RustRemoteTabs {
                 }
                 .map { client -> ClientAndTabs in
                     // Sort tabs in descending order by lastUsed
-                    var clientCopy = client
-                    clientCopy.tabs.sort { $0.lastUsed > $1.lastUsed }
-                    return clientCopy
+                    var sortedTabs = client.tabs
+                    sortedTabs.sort { $0.lastUsed > $1.lastUsed }
+                    return ClientAndTabs(client: client.client, tabs: sortedTabs)
                 }
                 .sorted { lhs, rhs in
                     // Get the most recent tab timestamp for each client (or 0 if no tabs)
@@ -201,22 +202,7 @@ public class RustRemoteTabs {
         }
     }
 
-    public func removeRemoteCommand(deviceId: String, url: URL) {
-        queue.async { [unowned self] in
-            guard let tabsCommandQueue = self.tabsCommandQueue else {
-                let err = TabsApiError.UnexpectedTabsError(reason: "Command queue is not initialized") as MaybeErrorType
-                self.logger.log(err.description,
-                                level: .warning,
-                                category: .tabs)
-                return
-            }
-
-            tabsCommandQueue
-                .removeRemoteCommand(deviceId: deviceId, command: RemoteCommand.closeTab(url: url.absoluteString))
-        }
-    }
-
-    public func getUnsentCommandUrlsByDeviceId(deviceId: String, completion: @escaping ([String]) -> Void) {
+    public func getUnsentCommandUrlsByDeviceId(deviceId: String, completion: @Sendable @escaping ([String]) -> Void) {
         self.getUnsentCommandsByDeviceId(deviceId: deviceId) { commands in
             let urls = commands.map { item in
                 switch item.command {
@@ -246,7 +232,7 @@ public class RustRemoteTabs {
         }
     }
 
-    private func getUnsentCommandsByDeviceId(deviceId: String, completion: @escaping ([PendingCommand]) -> Void) {
+    private func getUnsentCommandsByDeviceId(deviceId: String, completion: @Sendable @escaping ([PendingCommand]) -> Void) {
         queue.async { [unowned self] in
             guard let tabsCommandQueue = self.tabsCommandQueue else {
                 let err = TabsApiError.UnexpectedTabsError(reason: "Command queue is not initialized") as MaybeErrorType
@@ -283,8 +269,8 @@ func filterSentCommands(unsentCommandUrls: [String], commands: [PendingCommand])
     return sentCommands
 }
 
-internal class RemoteTabsCommandQueue {
-    var commandStore: RemoteCommandStore
+final class RemoteTabsCommandQueue: Sendable {
+    let commandStore: RemoteCommandStore
     private let logger: Logger
 
     init(tabsStore: TabsStore, logger: Logger) {
@@ -373,8 +359,7 @@ public extension RemoteTabRecord {
             title: self.title,
             history: history,
             lastUsed: Timestamp(self.lastUsed),
-            icon: icon,
-            inactive: self.inactive
+            icon: icon
         )
     }
 }

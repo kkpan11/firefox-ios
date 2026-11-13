@@ -5,13 +5,13 @@
 import Foundation
 
 final class ContextMenuPreviewViewController: UIViewController {
-    private struct UX {
+    private enum UX {
         static let heightMultiplier: CGFloat = 0.8
     }
 
     private var hasSetPreferredContentSize = false
 
-    // Allows the view controller to resize once it knows it's current size1111
+    // Allows the view controller to resize once it knows it's current size
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
 

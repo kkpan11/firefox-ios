@@ -5,6 +5,7 @@
 import XCTest
 @testable import Common
 
+@MainActor
 final class DefaultThemeManagerTests: XCTestCase {
     let windowUUID: WindowUUID = .XCTestDefaultUUID
 
@@ -13,14 +14,16 @@ final class DefaultThemeManagerTests: XCTestCase {
     private var userDefaults: MockUserDefaults!
 
     // MARK: - Test lifecycle
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         userDefaults = MockUserDefaults()
+        DependencyHelperMock().bootstrapDependencies()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         userDefaults = nil
+        DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
     // MARK: - Initialization tests
@@ -259,14 +262,70 @@ final class DefaultThemeManagerTests: XCTestCase {
         XCTAssertEqual(sut.getCurrentTheme(for: windowUUID).type, expectedThemeInSystemMode)
     }
 
+    func testDTM_novaDesignOn_returnsNovaLightThemeForLightMode() {
+        let sut = createSubject(with: userDefaults, isNovaDesignOn: true)
+
+        XCTAssertTrue(sut.getCurrentTheme(for: windowUUID) is NovaLightTheme)
+        XCTAssertEqual(sut.getCurrentTheme(for: windowUUID).colors.layer1, NovaColors.Gray5)
+    }
+
+    func testDTM_novaDesignOn_returnsNovaDarkThemeForDarkMode() {
+        let sut = createSubject(with: userDefaults, isNovaDesignOn: true)
+        sut.setSystemTheme(isOn: false)
+        sut.setManualTheme(to: .dark)
+
+        XCTAssertTrue(sut.getCurrentTheme(for: windowUUID) is NovaDarkTheme)
+        XCTAssertEqual(sut.getCurrentTheme(for: windowUUID).colors.layer1, NovaColors.Gray75)
+    }
+
+    func testDTM_novaDesignOn_returnsNovaPrivateThemeForPrivateMode() {
+        let sut = createSubject(with: userDefaults, isNovaDesignOn: true)
+        sut.setPrivateTheme(isOn: true, for: windowUUID)
+
+        XCTAssertTrue(sut.getCurrentTheme(for: windowUUID) is NovaPrivateTheme)
+        XCTAssertEqual(sut.getCurrentTheme(for: windowUUID).colors.layer1, NovaColors.VioletDesaturated90)
+    }
+
+    func testDTM_novaDesignOff_returnsLegacyLightThemeForLightMode() {
+        let sut = createSubject(with: userDefaults, isNovaDesignOn: false)
+
+        XCTAssertTrue(sut.getCurrentTheme(for: windowUUID) is LightTheme)
+        XCTAssertEqual(sut.getCurrentTheme(for: windowUUID).colors.layer1, LightTheme().colors.layer1)
+    }
+
+    // MARK: - Private theme override
+
+    func testDTM_privateThemeOverrideOff_legacyInPrivateMode_keepsPrivateTheme() {
+        let sut = createSubject(with: userDefaults)
+        sut.setSystemTheme(isOn: false)
+        sut.setManualTheme(to: .light)
+        sut.setPrivateTheme(isOn: true, for: windowUUID)
+
+        XCTAssertTrue(sut.resolveTheme(for: windowUUID, privateOverride: false) is PrivateModeTheme)
+    }
+
+    func testDTM_privateThemeOverrideOn_inPrivateMode_forcingRegularTheme_returnsRegularTheme() {
+        let sut = createSubject(with: userDefaults, isNovaDesignOn: true, isPrivateThemeOverrideOn: true)
+        sut.setSystemTheme(isOn: false)
+        sut.setManualTheme(to: .light)
+        sut.setPrivateTheme(isOn: true, for: windowUUID)
+
+        XCTAssertTrue(sut.resolveTheme(for: windowUUID, privateOverride: false) is NovaLightTheme)
+    }
+
     // MARK: - Helper methods
 
     private func createSubject(with userDefaults: UserDefaultsInterface,
-                               file: StaticString = #file,
+                               isNovaDesignOn: Bool = false,
+                               isPrivateThemeOverrideOn: Bool = false,
+                               file: StaticString = #filePath,
                                line: UInt = #line) -> DefaultThemeManager {
         let subject = DefaultThemeManager(
             userDefaults: userDefaults,
-            sharedContainerIdentifier: "")
+            sharedContainerIdentifier: "",
+            isNovaDesignOnClosure: { isNovaDesignOn },
+            isPrivateThemeOverrideEnabledClosure: { isPrivateThemeOverrideOn }
+        )
         subject.setWindow(UIWindow(frame: .zero), for: windowUUID)
         trackForMemoryLeaks(subject, file: file, line: line)
 

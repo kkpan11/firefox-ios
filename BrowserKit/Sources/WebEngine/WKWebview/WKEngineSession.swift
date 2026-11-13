@@ -6,12 +6,14 @@ import Common
 import Foundation
 @preconcurrency import WebKit
 
+@MainActor
 protocol SessionHandler: AnyObject {
     func commitURLChange()
     func fetchMetadata(withURL url: URL)
     func received(error: NSError, forURL url: URL)
 }
 
+@MainActor
 protocol WKJavascriptInterface: AnyObject {
     /// Calls a javascript method.
     /// - Parameter method: The method signature to be called in javascript world.
@@ -19,6 +21,7 @@ protocol WKJavascriptInterface: AnyObject {
     func callJavascriptMethod(_ method: String, scope: String?)
 }
 
+@MainActor
 class WKEngineSession: NSObject,
                        EngineSession,
                        WKEngineWebViewDelegate,
@@ -30,8 +33,7 @@ class WKEngineSession: NSObject,
             uiHandler.delegate = delegate
         }
     }
-    weak var telemetryProxy: EngineTelemetryProxy?
-    weak var fullscreenDelegate: FullscreenDelegate?
+    nonisolated(unsafe) weak var telemetryProxy: EngineTelemetryProxy?
 
     private(set) var webView: WKEngineWebView
     var sessionData = WKEngineSessionData()
@@ -49,7 +51,7 @@ class WKEngineSession: NSObject,
         }
     }
 
-    // TODO: With Swift 6 we can use default params in the init
+    // TODO: FXIOS-13670 With Swift 6 we can use default params in the init
     @MainActor
     public static func sessionFactory(
         userScriptManager: WKUserScriptManager,
@@ -63,7 +65,7 @@ class WKEngineSession: NSObject,
         let scriptResponder = EngineSessionScriptResponder()
         let metadataFetcher = DefaultMetadataFetcherHelper()
         let navigationHandler = DefaultNavigationHandler()
-        let uiHandler = DefaultUIHandler(sessionDependencies: dependencies)
+        let uiHandler = DefaultUIHandler.factory(sessionDependencies: dependencies)
 
         return WKEngineSession(
             userScriptManager: userScriptManager,
@@ -308,6 +310,10 @@ class WKEngineSession: NSObject,
         webView.setValue(newZoom, forKey: zoomKey)
     }
 
+    func viewPrintFormatter() -> UIPrintFormatter {
+        return webView.viewPrintFormatter()
+    }
+
     // MARK: - SessionHandler
 
     func commitURLChange() {
@@ -340,6 +346,7 @@ class WKEngineSession: NSObject,
 
     // MARK: - Content scripts
 
+    @MainActor
     private func addContentScripts(readerModeDelegate: WKReaderModeDelegate?) {
         scriptResponder.session = self
         let searchProviders = delegate?.adsSearchProviderModels() ?? []
@@ -356,8 +363,15 @@ class WKEngineSession: NSObject,
         contentScriptManager.addContentScript(readerMode,
                                               name: ReaderModeContentScript.name(),
                                               forSession: self)
+
+        contentScriptManager.addContentScriptToPage(
+            PrintContentScript(webView: webView),
+            name: PrintContentScript.name(),
+            forSession: self
+        )
     }
 
+    @MainActor
     func setReaderMode(style: ReaderModeStyle, namespace: ReaderModeInfo) {
         webView.evaluateJavascriptInDefaultContentWorld(
             "\(namespace.rawValue).setStyle(\(style.encode()))"
@@ -403,8 +417,6 @@ class WKEngineSession: NSObject,
             break
         case .hasOnlySecureContent(let hasOnlySecureContent):
             handleHasOnlySecureContentChanged(hasOnlySecureContent)
-        case .isFullScreen(let isFullScreen):
-            handleFullscreen(isFullScreen: isFullScreen)
         }
     }
 
@@ -448,14 +460,6 @@ class WKEngineSession: NSObject,
 
         // Update session data, inform delegate, fetch metadata
         commitURLChange()
-    }
-
-    func handleFullscreen(isFullScreen: Bool) {
-        if isFullScreen {
-            fullscreenDelegate?.enteringFullscreen()
-        } else {
-            fullscreenDelegate?.exitingFullscreen()
-        }
     }
 
     // MARK: - MetadataFetcherDelegate

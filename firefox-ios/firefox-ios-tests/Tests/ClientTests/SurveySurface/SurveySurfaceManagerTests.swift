@@ -7,19 +7,20 @@ import Common
 import UIKit
 @testable import Client
 
+@MainActor
 class SurveySurfaceManagerTests: XCTestCase {
     private var messageManager: MockGleanPlumbMessageManagerProtocol!
     let windowUUID: WindowUUID = .XCTestDefaultUUID
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
         messageManager = MockGleanPlumbMessageManagerProtocol()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         messageManager = nil
+        try await super.tearDown()
     }
 
     func testNilMessage_surveySurfaceShouldNotShow() {
@@ -42,6 +43,7 @@ class SurveySurfaceManagerTests: XCTestCase {
         XCTAssertTrue(subject.shouldShowSurveySurface)
     }
 
+    @MainActor
     func testManager_surveySurfaceIsNotNil() {
         let manager = setupStandardConditions()
         XCTAssertTrue(manager.shouldShowSurveySurface)
@@ -50,6 +52,7 @@ class SurveySurfaceManagerTests: XCTestCase {
         XCTAssertNotNil(subject)
     }
 
+    @MainActor
     func testManager_surveySurfaceInfoIsExpected() {
         let manager = setupStandardConditions()
         XCTAssertTrue(manager.shouldShowSurveySurface)
@@ -82,6 +85,7 @@ class SurveySurfaceManagerTests: XCTestCase {
         XCTAssertEqual(messageManager.onMessageDismissedCalled, 0)
     }
 
+    @MainActor
     func testManager_didTapTakeSurvey_called() {
         let manager = setupStandardConditions()
         XCTAssertTrue(manager.shouldShowSurveySurface)
@@ -101,11 +105,10 @@ class SurveySurfaceManagerTests: XCTestCase {
         XCTAssertEqual(messageManager.onMessagePressedCalled, 0)
         XCTAssertEqual(messageManager.onMessageDismissedCalled, 1)
     }
-}
 
-// MARK: - Helpers
-extension SurveySurfaceManagerTests {
-    func createSubject(file: StaticString = #file,
+    // MARK: - Helpers
+
+    func createSubject(file: StaticString = #filePath,
                        line: UInt = #line
     ) -> SurveySurfaceManager {
         let subject = SurveySurfaceManager(windowUUID: windowUUID, and: messageManager)
@@ -147,6 +150,7 @@ class MockSurveyMessageDataProtocol: MessageDataProtocol {
     var title: String? = "title label test"
     var text = "text label test"
     var buttonLabel: String? = "button label test"
+    var shouldRandomizeOptions = false
     var experiment: String?
     var actionParams: [String: String] = [:]
     var microsurveyConfig: MicrosurveyConfig?

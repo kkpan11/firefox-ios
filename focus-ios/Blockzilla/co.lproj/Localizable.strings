@@ -80,7 +80,7 @@
 "Autocomplete.customUrlAdded" = "L’indirizzu web persunalizatu novu hè aghjuntu.";
 
 /* Description for enabling or disabling the default list. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"Autocomplete.defaultDescriptoin" = "Attivà per chì %@ compii autumaticamente più di 450 indirizzi populari in a barra d’indirizzu.";
+"Autocomplete.defaultDescriptoin" = "Attivà per chì %@ compii autumaticamente più di 450 indirizzi pupulari in a barra d’indirizzu.";
 
 /* label describing URL Autocomplete as disabled */
 "Autocomplete.disabled" = "Disattivata";
@@ -104,10 +104,10 @@
 "Autocomplete.mySitesDesc" = "Attivà per chì %@ compii autumaticamente i vostri indirizzi web favuriti.";
 
 /* Label for enabling or disabling top sites */
-"Autocomplete.topSites" = "Siti populari";
+"Autocomplete.topSites" = "Siti pupulari";
 
 /* Title for the action button shown on the Splash Screen which gives the user the ability to log in with biometrics. */
-"BiometricAuthentication.UnlockButton.Title" = "Sbluccà";
+"BiometricAuthentication.UnlockButton.Title" = "Spalancà";
 
 /* Create a new session after failing a biometric check */
 "BiometricPrompt.newSession" = "Sessione nova";
@@ -322,14 +322,17 @@
 /* Description associated with the Crash Reports toggle on settings screen */
 "Settings.detailTextCrashReports.V2" = "Què ci permette d’identificà è currege i prublemi cù u navigatore.";
 
+/* Description associated to the Rollouts toggle on the settings screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextRollouts" = "%@ amenderà e funzioni, e perfurmenze è a stabilità trà e messe à livellu. I cambiamenti sò appiecati à distanza.";
+
 /* Description associated to the Search Suggestions toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
 "Settings.detailTextSearchSuggestion" = "%@ manderà à u vostru mutore di ricerca ciò chì vo stampittate in a barra d’indirizzu.";
 
-/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
 "Settings.detailTextSendUsageData" = "Mozilla face casu di cullettà solu i dati chì sò ghjuvevule per rigalà è amendà %@ per tutti.";
 
-/* Description associated to the Studies toggle on the settings screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"Settings.detailTextStudies" = "%@ pò installà è lancià studii di quandu in quandu.";
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextSendUsageData.v2" = "Mozilla face casu di cullettà solu i dati chì sò ghjuvevule per rigalà è amendà %@ per tutti.";
 
 /* Title for section in settings menu */
 "Settings.general" = "Generale";
@@ -439,14 +442,14 @@
 /* Show home screen tips toggle label on settings screen */
 "Settings.toggleHomeScreenTips" = "Affissà minichichje nant’à u screnu d’accolta";
 
+/* Label for Rollouts toggle on the settings screen */
+"Settings.toggleRollouts" = "Permette l’amendamenti à distanza";
+
 /* Safari toggle label on settings screen */
 "Settings.toggleSafari" = "Safari";
 
 /* Label for Send Usage Data toggle on main screen */
 "Settings.toggleSendUsageData" = "Mandà i dati d’adopru";
-
-/* Label for Studies toggle on the settings screen */
-"Settings.toggleStudies" = "Studii";
 
 /* Label for toggle on settings screen */
 "Settings.toggleTouchID" = "Impiegà Touch ID per spalancà l’appiecazione";

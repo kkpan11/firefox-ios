@@ -4,25 +4,31 @@
 
 import Common
 import Redux
-import Storage
+
+import struct Storage.RemoteClient
+import struct Storage.RemoteTab
 
 struct RemoteTabConfiguration {
     let client: RemoteClient
     let tab: RemoteTab
 }
 
-final class RemoteTabsAction: Action {
-    var mostRecentSyncedTab: RemoteTabConfiguration?
+struct RemoteTabsAction: Action {
+    let windowUUID: WindowUUID
+    let actionType: ActionType
+    let mostRecentSyncedTab: RemoteTabConfiguration?
 
     init(
         mostRecentSyncedTab: RemoteTabConfiguration? = nil,
         windowUUID: WindowUUID,
         actionType: any ActionType
     ) {
+        self.windowUUID = windowUUID
+        self.actionType = actionType
         self.mostRecentSyncedTab = mostRecentSyncedTab
-        super.init(windowUUID: windowUUID, actionType: actionType)
     }
 }
+
 enum RemoteTabsActionType: ActionType {
     case fetchRecentTab
 }

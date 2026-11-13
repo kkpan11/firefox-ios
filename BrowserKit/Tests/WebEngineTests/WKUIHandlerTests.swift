@@ -8,76 +8,66 @@ import XCTest
 import Common
 @testable import WebEngine
 
+@MainActor
 final class WKUIHandlerTests: XCTestCase {
     private var sessionDelegate: MockEngineSessionDelegate!
     private var mockDecider: MockPolicyDecider!
     private var mockApplication: MockApplication!
     private let testURL = URL(string: "https://www.example.com")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockApplication = MockApplication()
         mockDecider = MockPolicyDecider()
         sessionDelegate = MockEngineSessionDelegate()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         mockApplication = nil
         mockDecider = nil
         sessionDelegate = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testRequestMediaCaptureSuccess() {
         let subject = createSubject(isActive: true)
 
         let expectation = expectation(description: "Wait for the decision handler to be called")
-
-        let decisionHandler = { (decision: WKPermissionDecision) in
+        let decisionHandler: @Sendable (WKPermissionDecision) -> Void = { (decision: WKPermissionDecision) in
             XCTAssertEqual(decision, .prompt)
             expectation.fulfill()
         }
-        subject.webView(MockWKWebView(),
-                        requestMediaCapturePermissionFor: MockWKSecurityOrigin.new(nil),
-                        initiatedByFrame: MockWKFrameInfo(),
-                        type: .cameraAndMicrophone,
-                        decisionHandler: decisionHandler
-        )
+
+        subject.requestMediaCapturePermission(decisionHandler: decisionHandler)
         wait(for: [expectation])
     }
 
     func testRequestMediaCaptureIsActiveFalse() {
         let subject = createSubject(isActive: false)
+
         let expectation = expectation(description: "Wait for the decision handler to be called")
 
-        let decisionHandler = { (decision: WKPermissionDecision) in
+        let decisionHandler: @Sendable (WKPermissionDecision) -> Void = { (decision: WKPermissionDecision) in
             XCTAssertEqual(decision, .deny)
             expectation.fulfill()
         }
-        subject.webView(MockWKWebView(),
-                        requestMediaCapturePermissionFor: MockWKSecurityOrigin.new(nil),
-                        initiatedByFrame: MockWKFrameInfo(),
-                        type: .cameraAndMicrophone,
-                        decisionHandler: decisionHandler
-        )
+
+        subject.requestMediaCapturePermission(decisionHandler: decisionHandler)
         wait(for: [expectation])
     }
 
     func testRequestMediaCaptureDelegateReturnsFalse() {
         sessionDelegate.hasMediaCapturePermission = false
         let subject = createSubject(isActive: true)
+
         let expectation = expectation(description: "Wait for the decision handler to be called")
 
-        let decisionHandler = { (decision: WKPermissionDecision) in
+        let decisionHandler: @Sendable (WKPermissionDecision) -> Void = { (decision: WKPermissionDecision) in
             XCTAssertEqual(decision, .deny)
             expectation.fulfill()
         }
-        subject.webView(MockWKWebView(),
-                        requestMediaCapturePermissionFor: MockWKSecurityOrigin.new(nil),
-                        initiatedByFrame: MockWKFrameInfo(),
-                        type: .cameraAndMicrophone,
-                        decisionHandler: decisionHandler
-        )
+
+        subject.requestMediaCapturePermission(decisionHandler: decisionHandler)
         wait(for: [expectation])
     }
 
@@ -162,7 +152,7 @@ final class WKUIHandlerTests: XCTestCase {
         XCTAssertEqual(mockApplication.openCalled, 0)
     }
 
-    func createSubject(isActive: Bool = false) -> WKUIHandler {
+    func createSubject(isActive: Bool = false) -> DefaultUIHandler {
         let uiHandler = DefaultUIHandler(
             sessionDependencies: DefaultTestDependencies().sessionDependencies,
             application: mockApplication,

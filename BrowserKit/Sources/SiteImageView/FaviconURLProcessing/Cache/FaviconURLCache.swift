@@ -4,7 +4,7 @@
 
 import Foundation
 
-protocol FaviconURLCache {
+protocol FaviconURLCache: Sendable {
     func getURLFromCache(cacheKey: String) async throws -> URL
     func cacheURL(cacheKey: String, faviconURL: URL) async
     func clearCache() async
@@ -25,8 +25,9 @@ actor DefaultFaviconURLCache: FaviconURLCache {
     init(fileManager: URLCacheFileManager = DefaultURLCacheFileManager()) {
         self.fileManager = fileManager
 
-        Task {
-            await retrieveCache()
+        Task { [weak self] in
+            let data = await fileManager.getURLCache()
+            await self?.loadCache(from: data)
         }
     }
 
@@ -59,12 +60,12 @@ actor DefaultFaviconURLCache: FaviconURLCache {
 
     private func preserveCache() {
         preserveTask?.cancel()
-        preserveTask = Task {
-            try? await Task.sleep(nanoseconds: preserveDebounceTime)
+        preserveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: self?.preserveDebounceTime ?? 0)
             guard !Task.isCancelled,
-                  let data = archiveCacheData()
+                  let data = await self?.archiveCacheData()
             else { return }
-            await fileManager.saveURLCache(data: data)
+            await self?.fileManager.saveURLCache(data: data)
         }
     }
 
@@ -80,8 +81,10 @@ actor DefaultFaviconURLCache: FaviconURLCache {
         return archiver.encodedData
     }
 
-    private func retrieveCache() async {
-        guard let data = await fileManager.getURLCache(),
+    /// Takes the already-read cache data rather than reading it itself, so the fetch can happen
+    /// without holding a reference to this actor. See the `Task` in `init`.
+    private func loadCache(from data: Data?) {
+        guard let data,
               let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: data),
               let cacheList = unarchiver.decodeDecodable([FaviconURL].self, forKey: CacheConstants.cacheKey)
         else {

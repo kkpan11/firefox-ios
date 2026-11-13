@@ -322,14 +322,17 @@
 /* Description associated with the Crash Reports toggle on settings screen */
 "Settings.detailTextCrashReports.V2" = "Điều này giúp chúng tôi chẩn đoán và khắc phục sự cố của trình duyệt.";
 
+/* Description associated to the Rollouts toggle on the settings screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextRollouts" = "%@ sẽ cải thiện các tính năng, hiệu năng và độ ổn định giữa các bản cập nhật. Các thay đổi được áp dụng từ xa.";
+
 /* Description associated to the Search Suggestions toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
 "Settings.detailTextSearchSuggestion" = "%@ sẽ gửi nội dung bạn nhập vào thanh địa chỉ đến công cụ tìm kiếm của bạn.";
 
-/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
 "Settings.detailTextSendUsageData" = "Mozilla chỉ thu thập những gì chúng tôi cần cung cấp và cải tiến %@ cho tất cả mọi người.";
 
-/* Description associated to the Studies toggle on the settings screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"Settings.detailTextStudies" = "%@ có thể cài đặt và chạy các nghiên cứu theo thời gian.";
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextSendUsageData.v2" = "Mozilla chỉ thu thập những gì chúng tôi cần cung cấp và cải tiến %@ cho tất cả mọi người.";
 
 /* Title for section in settings menu */
 "Settings.general" = "Tổng quát";
@@ -439,14 +442,14 @@
 /* Show home screen tips toggle label on settings screen */
 "Settings.toggleHomeScreenTips" = "Hiện mẹo trên màn hình chính";
 
+/* Label for Rollouts toggle on the settings screen */
+"Settings.toggleRollouts" = "Cho phép cải tiến từ xa";
+
 /* Safari toggle label on settings screen */
 "Settings.toggleSafari" = "Safari";
 
 /* Label for Send Usage Data toggle on main screen */
 "Settings.toggleSendUsageData" = "Gửi dữ liệu sử dụng";
-
-/* Label for Studies toggle on the settings screen */
-"Settings.toggleStudies" = "Nghiên cứu";
 
 /* Label for toggle on settings screen */
 "Settings.toggleTouchID" = "Sử dụng Touch ID để mở ứng dụng";
@@ -530,13 +533,13 @@
 "ShowMeHowOnboarding.SubtitleStepOne.V2" = "Nhấn và giữ biểu tượng ứng dụng đến khi nó rung rinh.";
 
 /* This is the subtitle text for step three that is displayed in the Show Me How onboarding screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"ShowMeHowOnboarding.SubtitleStepThree.V2" = "Tìm kiếm %@. Sau đó chọn tiện ích hiển thị.";
+"ShowMeHowOnboarding.SubtitleStepThree.V2" = "Tìm kiếm %@. Sau đó chọn widget.";
 
 /* This is the subtitle text for step two that is displayed in the Show Me How Onboarding Screen */
 "ShowMeHowOnboarding.SubtitleStepTwo.V2" = "Nhấn vào nút dấu cộng.";
 
 /* This is the title text that is displayed in the Show Me How Onboarding Screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"ShowMeHowOnboarding.Title.V2" = "Hiển thị thêm %@";
+"ShowMeHowOnboarding.Title.V2" = "Thêm widget %@";
 
 /* Button to add a favorite URL to Siri. */
 "Siri.add" = "Thêm";
@@ -689,7 +692,7 @@
 "WidgetOnboardingCard.ActionButton" = "Hướng dẫn tôi";
 
 /* Subtitle shown on card view explaining the app has a widget option. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"WidgetOnboardingCard.Subtitle" = "Chúng tôi sẽ để bạn ở chế độ duyệt web riêng tư, nhưng hãy bắt đầu nhanh hơn vào lần sau với tiện ích %@ trên màn hình chính của bạn.";
+"WidgetOnboardingCard.Subtitle" = "Chúng tôi sẽ để bạn ở chế độ duyệt web riêng tư, nhưng hãy bắt đầu nhanh hơn vào lần sau với widget %@ trên màn hình chính của bạn.";
 
 /* Title shown on card view explaining the app has a widget option */
 "WidgetOnboardingCard.Title" = "Đã xóa lịch sử duyệt web! 🎉";

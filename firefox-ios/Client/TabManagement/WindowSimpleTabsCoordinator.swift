@@ -4,17 +4,20 @@
 
 import Foundation
 import WidgetKit
+import Common
 
+@MainActor
 protocol WindowSimpleTabsProvider {
     func windowSimpleTabs() -> [String: SimpleTab]
 }
 
 final class WindowSimpleTabsCoordinator {
-    private struct Timing {
+    private enum Timing {
         static let throttleDelay = 1.0
     }
-    private let throttler = GCDThrottler(seconds: Timing.throttleDelay)
+    private let throttler = MainThreadThrottler(seconds: Timing.throttleDelay)
 
+    @MainActor
     func saveSimpleTabs(for providers: [WindowSimpleTabsProvider]) {
         throttler.throttle {
             let allTabs = providers.reduce([:], { $0.merge(with: $1.windowSimpleTabs()) })

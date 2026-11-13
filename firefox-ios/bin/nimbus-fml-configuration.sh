@@ -10,10 +10,7 @@
 ## The `CONFIGURATION` to derive the channel used in the feature manifest.
 CHANNEL=
 case "${CONFIGURATION}" in
-    Fennec)
-        CHANNEL="developer"
-        ;;
-    Fennec_Testing)
+    Debug)
         CHANNEL="developer"
         ;;
     Fennec_Enterprise)
@@ -39,10 +36,9 @@ export CHANNEL
 # export MOZ_APPSERVICES_MODULE=
 fml_file=nimbus.fml.yaml
 
-## Set the list of directories to scan for *.fml.yaml files.
-## This can have individual files, but are relative to SOURCE_ROOT
+## Set the list of FML files to generate Swift code from, relative to SOURCE_ROOT.
 ## Default: $PROJECT
-export MODULES="$PROJECT $fml_file nimbus-features/messaging/messaging.fml.yaml"
+export MODULES="$fml_file nimbus-features/messaging/messaging.fml.yaml"
 
 ## Set the directory where the generated files are placed.
 ## This is relative to SOURCE_ROOT.

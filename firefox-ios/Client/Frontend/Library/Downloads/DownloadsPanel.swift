@@ -10,8 +10,9 @@ class DownloadsPanel: UIViewController,
                       UITableViewDelegate,
                       UITableViewDataSource,
                       LibraryPanel,
-                      Themeable {
-    private struct UX {
+                      Themeable,
+                      Notifiable {
+    private enum UX {
         static let welcomeScreenTopPadding: CGFloat = 120
         static let welcomeScreenPadding: CGFloat = 15
         static let welcomeScreenItemWidth: CGFloat = 170
@@ -20,27 +21,29 @@ class DownloadsPanel: UIViewController,
     weak var libraryPanelDelegate: LibraryPanelDelegate?
     weak var navigationHandler: DownloadsNavigationHandler?
     var state: LibraryPanelMainState
+    var isTransitioning = false
     var bottomToolbarItems = [UIBarButtonItem]()
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
     private var viewModel = DownloadsPanelViewModel()
     private let logger: Logger
-    private let events: [Notification.Name] = [.FileDidDownload,
-                                               .PrivateDataClearedDownloadedFiles,
-                                               .DynamicFontChanged,
-                                               .DownloadPanelFileWasDeleted]
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { windowUUID }
 
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
+
     private lazy var emptyStateOverlayView: UIView = self.createEmptyStateOverlayView()
 
-    private lazy var tableView: UITableView = .build { tableView in
+    private lazy var tableView: UITableView = .build({ tableView in
         tableView.register(TwoLineImageOverlayCell.self,
                            forCellReuseIdentifier: TwoLineImageOverlayCell.cellIdentifier)
         tableView.register(SiteTableViewHeader.self,
                            forHeaderFooterViewReuseIdentifier: SiteTableViewHeader.cellIdentifier)
-        tableView.layoutMargins = .zero
+        if tableView.style == .plain {
+            tableView.layoutMargins = .zero
+        }
         tableView.keyboardDismissMode = .onDrag
         tableView.accessibilityIdentifier = "DownloadsTable"
         tableView.cellLayoutMarginsFollowReadableWidth = false
@@ -48,7 +51,9 @@ class DownloadsPanel: UIViewController,
 
         // Set an empty footer to prevent empty cells from appearing in the list.
         tableView.tableFooterView = UIView()
-    }
+    }, {
+        UITableView(frame: .zero, style: .libraryPanel)
+    })
 
     // MARK: - Lifecycle
     init(windowUUID: WindowUUID,
@@ -61,14 +66,17 @@ class DownloadsPanel: UIViewController,
         self.state = .downloads
         self.windowUUID = windowUUID
         super.init(nibName: nil, bundle: nil)
-        events.forEach {
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(notificationReceived),
-                name: $0,
-                object: nil
-            )
-        }
+
+        startObservingNotifications(
+            withNotificationCenter: NotificationCenter.default,
+            forObserver: self,
+            observing: [
+                .FileDidDownload,
+                .PrivateDataClearedDownloadedFiles,
+                UIContentSizeCategory.didChangeNotification,
+                .DownloadPanelFileWasDeleted
+            ]
+        )
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -95,37 +103,32 @@ class DownloadsPanel: UIViewController,
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
 
-        listenForThemeChange(view)
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
     }
 
-    deinit {
-        // The view might outlive this view controller thanks to animations;
-        // explicitly nil out its references to us to avoid crashes. Bug 1218826.
-        tableView.dataSource = nil
-        tableView.delegate = nil
-    }
+    func handleNotifications(_ notification: Notification) {
+        let notificationName = notification.name
+        let notificationWindowUUID = notification.windowUUID
 
-    @objc
-    func notificationReceived(_ notification: Notification) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-
-            switch notification.name {
+        ensureMainThread {
+            switch notificationName {
             case .FileDidDownload, .PrivateDataClearedDownloadedFiles:
                 self.reloadData()
-            case .DynamicFontChanged:
+
+            case UIContentSizeCategory.didChangeNotification:
                 self.reloadData()
                 if self.emptyStateOverlayView.superview != nil {
                     self.emptyStateOverlayView.removeFromSuperview()
                 }
                 self.emptyStateOverlayView = self.createEmptyStateOverlayView()
-                break
+
             case .DownloadPanelFileWasDeleted:
-                guard let uuid = notification.windowUUID,
+                guard let uuid = notificationWindowUUID,
                       uuid != self.windowUUID else { return }
                 // If another window's download panel has deleted a file, ensure we refresh our table
                 self.reloadData()
+
             default:
                 break
             }
@@ -137,6 +140,12 @@ class DownloadsPanel: UIViewController,
 
         tableView.reloadData()
         updateEmptyPanelState()
+    }
+
+    private func currentTheme() -> Theme {
+        return themeManager.resolveTheme(for: windowUUID,
+                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme)
     }
 
     private func deleteDownloadedFile(_ downloadedFile: DownloadedFile) -> Bool {
@@ -155,8 +164,11 @@ class DownloadsPanel: UIViewController,
     }
 
     private func shareDownloadedFile(_ downloadedFile: DownloadedFile, indexPath: IndexPath) {
+        // Since this file is already downloaded, we don't have a remote URL to use for the "Send to Device" activity
+        let shareType = ShareType.file(url: downloadedFile.path, remoteURL: nil)
+
         let shareActivityViewController = ShareManager.createActivityViewController(
-            shareType: .file(url: downloadedFile.path),
+            shareType: shareType,
             shareMessage: nil,
             completionHandler: { _, _ in }
         )
@@ -190,7 +202,7 @@ class DownloadsPanel: UIViewController,
     ) -> UIImage? {
         let radius: CGFloat = 5.0
         let strokeWidth: CGFloat = 1.0
-        let theme = themeManager.getCurrentTheme(for: windowUUID)
+        let theme = currentTheme()
         let strokeColor: UIColor = theme.colors.iconSecondary
         let fontSize: CGFloat = 9.0
 
@@ -235,10 +247,10 @@ class DownloadsPanel: UIViewController,
                 view.bringSubviewToFront(emptyStateOverlayView)
 
                 NSLayoutConstraint.activate([
-                    emptyStateOverlayView.topAnchor.constraint(equalTo: view.topAnchor),
-                    emptyStateOverlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                    emptyStateOverlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                    emptyStateOverlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+                    emptyStateOverlayView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                    emptyStateOverlayView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                    emptyStateOverlayView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+                    emptyStateOverlayView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor)
                 ])
             }
         } else {
@@ -247,11 +259,11 @@ class DownloadsPanel: UIViewController,
     }
 
     private func createEmptyStateOverlayView() -> UIView {
-        let theme = themeManager.getCurrentTheme(for: windowUUID)
-        let overlayView: UIView = .build { view in
+        let theme = currentTheme()
+        let overlayView: UIScrollView = .build { view in
             view.backgroundColor = theme.colors.layer1
-            view.translatesAutoresizingMaskIntoConstraints = false
         }
+        let contentView: UIView = .build()
         let logoImageView: UIImageView = .build { imageView in
             imageView.image = UIImage.templateImageNamed(StandardImageIdentifiers.Large.download)?
                 .withRenderingMode(.alwaysTemplate)
@@ -266,18 +278,30 @@ class DownloadsPanel: UIViewController,
             label.adjustsFontSizeToFitWidth = true
         }
 
-        overlayView.addSubview(logoImageView)
-        overlayView.addSubview(welcomeLabel)
+        overlayView.addSubview(contentView)
+        contentView.addSubview(logoImageView)
+        contentView.addSubview(welcomeLabel)
 
         NSLayoutConstraint.activate([
-            logoImageView.topAnchor.constraint(equalTo: overlayView.topAnchor, constant: UX.welcomeScreenTopPadding),
-            logoImageView.centerXAnchor.constraint(equalTo: overlayView.centerXAnchor),
+            contentView.leadingAnchor.constraint(equalTo: overlayView.contentLayoutGuide.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: overlayView.contentLayoutGuide.trailingAnchor),
+            contentView.topAnchor.constraint(equalTo: overlayView.contentLayoutGuide.topAnchor),
+            contentView.bottomAnchor.constraint(equalTo: overlayView.contentLayoutGuide.bottomAnchor),
+            contentView.widthAnchor.constraint(equalTo: overlayView.frameLayoutGuide.widthAnchor),
+            contentView.heightAnchor.constraint(greaterThanOrEqualTo: overlayView.frameLayoutGuide.heightAnchor),
+
+            logoImageView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.welcomeScreenTopPadding),
+            logoImageView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             logoImageView.heightAnchor.constraint(equalToConstant: 60),
             logoImageView.widthAnchor.constraint(equalToConstant: 60),
 
-            welcomeLabel.centerXAnchor.constraint(equalTo: overlayView.centerXAnchor),
+            welcomeLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             welcomeLabel.topAnchor.constraint(equalTo: logoImageView.bottomAnchor, constant: UX.welcomeScreenPadding),
-            welcomeLabel.widthAnchor.constraint(equalToConstant: UX.welcomeScreenItemWidth)
+            welcomeLabel.widthAnchor.constraint(equalToConstant: UX.welcomeScreenItemWidth),
+            welcomeLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor,
+                                                 constant: -UX.welcomeScreenPadding),
+            welcomeLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor,
+                                                 constant: -UX.welcomeScreenPadding).priority(.defaultLow)
         ])
 
         return overlayView
@@ -287,9 +311,10 @@ class DownloadsPanel: UIViewController,
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let cell = tableView.dequeueReusableCell(withIdentifier: TwoLineImageOverlayCell.cellIdentifier,
                                                        for: indexPath) as? TwoLineImageOverlayCell else {
-            logger.log("Failed to dequeue TwoLineImageOverlayCell at indexPath: \(indexPath)",
+            logger.log("Failed to dequeue TwoLineImageOverlayCell",
                        level: .fatal,
-                       category: .library)
+                       category: .library,
+                       extra: ["indexPath": "\(indexPath)"])
             return UITableViewCell()
         }
 
@@ -298,7 +323,7 @@ class DownloadsPanel: UIViewController,
 
     func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
         if let header = view as? UITableViewHeaderFooterView {
-            let theme = themeManager.getCurrentTheme(for: windowUUID)
+            let theme = currentTheme()
             header.textLabel?.textColor = theme.colors.textPrimary
             header.contentView.backgroundColor = theme.colors.layer1
         }
@@ -319,12 +344,18 @@ class DownloadsPanel: UIViewController,
 
         let title = viewModel.headerTitle(for: section) ?? ""
 
-        let headerViewModel = SiteTableViewHeaderModel(title: title,
-                                                       isCollapsible: false,
-                                                       collapsibleState: nil)
+        let headerViewModel = SiteTableViewHeaderModel(
+            title: title,
+            accessory: .none
+        )
         headerView.configure(headerViewModel)
-        headerView.showBorder(for: .top, !viewModel.isFirstSection(section))
-        headerView.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+        if tableView.style == .insetGrouped {
+            headerView.showBorder(for: .top, false)
+            headerView.showBorder(for: .bottom, false)
+        } else {
+            headerView.showBorder(for: .top, !viewModel.isFirstSection(section))
+        }
+        headerView.applyTheme(theme: currentTheme())
 
         return headerView
     }
@@ -335,7 +366,9 @@ class DownloadsPanel: UIViewController,
             cell.titleLabel.text = downloadedFile.filename
             cell.descriptionLabel.text = downloadedFile.formattedSize
             cell.leftImageView.manuallySetImage(iconForFileExtension(downloadedFile.fileExtension) ?? UIImage())
-            cell.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            let theme = currentTheme()
+            cell.applyTheme(theme: theme)
+            cell.applyGroupedBackground(theme: theme, in: tableView)
         }
         return cell
     }
@@ -423,7 +456,7 @@ class DownloadsPanel: UIViewController,
         emptyStateOverlayView = createEmptyStateOverlayView()
         updateEmptyPanelState()
 
-        let theme = themeManager.getCurrentTheme(for: windowUUID)
+        let theme = currentTheme()
         tableView.backgroundColor = theme.colors.layer1
         tableView.separatorColor = theme.colors.borderPrimary
 

@@ -37,12 +37,12 @@ final class MockWindowManager: WindowManager {
         wrappedManager.newBrowserWindowConfigured(windowInfo, uuid: uuid)
     }
 
-    func tabManager(for windowUUID: WindowUUID) -> TabManager {
+    func tabManager(for windowUUID: WindowUUID) -> TabManager? {
         return tabManager
     }
 
     func allWindowTabManagers() -> [TabManager] {
-        wrappedManager.allWindowTabManagers()
+        overrideWindows ? [tabManager] : wrappedManager.allWindowTabManagers()
     }
 
     func allWindowUUIDs(includingReserved: Bool) -> [WindowUUID] {
@@ -53,8 +53,8 @@ final class MockWindowManager: WindowManager {
         wrappedManager.windowWillClose(uuid: uuid)
     }
 
-    func reserveNextAvailableWindowUUID(isIpad: Bool) -> ReservedWindowUUID {
-        wrappedManager.reserveNextAvailableWindowUUID(isIpad: isIpad)
+    func reserveNextAvailableWindowUUID(supportsMultipleWindows: Bool) -> ReservedWindowUUID {
+        wrappedManager.reserveNextAvailableWindowUUID(supportsMultipleWindows: supportsMultipleWindows)
     }
 
     func postWindowEvent(event: WindowEvent, windowUUID: WindowUUID) {
@@ -71,7 +71,7 @@ final class MockWindowManager: WindowManager {
         wrappedManager.performMultiWindowAction(action)
     }
 
-    func window(for tab: TabUUID) -> WindowUUID? {
-        wrappedManager.window(for: tab)
+    func windowUUID(forTab tab: TabUUID) -> WindowUUID? {
+        wrappedManager.windowUUID(forTab: tab)
     }
 }

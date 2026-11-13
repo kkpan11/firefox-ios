@@ -5,69 +5,27 @@
 import UIKit
 import Common
 
-class ThemedNavigationController: DismissableNavigationViewController, Themeable {
-    var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
-    var notificationCenter: NotificationProtocol
-    let windowUUID: WindowUUID
-    var currentWindowUUID: UUID? { windowUUID }
+class SettingsNavigationController: ThemedNavigationController {
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
 
-    init(windowUUID: WindowUUID,
-         themeManager: ThemeManager = AppContainer.shared.resolve(),
-         notificationCenter: NotificationProtocol = NotificationCenter.default) {
-        self.themeManager = themeManager
-        self.notificationCenter = notificationCenter
-        self.windowUUID = windowUUID
-        super.init(nibName: nil, bundle: nil)
+        NotificationCenter.default.post(name: .SettingsDismissed, object: self)
     }
 
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    override var shouldUsePrivateOverride: Bool {
+        return true
     }
 
-    init(rootViewController: UIViewController,
-         windowUUID: WindowUUID,
-         themeManager: ThemeManager = AppContainer.shared.resolve(),
-         notificationCenter: NotificationProtocol = NotificationCenter.default) {
-        self.windowUUID = windowUUID
-        self.themeManager = themeManager
-        self.notificationCenter = notificationCenter
-        super.init(rootViewController: rootViewController)
+    override var shouldBeInPrivateTheme: Bool {
+        return false
     }
 
-    override var preferredStatusBarStyle: UIStatusBarStyle {
-        return topViewController?.preferredStatusBarStyle ?? .default
-    }
+    override func applyTheme() {
+        super.applyTheme()
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        modalPresentationStyle = .overFullScreen
-        modalPresentationCapturesStatusBarAppearance = true
-        applyTheme()
-        listenForThemeChange(view)
-    }
-
-    private func setupNavigationBarAppearance(theme: Theme) {
-        let standardAppearance = UINavigationBarAppearance()
-        standardAppearance.configureWithDefaultBackground()
-        standardAppearance.backgroundColor = theme.colors.layer1
-        standardAppearance.titleTextAttributes = [.foregroundColor: theme.colors.textPrimary]
-
-        navigationBar.standardAppearance = standardAppearance
-        navigationBar.compactAppearance = standardAppearance
-        navigationBar.scrollEdgeAppearance = standardAppearance
-        navigationBar.compactScrollEdgeAppearance = standardAppearance
-        navigationBar.tintColor = theme.colors.actionPrimary
-    }
-
-    func applyTheme() {
-        setupNavigationBarAppearance(theme: themeManager.getCurrentTheme(for: windowUUID))
-        setNeedsStatusBarAppearanceUpdate()
-    }
-}
-
-class ModalSettingsNavigationController: UINavigationController {
-    override var preferredStatusBarStyle: UIStatusBarStyle {
-        return .default
+        let theme = themeManager.resolveTheme(for: windowUUID,
+                                              shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                              shouldBeInPrivateTheme: shouldBeInPrivateTheme)
+        overrideUserInterfaceStyle = theme.type.getInterfaceStyle()
     }
 }

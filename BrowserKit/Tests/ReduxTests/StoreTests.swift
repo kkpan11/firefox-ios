@@ -5,12 +5,21 @@
 import XCTest
 @testable import Redux
 
+@MainActor
 final class StoreTests: XCTestCase {
     var mockState = MockState()
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockState = MockState()
+    }
+
+    override func tearDown() async throws {
+        MockState.midReducerActions = nil
+        MockState.runMidReducerActions = false
+        MockState.actionsReduced = []
+        MockState.modernActionsReduced = []
+        try await super.tearDown()
     }
 
     func testDispatchBasicAction_mainThread() {
@@ -64,8 +73,8 @@ final class StoreTests: XCTestCase {
             actionType: FakeReduxActionType.counterIncreased)
 
         Task.detached(priority: .background) {
-            store.dispatch(action)
             await MainActor.run {
+                store.dispatch(action)
                 expectation.fulfill()
             }
         }
@@ -86,8 +95,8 @@ final class StoreTests: XCTestCase {
             let action1 = FakeReduxAction(
                 windowUUID: UUID(),
                 actionType: FakeReduxActionType.counterIncreased)
-            store.dispatch(action1)
             await MainActor.run {
+                store.dispatch(action1)
                 expectation.fulfill()
             }
         }

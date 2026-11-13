@@ -6,8 +6,8 @@ import Foundation
 
 extension URL {
     /// Returns a shorter displayable string for a domain
-    /// E.g., https://m.foo.com/bar/baz?noo=abc#123  => foo
-    /// https://accounts.foo.com/bar/baz?noo=abc#123  => accounts.foo
+    /// E.g., https://m.foo.com/bar/baz?no=abc#123  => foo
+    /// https://accounts.foo.com/bar/baz?no=abc#123  => accounts.foo
     public var shortDisplayString: String {
         guard let publicSuffix = self.publicSuffix, let baseDomain = self.normalizedHost else {
             return self.normalizedHost ?? self.absoluteString
@@ -16,7 +16,7 @@ extension URL {
     }
 
     /// Returns just the domain, but with the same scheme, and a trailing '/'.
-    /// E.g., https://m.foo.com/bar/baz?noo=abc#123  => https://foo.com/
+    /// E.g., https://m.foo.com/bar/baz?no=abc#123  => https://foo.com/
     /// Any failure? Return this URL.
     public var domainURL: URL {
         if let normalized = self.normalizedHost {
@@ -32,10 +32,32 @@ extension URL {
         return self
     }
 
+    /// Returns just the scheme, host, and path of the URL — stripping query
+    /// parameters, fragment, and any embedded credentials. Used when sending
+    /// the failing URL to external services (e.g. WaybackService) so we don't
+    /// leak query params or tokens.
+    public var baseURLWithPath: URL? {
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
     /// Creates a short domain version of a link's url
     /// e.g. url: http://www.foosite.com  =>  "foosite"
     public var shortDomain: String? {
         return host.flatMap { shortDomain($0, etld: publicSuffix ?? "") }
+    }
+
+    /// Returns true if the URL belongs to the given domain entity,
+    /// regardless of subdomain or TLD (e.g. "google" matches google.com, google.de, mail.google.com)
+    public func isDomain(_ domain: String) -> Bool {
+        guard let base = baseDomain else { return false }
+        return base.split(separator: ".").first == domain[...]
     }
 
     /// Returns the base domain from a given hostname. The base domain name is defined as the public domain suffix
@@ -75,6 +97,15 @@ extension URL {
         return normalizedHost.flatMap { $0 + self.path }
     }
 
+    // Isolates the domain in a left-to-right context
+    // by using Left-to-Right Isolate (U+2066) to prevent RTL characters from reordering the display url.
+    // We use Pop Directional Isolate (U+2069) to close the range.
+    // (Bugzilla #2029371)
+    public var normalizedHostWithLRI: String? {
+        guard let normalizedHost else { return nil }
+        return "\u{2066}\(normalizedHost)\u{2069}"
+    }
+
     /// Extracts the subdomain and host from a given URL string and appends a dot to the subdomain.
     ///
     /// This function takes a URL string as input and returns a tuple containing the subdomain and the normalized host.
@@ -94,7 +125,7 @@ extension URL {
     /// ```
     public static func getSubdomainAndHost(from urlString: String) -> (subdomain: String?, normalizedHost: String) {
         guard let url = URL(string: urlString) else { return (nil, urlString) }
-        let normalizedHost = url.normalizedHost ?? urlString
+        let normalizedHost = url.normalizedHost ?? (url.scheme == "about" ? "about:blank" : urlString)
 
         guard let publicSuffix = url.publicSuffix else { return (nil, normalizedHost) }
 
@@ -209,9 +240,11 @@ extension URL {
         if additionalPartCount > 0 {
             if let suffix = suffix {
                 // Take out the public suffixed and add in the additional parts we want.
-                let literalFromEnd: NSString.CompareOptions = [.literal,        // Match the string exactly.
-                                     .backwards,      // Search from the end.
-                                     .anchored]         // Stick to the end.
+                let literalFromEnd: NSString.CompareOptions = [
+                    .literal,   // Match the string exactly.
+                    .backwards, // Search from the end.
+                    .anchored   // Stick to the end.
+                ]
                 let suffixlessHost = host.replacingOccurrences(
                     of: suffix,
                     with: "",
@@ -299,13 +332,72 @@ extension URL {
         return scheme.map { schemes.contains($0) } ?? false
     }
 
-    /// Returns the standard location of the website's favicon. (This is the base directoy path with
+    /// Returns the standard location of the website's favicon. (This is the base directory path with
     /// favicon.ico appended).
     public func faviconUrl() -> URL? {
-        if let host = host, let rootDirectoryURL = URL(string: (scheme ?? "https") + "://" + host) {
-            return rootDirectoryURL.appendingPathComponent("favicon.ico")
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false),
+              let host = components.host,
+              !host.isEmpty
+        else { return nil }
+
+        components.scheme = components.scheme ?? "https"
+        components.user = nil
+        components.password = nil
+        components.path = "/favicon.ico"
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    // MARK: Reader mode
+
+    public var isReaderModeURL: Bool {
+        let scheme = self.scheme, host = self.host, path = self.path
+        // Accept both the localhost form and the new custom-scheme form
+        let isLocalhost = scheme == "http" && host == "localhost" && path == "/reader-mode/page"
+        let isReadermode = scheme == "readermode" && host == "app" && path == "/page"
+        return isLocalhost || isReadermode
+    }
+
+    public var decodeReaderModeURL: URL? {
+        if self.isReaderModeURL || self.isSyncedReaderModeURL {
+            if let components = URLComponents(url: self, resolvingAgainstBaseURL: false),
+               let queryItems = components.queryItems {
+                if let queryItem = queryItems.first(where: { $0.name == "url" }),
+                   let value = queryItem.value {
+                    return URL(string: value)?.safeEncodedUrl
+                }
+            }
         }
         return nil
+    }
+
+    public var isSyncedReaderModeURL: Bool {
+        return absoluteString.hasPrefix("about:reader?url=")
+    }
+
+    public var safeEncodedUrl: URL? {
+        var components = URLComponents(url: self, resolvingAgainstBaseURL: false)
+
+        // HTML-encode scheme, host, and path
+        guard let host = components?.host?.htmlEntityEncodedString,
+              let scheme = components?.scheme?.htmlEntityEncodedString,
+              let path = components?.path.htmlEntityEncodedString else {
+            return nil
+        }
+
+        components?.path = path
+        components?.scheme = scheme
+        components?.host = host
+
+        // HTML-encode query item values
+        if let queryItems = components?.queryItems {
+            components?.queryItems = queryItems.map {
+                URLQueryItem(name: $0.name, value: $0.value?.htmlEntityEncodedString)
+            }
+        }
+
+        return components?.url
     }
 }
 
@@ -348,6 +440,6 @@ private func loadEntries() -> TLDEntryMap? {
     return entries
 }
 
-private var etldEntries: TLDEntryMap? = {
+private let etldEntries: TLDEntryMap? = {
     return loadEntries()
 }()

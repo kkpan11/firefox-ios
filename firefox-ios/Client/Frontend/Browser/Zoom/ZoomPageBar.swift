@@ -10,18 +10,20 @@ import ComponentLibrary
 // MARK: - ZoomPageBarDelegate Protocol
 
 protocol ZoomPageBarDelegate: AnyObject {
+    @MainActor
     func zoomPageDidPressClose()
 }
 
-final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
+final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable, FeatureFlaggable {
     // MARK: - Constants
 
-    private struct UX {
+    private enum UX {
         static let padding: CGFloat = 20
         static let buttonInsets = NSDirectionalEdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16)
         static let stepperHeight: CGFloat = 36
         static let stepperTopBottomPadding: CGFloat = 12
-        static let stepperCornerRadius: CGFloat = 6
+        static let stepperCornerRegularRadius: CGFloat = 6
+        static let stepperCornerGlassRadius: CGFloat = 18
         static let stepperMinTrailing: CGFloat = 10
         static let stepperSpacing: CGFloat = 8
         static let shadowRadius: CGFloat = 4
@@ -42,6 +44,7 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
     private var stepperDefaultConstraints = [NSLayoutConstraint]()
     private let zoomManager: ZoomPageManager
     private let zoomTelemetry: ZoomTelemetry
+    private let toolbarHelper: ToolbarHelperInterface
 
     // MARK: - UI Elements
 
@@ -53,11 +56,18 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
         view.alignment = .center
         view.distribution = .fillProportionally
         view.spacing = UX.stepperSpacing
-        view.layer.cornerRadius = UX.stepperCornerRadius
+        view.layer.cornerRadius = UX.stepperCornerRegularRadius
         view.layer.shadowRadius = UX.shadowRadius
         view.layer.shadowOffset = UX.stepperShadowOffset
         view.layer.shadowOpacity = UX.shadowOpacity
         view.clipsToBounds = false
+    }
+
+    private lazy var effectView: UIVisualEffectView = .build {
+        if #available(iOS 26.0, *) {
+            $0.effect = UIGlassEffect()
+            $0.layer.cornerRadius = UX.stepperCornerGlassRadius
+        }
     }
 
     private lazy var zoomOutButton: UIButton = .build { button in
@@ -65,10 +75,6 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
                              image: UIImage.templateImageNamed(StandardImageIdentifiers.Large.subtract),
                              accessibilityLabel: .LegacyAppMenu.ZoomPageDecreaseZoomAccessibilityLabel,
                              accessibilityIdentifier: AccessibilityIdentifiers.ZoomPageBar.zoomPageZoomOutButton)
-        button.setContentHuggingPriority(.required, for: .horizontal)
-        button.configuration = .plain()
-        button.configuration?.contentInsets = UX.buttonInsets
-        button.configuration?.contentInsets = UX.buttonInsets
     }
 
     private lazy var zoomLevel: UILabel = .build { label in
@@ -85,9 +91,6 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
                              image: UIImage.templateImageNamed(StandardImageIdentifiers.Large.plus),
                              accessibilityLabel: .LegacyAppMenu.ZoomPageIncreaseZoomAccessibilityLabel,
                              accessibilityIdentifier: AccessibilityIdentifiers.ZoomPageBar.zoomPageZoomInButton)
-        button.setContentHuggingPriority(.required, for: .horizontal)
-        button.configuration = .plain()
-        button.configuration?.contentInsets = UX.buttonInsets
     }
 
     private lazy var closeButton: CloseButton = .build()
@@ -95,9 +98,11 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
     // MARK: - Initializers
 
     init(zoomManager: ZoomPageManager,
-         gleanWrapper: GleanWrapper = DefaultGleanWrapper()) {
+         gleanWrapper: GleanWrapper = DefaultGleanWrapper(),
+         toolbarHelper: ToolbarHelperInterface = ToolbarHelper()) {
         self.zoomManager = zoomManager
         self.zoomTelemetry = ZoomTelemetry(gleanWrapper: gleanWrapper)
+        self.toolbarHelper = toolbarHelper
         super.init(frame: .zero)
 
         setupViews()
@@ -129,6 +134,16 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
             a11yIdentifier: AccessibilityIdentifiers.FindInPage.findInPageCloseButton)
         closeButton.configure(viewModel: closeButtonViewModel)
 
+        if #available(iOS 26.0, *) {
+            stepperContainer.addSubview(effectView)
+            NSLayoutConstraint.activate([
+                effectView.topAnchor.constraint(equalTo: stepperContainer.topAnchor),
+                effectView.bottomAnchor.constraint(equalTo: stepperContainer.bottomAnchor),
+                effectView.leadingAnchor.constraint(equalTo: stepperContainer.leadingAnchor),
+                effectView.trailingAnchor.constraint(equalTo: stepperContainer.trailingAnchor)
+            ])
+        }
+
         [zoomOutButton, leftSeparator, zoomLevel, rightSeparator, zoomInButton].forEach {
             stepperContainer.addArrangedSubview($0)
         }
@@ -140,26 +155,29 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
     }
 
     private func setupLayout() {
-        stepperCompactConstraints.append(stepperContainer.leadingAnchor.constraint(equalTo: leadingAnchor,
-                                                                                   constant: UX.padding))
-        stepperDefaultConstraints.append(stepperContainer.centerXAnchor.constraint(equalTo: centerXAnchor))
-        stepperDefaultConstraints.append(stepperContainer.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor,
-                                                                                   constant: UX.padding))
+        stepperCompactConstraints.append(
+            stepperContainer.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor,
+                                                      constant: UX.padding))
+        stepperDefaultConstraints.append(
+            stepperContainer.centerXAnchor.constraint(equalTo: safeAreaLayoutGuide.centerXAnchor))
+        stepperDefaultConstraints.append(
+            stepperContainer.leadingAnchor.constraint(greaterThanOrEqualTo: safeAreaLayoutGuide.leadingAnchor,
+                                                      constant: UX.padding))
         setupSeparator(leftSeparator)
         setupSeparator(rightSeparator)
 
         NSLayoutConstraint.activate([
-            stepperContainer.topAnchor.constraint(equalTo: topAnchor,
+            stepperContainer.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor,
                                                   constant: UX.stepperTopBottomPadding),
-            stepperContainer.bottomAnchor.constraint(equalTo: bottomAnchor,
+            stepperContainer.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor,
                                                      constant: -UX.stepperTopBottomPadding),
             stepperContainer.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor,
                                                        constant: -UX.stepperMinTrailing),
             stepperContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: UX.stepperHeight),
-            stepperContainer.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stepperContainer.centerYAnchor.constraint(equalTo: safeAreaLayoutGuide.centerYAnchor),
 
-            closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            closeButton.trailingAnchor.constraint(equalTo: trailingAnchor,
+            closeButton.centerYAnchor.constraint(equalTo: safeAreaLayoutGuide.centerYAnchor),
+            closeButton.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor,
                                                   constant: -UX.padding),
         ])
         setupCloseButtonConstraints()
@@ -168,8 +186,8 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
     func setupCloseButtonConstraints() {
         let isAccessibilityCategory = UIApplication.shared.preferredContentSizeCategory.isAccessibilityCategory
         let closeButtonSizes = isAccessibilityCategory ? UX.closButtonLargeSize : UX.closButtonSize
-        closeButton.centerYAnchor.constraint(equalTo: centerYAnchor).isActive = true
-        closeButton.trailingAnchor.constraint(equalTo: trailingAnchor,
+        closeButton.centerYAnchor.constraint(equalTo: safeAreaLayoutGuide.centerYAnchor).isActive = true
+        closeButton.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor,
                                               constant: -UX.padding).isActive = true
         closeButton.heightAnchor.constraint(equalToConstant: closeButtonSizes).isActive = true
         closeButton.widthAnchor.constraint(equalToConstant: closeButtonSizes).isActive = true
@@ -183,7 +201,7 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
     }
 
     private func setupShadow() {
-        if traitCollection.userInterfaceIdiom == .pad {
+        if traitCollection.horizontalSizeClass == .regular {
             layer.shadowOffset = CGSize(width: 0, height: UX.shadowHeightOffset)
         } else {
             layer.shadowOffset = CGSize(width: 0, height: -UX.shadowHeightOffset)
@@ -197,6 +215,7 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
     override func layoutSubviews() {
         super.layoutSubviews()
         updateStepperConstraintsBasedOnSizeClass()
+        setupShadow()
         setupCloseButtonConstraints()
         layoutIfNeeded()
     }
@@ -207,15 +226,20 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
                                  image: UIImage?,
                                  accessibilityLabel: String?,
                                  accessibilityIdentifier: String?) {
+        button.configuration = .plain()
         button.setImage(image, for: [])
         button.accessibilityLabel = accessibilityLabel
         button.accessibilityIdentifier = accessibilityIdentifier
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.configuration?.contentInsets = UX.buttonInsets
     }
 
     func updateZoomLabel(zoomValue: CGFloat) {
         zoomLevel.text = NumberFormatter.localizedString(from: NSNumber(value: zoomValue), number: .percent)
-        zoomLevel.isEnabled = zoomValue == ZoomConstants.defaultZoomLimit ? false : true
+        if !featureFlagsProvider.isEnabled(.novaDesign) {
+            zoomLevel.isEnabled = zoomValue == ZoomConstants.defaultZoomLimit ? false : true
+        }
         gestureRecognizer.isEnabled = !(zoomValue == ZoomConstants.defaultZoomLimit)
         zoomLevel.accessibilityLabel = String(format: .LegacyAppMenu.ZoomPageCurrentZoomLevelAccessibilityLabel,
                                               zoomLevel.text ?? "")
@@ -228,7 +252,7 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
 
     private func updateStepperConstraintsBasedOnSizeClass() {
         if traitCollection.horizontalSizeClass == .regular ||
-            (UIWindow.isLandscape && traitCollection.verticalSizeClass == .compact) {
+            traitCollection.verticalSizeClass == .compact {
             stepperDefaultConstraints.forEach { $0.isActive = true }
             stepperCompactConstraints.forEach { $0.isActive = false }
         } else {
@@ -290,11 +314,14 @@ final class ZoomPageBar: UIView, ThemeApplicable, AlphaDimmable {
 
     func applyTheme(theme: Theme) {
         let colors = theme.colors
-        backgroundColor = colors.layer2
-        stepperContainer.backgroundColor = colors.layer5
+        let backgroundAlpha = toolbarHelper.glassEffectAlpha
+        backgroundColor = colors.layer2.withAlphaComponent(backgroundAlpha)
+
+        let separatorBackgroundColor: UIColor = if #available(iOS 26.0, *) { .systemGray2 } else { colors.borderPrimary }
+        stepperContainer.backgroundColor = if #available(iOS 26.0, *) { .clear } else { colors.layer5 }
         stepperContainer.layer.shadowColor = colors.shadowDefault.cgColor
-        leftSeparator.backgroundColor = colors.borderPrimary
-        rightSeparator.backgroundColor = colors.borderPrimary
+        leftSeparator.backgroundColor = separatorBackgroundColor
+        rightSeparator.backgroundColor = separatorBackgroundColor
         zoomLevel.tintColor = colors.textPrimary
         zoomInButton.tintColor = colors.iconPrimary
         let zoomInButtonImageColorTransformer = UIConfigurationColorTransformer({ [weak zoomInButton] baseColor in

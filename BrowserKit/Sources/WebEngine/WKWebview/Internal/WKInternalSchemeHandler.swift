@@ -11,6 +11,7 @@ enum WKInternalPageSchemeHandlerError: Error {
     case notAuthorized
 }
 
+@MainActor
 protocol WKInternalSchemeResponse {
     func response(forRequest: URLRequest) -> (URLResponse, Data)?
 }
@@ -20,7 +21,12 @@ public protocol SchemeHandler: WKURLSchemeHandler {
 }
 
 /// Will load resources with URL schemes that WebKit doesn’t handle like homepage and error page.
-public class WKInternalSchemeHandler: NSObject, SchemeHandler {
+/// Note: This class has some assumptions and cannot be used in production as of July 2025:
+///  - Error pages are only handled with native error pages (HTML error pages won't be served)
+///  - NativeErrorPageViewController is shown in the Client through a redux action, fired when an error page
+///  needs to be shown this mechanism still needs to be investigated and integrated so error pages can load
+///  (natively) under browser kit.
+public final class WKInternalSchemeHandler: NSObject, SchemeHandler {
     public let scheme = "internal"
 
     override public init() {}

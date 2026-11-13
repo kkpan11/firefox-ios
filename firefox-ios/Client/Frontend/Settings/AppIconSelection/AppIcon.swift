@@ -66,22 +66,33 @@ enum AppIcon: String, CaseIterable {
     /// A version of the app icon with a gradient background, purple fading to blue fading to green.
     case northernLights
 
-//    // TODO: FXIOS-11579 We are waiting to see if we can use hand-drawn icon alternatives.
-//    // MARK: Hand-drawn icons. Order alphabetically.
-//    /// An artsy app icon of a person hugging the Firefox logo. Has a light orange background in all modes.
-//    case hug
-//
-//    /// An artsy app icon which has a fox sleeping on the globe.
-//    case lazy
-//
-//    /// A pixelated version of the regular app icon.
-//    case pixelated
-//
-//    /// A pride fox logo.
-//    case pride
-//
-//    /// The retro Firefox app icon.
-//    case retro
+    // MARK: Fun
+    /// A version of the app icon with a fox outline with sunglasses.
+    case cool
+
+    /// A version of the app icon with a fox cuddling a globe.
+    case cuddling
+
+    /// A version of the app icon with a fox outline with flames.
+    case flaming
+
+    /// A version of the app icon with a one-colored fox outline.
+    case minimal
+
+    /// A version of the app icon with a cartoony fox resting on a globe.
+    case momo
+
+    /// A version of the app icon with a pixelated fox resting on a globe.
+    case pixelated
+
+    /// A version of the app icon with a fox outline in rainbow colors.
+    case pride
+
+    /// A version of the app icon with a fox resting on a globe with visible continents.
+    case retro2004
+
+    /// A version of the app icon with a fox resting on a stylized globe.
+    case retro2017
 
     /// The name of the asset to display in the app selection.
     var displayName: String {
@@ -124,18 +135,25 @@ enum AppIcon: String, CaseIterable {
             return .Settings.AppIconSelection.AppIconNames.Midnight
         case .northernLights:
             return .Settings.AppIconSelection.AppIconNames.NorthernLights
-//        // MARK: Hand Drawn
-//        // TODO: FXIOS-11579 We are waiting to see if we can use hand-drawn icon alternatives.
-//        case .hug:
-//            return .Settings.AppIconSelection.AppIconNames.Hug
-//        case .lazy:
-//            return .Settings.AppIconSelection.AppIconNames.Lazy
-//        case .pixelated:
-//            return .Settings.AppIconSelection.AppIconNames.Pixelated
-//        case .pride:
-//            return .Settings.AppIconSelection.AppIconNames.Pride
-//        case .retro:
-//            return .Settings.AppIconSelection.AppIconNames.Retro
+        // MARK: Fun
+        case .cool:
+            return .Settings.AppIconSelection.AppIconNames.Fun.Cool
+        case .cuddling:
+            return .Settings.AppIconSelection.AppIconNames.Fun.Cuddling
+        case .flaming:
+            return .Settings.AppIconSelection.AppIconNames.Fun.Flaming
+        case .minimal:
+            return .Settings.AppIconSelection.AppIconNames.Minimal
+        case .momo:
+            return .Settings.AppIconSelection.AppIconNames.FromContributors.Momo
+        case .pixelated:
+            return .Settings.AppIconSelection.AppIconNames.Pixelated
+        case .pride:
+            return .Settings.AppIconSelection.AppIconNames.Pride
+        case .retro2004:
+            return .Settings.AppIconSelection.AppIconNames.Retro2004
+        case .retro2017:
+            return .Settings.AppIconSelection.AppIconNames.Retro2017
         }
     }
 
@@ -184,18 +202,25 @@ enum AppIcon: String, CaseIterable {
             return "appIconAlternate_gradient_midnight"
         case .northernLights:
             return "appIconAlternate_gradient_northernLights"
-//        // MARK: Hand Drawn
-//        // TODO: FXIOS-11579 We are waiting to see if we can use hand-drawn icon alternatives.
-//        case .hug:
-//            return "appIconAlternate_hug"
-//        case .lazy:
-//            return "appIconAlternate_lazy"
-//        case .pixelated:
-//            return "appIconAlternate_pixelated"
-//        case .pride:
-//            return "appIconAlternate_pride"
-//        case .retro:
-//            return "appIconAlternate_retro"
+        // MARK: Fun
+        case .cool:
+            return "appIconAlternate_fun_cool"
+        case .cuddling:
+            return "appIconAlternate_fun_cuddling"
+        case .flaming:
+            return "appIconAlternate_fun_flaming"
+        case .minimal:
+            return "appIconAlternate_fun_minimal"
+        case .momo:
+            return "appIconAlternate_fun_momo"
+        case .pixelated:
+            return "appIconAlternate_fun_pixelated"
+        case .pride:
+            return "appIconAlternate_fun_pride"
+        case .retro2004:
+            return "appIconAlternate_fun_retro2004"
+        case .retro2017:
+            return "appIconAlternate_fun_retro2017"
         }
     }
 
@@ -240,23 +265,31 @@ enum AppIcon: String, CaseIterable {
             return "AppIcon_Alt_Gradient_Midnight"
         case .northernLights:
             return "AppIcon_Alt_Gradient_NorthernLights"
-//        // MARK: Hand Drawn
-//        // TODO: FXIOS-11579 We are waiting to see if we can use hand-drawn icon alternatives.
-//        case .hug:
-//            return "AppIcon_Alt_Hug"
-//        case .lazy:
-//            return "AppIcon_Alt_Lazy"
-//        case .pixelated:
-//            return "AppIcon_Alt_Pixelated"
-//        case .pride:
-//            return "AppIcon_Alt_Pride"
-//        case .retro:
-//            return "AppIcon_Alt_Retro"
+        // MARK: Fun
+        case .cool:
+            return "AppIcon_Alt_Fun_Cool"
+        case .cuddling:
+            return "AppIcon_Alt_Fun_Cuddling"
+        case .flaming:
+            return "AppIcon_Alt_Fun_Flaming"
+        case .minimal:
+            return "AppIcon_Alt_Fun_Minimal"
+        case .momo:
+            return "AppIcon_Alt_Fun_Momo"
+        case .pixelated:
+            return "AppIcon_Alt_Fun_Pixelated"
+        case .pride:
+            return "AppIcon_Alt_Fun_Pride"
+        case .retro2004:
+            return "AppIcon_Alt_Fun_Retro2004"
+        case .retro2017:
+            return "AppIcon_Alt_Fun_Retro2017"
         }
     }
 
     /// Initialize an `AppIcon` from the current `UIApplication.shared.alternateIconName` setting. If the icon cannot be
     /// identified, returns `nil`. This might happen if an old asset is renamed or removed from the asset catalog.
+    @MainActor
     static func initFromSystem() -> AppIcon? {
         if let currentAlternativeIcon = UIApplication.shared.alternateIconName {
             let matchingAppIcons = AppIcon.allCases.filter({ $0.appIconAssetName == currentAlternativeIcon })

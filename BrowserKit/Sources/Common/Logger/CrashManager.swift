@@ -6,10 +6,11 @@ import Foundation
 import Sentry
 
 // MARK: - CrashManager
-public protocol CrashManager {
+public protocol CrashManager: Sendable {
     var crashedLastLaunch: Bool { get }
     func captureError(error: Error)
     func setup(sendCrashReports: Bool)
+    func setFeatureFlags(_ featureBranches: [String: String])
     func send(message: String,
               category: LoggerCategory,
               level: LoggerLevel,
@@ -17,33 +18,44 @@ public protocol CrashManager {
 }
 
 /**
- *Crash report for rust errors
+ * Crash report for rust errors
  *
  * We implement this on exception classes that correspond to Rust errors to
  * customize how the crash reports look.
  *
- * CrashReporting implementors should test if exceptions implement this
+ * CrashReporting implementers should test if exceptions implement this
  * interface.  If so, they should try to customize their crash reports to match.
  */
 public protocol CustomCrashReport {
-    var typeName: String { get set }
-    var message: String { get set }
+    var typeName: String { get }
+    var message: String { get }
 }
 
-public class DefaultCrashManager: CrashManager {
+/// **Note**: This class is safely `@unchecked Sendable` because we protect the mutable state (`enabled` and
+/// `featureBranches`) with a manual synchronization method (a lock).
+public final class DefaultCrashManager: CrashManager, @unchecked Sendable {
     enum Environment: String {
         case nightly = "Nightly"
         case production = "Production"
     }
+
+    /// Matches Sentry's default `Options.maxFeatureFlags`, above which it drops the oldest flags
+    static let maxFeatureFlags = 100
 
     // MARK: - Properties
     private let deviceAppHashKey = "SentryDeviceAppHash"
     private let defaultDeviceAppHash = "0000000000000000000000000000000000000000"
     private let deviceAppHashLength = UInt(20)
 
+    // We are using a lock to manually protect our mutable state to make this class @unchecked Sendable
+    private let enabledLock = NSLock()
     private var enabled = false
+    private var featureBranches: [String: String] = [:]
 
     private var shouldSetup: Bool {
+        enabledLock.lock()
+        defer { enabledLock.unlock() }
+
         return !enabled
                 && !isSimulator
                 && isValidReleaseName
@@ -52,27 +64,28 @@ public class DefaultCrashManager: CrashManager {
     private var isValidReleaseName: Bool {
         if skipReleaseNameCheck { return true }
 
-        return AppInfo.bundleIdentifier == "org.mozilla.ios.Firefox"
-                || AppInfo.bundleIdentifier == "org.mozilla.ios.FirefoxBeta"
+        return bundleIdentifier() == "org.mozilla.ios.Firefox"
+                || bundleIdentifier() == "org.mozilla.ios.FirefoxBeta"
     }
 
     private var environment: Environment {
         var environment = Environment.production
-        if AppInfo.appVersion == appInfo.nightlyAppVersion, appInfo.buildChannel == .beta {
+        if appVersion() == appInfo.nightlyAppVersion, appInfo.buildChannel == .beta {
             environment = Environment.nightly
         }
         return environment
     }
 
     private var releaseName: String {
-        return "\(AppInfo.bundleIdentifier)@\(AppInfo.appVersion)"
+        return "\(bundleIdentifier())@\(appVersion())"
     }
 
-    // MARK: - Init
-    private var appInfo: BrowserKitInformation
-    private var sentryWrapper: SentryWrapper
-    private var isSimulator: Bool
-    private var skipReleaseNameCheck: Bool
+    private let appInfo: BrowserKitInformation
+    private let sentryWrapper: SentryWrapper
+    private let isSimulator: Bool
+    private let skipReleaseNameCheck: Bool
+    private let bundleIdentifier: @Sendable () -> String
+    private let appVersion: @Sendable () -> String
 
     // Only enable app hang tracking in Beta for now
     private var shouldEnableAppHangTracking: Bool {
@@ -87,14 +100,23 @@ public class DefaultCrashManager: CrashManager {
         return appInfo.buildChannel == .beta
     }
 
+    // MARK: - Init
+
+    /// - Parameters:
+    ///   - bundleIdentifier: Provides the app's bundle identifier, read lazily since `AppInfo` requires an app bundle
+    ///   - appVersion: Provides the app's version, read lazily since `AppInfo` requires an app bundle
     public init(appInfo: BrowserKitInformation = BrowserKitInformation.shared,
                 sentryWrapper: SentryWrapper = DefaultSentry(),
                 isSimulator: Bool = DeviceInfo.isSimulator(),
-                skipReleaseNameCheck: Bool = false) {
+                skipReleaseNameCheck: Bool = false,
+                bundleIdentifier: @escaping @Sendable () -> String = { AppInfo.bundleIdentifier },
+                appVersion: @escaping @Sendable () -> String = { AppInfo.appVersion }) {
         self.appInfo = appInfo
         self.sentryWrapper = sentryWrapper
         self.isSimulator = isSimulator
         self.skipReleaseNameCheck = skipReleaseNameCheck
+        self.bundleIdentifier = bundleIdentifier
+        self.appVersion = appVersion
     }
 
     // MARK: - CrashManager protocol
@@ -103,13 +125,20 @@ public class DefaultCrashManager: CrashManager {
     }
 
     public func setup(sendCrashReports: Bool) {
-        guard shouldSetup, sendCrashReports, let dsn = sentryWrapper.dsn else { return }
+        guard shouldSetup,
+              sendCrashReports,
+              let dsn = sentryWrapper.dsn else {
+            return
+        }
 
         sentryWrapper.startWithConfigureOptions(configure: { options in
             options.dsn = dsn
             if self.shouldEnableTraceProfiling {
                 options.tracesSampleRate = 0.2
-                options.profilesSampleRate = 0.2
+                options.configureProfiling = {
+                    $0.sessionSampleRate = 0.2
+                    $0.lifecycle = .trace
+                }
             }
             options.environment = self.environment.rawValue
             options.releaseName = self.releaseName
@@ -118,6 +147,7 @@ public class DefaultCrashManager: CrashManager {
             options.enableAppHangTracking = self.shouldEnableAppHangTracking
             options.enableMetricKit = self.shouldEnableMetricKit
             options.enableCaptureFailedRequests = false
+            options.enableNetworkBreadcrumbs = false
             options.enableSwizzling = false
             options.beforeBreadcrumb = { crumb in
                 if crumb.type == "http" || crumb.category == "http" {
@@ -135,11 +165,33 @@ public class DefaultCrashManager: CrashManager {
                 return event
             }
         })
+
+        enabledLock.lock()
+        defer { enabledLock.unlock() }
         enabled = true
 
         configureScope()
         configureIdentifier()
         setupIgnoreException()
+    }
+
+    public func setFeatureFlags(_ featureBranches: [String: String]) {
+        enabledLock.lock()
+        defer { enabledLock.unlock() }
+        self.featureBranches = featureBranches
+        guard enabled else { return }
+
+        configureFeatureFlagsScope()
+    }
+
+    /// Converts feature branches to Sentry feature flag names. Sentry flags only support boolean results, so each
+    /// enrollment is encoded as a `feature:branch` flag that evaluated to `true`.
+    static func featureFlagNames(from featureBranches: [String: String]) -> [String] {
+        let names = featureBranches
+            .map { "\($0.key):\($0.value)" }
+            .sorted()
+            .prefix(maxFeatureFlags)
+        return Array(names)
     }
 
     private func alterEventForCustomCrash(event: Sentry.Event, crash: CustomCrashReport) {
@@ -160,6 +212,8 @@ public class DefaultCrashManager: CrashManager {
                      category: LoggerCategory,
                      level: LoggerLevel,
                      extraEvents: [String: String]?) {
+        enabledLock.lock()
+        defer { enabledLock.unlock() }
         guard enabled else { return }
 
         guard shouldSendEventFor(level) else {
@@ -217,7 +271,7 @@ public class DefaultCrashManager: CrashManager {
         return event
     }
 
-    /// Do not send messages to Sentry if disabled OR if we are not on beta and the severity isnt severe
+    /// Do not send messages to Sentry if disabled OR if we are not on beta and the severity isn't severe
     /// This is the behaviour we want for Sentry logging
     ///       .info .warning .fatal
     /// Debug      n        n          n
@@ -233,11 +287,27 @@ public class DefaultCrashManager: CrashManager {
     private func configureScope() {
         let deviceAppHash = UserDefaults(suiteName: appInfo.sharedContainerIdentifier)?
             .string(forKey: self.deviceAppHashKey)
+        let featureFlagNames = Self.featureFlagNames(from: featureBranches)
         sentryWrapper.configureScope(scope: { scope in
             scope.setContext(value: [
                 "device_app_hash": deviceAppHash ?? self.defaultDeviceAppHash
             ], key: "appContext")
+            Self.apply(featureFlagNames: featureFlagNames, to: scope)
         })
+    }
+
+    private func configureFeatureFlagsScope() {
+        let featureFlagNames = Self.featureFlagNames(from: featureBranches)
+        sentryWrapper.configureScope(scope: { scope in
+            Self.apply(featureFlagNames: featureFlagNames, to: scope)
+        })
+    }
+
+    private static func apply(featureFlagNames: [String], to scope: Scope) {
+        scope.clearFeatureFlags()
+        for name in featureFlagNames {
+            scope.addFeatureFlag(name: name, result: true)
+        }
     }
 
     /// If we have not already for this install, generate a completely random identifier for this device.

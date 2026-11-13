@@ -7,18 +7,27 @@ import XCTest
 
 @testable import Client
 
-final class MainMenuCoordinatorTests: XCTestCase {
+@MainActor
+final class MainMenuCoordinatorTests: XCTestCase, StoreTestUtility {
     private var mockRouter: MockRouter!
+    var mockStore: MockStoreForMiddleware<AppState>!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
         mockRouter = MockRouter(navigationController: MockNavigationController())
+        setupStore()
     }
 
-    override func tearDown() {
-        AppContainer.shared.reset()
-        super.tearDown()
+    override func tearDown() async throws {
+        DependencyHelperMock().reset()
+        resetStore()
+        try await super.tearDown()
+    }
+
+    // MARK: - StoreTestUtility
+    func setupAppState() -> AppState {
+        return AppState()
     }
 
     func testInitialState() {
@@ -39,27 +48,6 @@ final class MainMenuCoordinatorTests: XCTestCase {
         XCTAssertEqual(mockRouter.setRootViewControllerCalled, 1)
     }
 
-    func testShowDetailViewController() {
-        let subject = createSubject()
-
-        subject.start()
-        subject.showDetailViewController()
-
-        XCTAssertTrue(mockRouter.pushedViewController is MainMenuDetailsViewController)
-        XCTAssertEqual(mockRouter.pushCalled, 1)
-    }
-
-    func testDismissDetailViewController() {
-        let subject = createSubject()
-
-        subject.start()
-        subject.showDetailViewController()
-        subject.dismissDetailViewController()
-
-        XCTAssertTrue(mockRouter.rootViewController is MainMenuViewController)
-        XCTAssertEqual(mockRouter.popViewControllerCalled, 1)
-    }
-
     func testMainMenu_dismissFlow_callsRouterDismiss() throws {
         let subject = createSubject()
 
@@ -69,11 +57,58 @@ final class MainMenuCoordinatorTests: XCTestCase {
         XCTAssertEqual(mockRouter.dismissCalled, 1)
     }
 
+    func testHandleNavigation_translatePage_dismissesMenu() {
+        let subject = createSubject()
+        subject.start()
+
+        subject.navigateTo(MenuNavigationDestination(.translatePage), animated: false)
+
+        XCTAssertEqual(mockRouter.dismissCalled, 1)
+    }
+
+    func testHandleNavigation_readerView_dispatchesNavigationBrowserAction() throws {
+        let subject = createSubject()
+
+        subject.navigateTo(MenuNavigationDestination(.readerView), animated: false)
+        mockRouter.savedCompletion?()
+
+        let actionCalled = try XCTUnwrap(mockStore.dispatchedActions.first as? NavigationBrowserAction)
+        let actionType = try XCTUnwrap(actionCalled.actionType as? NavigationBrowserActionType)
+
+        XCTAssertEqual(actionType, NavigationBrowserActionType.tapOnReaderMode)
+        XCTAssertEqual(actionCalled.navigationDestination.destination, .readerMode)
+        XCTAssertEqual(mockRouter.dismissCalled, 1)
+    }
+
+    func testHandleNavigation_reportBrokenSite_callsPresentReportBrokenSiteOnDelegate() {
+        let subject = createSubject()
+        let mockDelegate = MockMainMenuCoordinatorDelegate()
+        subject.navigationHandler = mockDelegate
+
+        subject.navigateTo(MenuNavigationDestination(.reportBrokenSite), animated: false)
+        mockRouter.savedCompletion?()
+
+        XCTAssertEqual(mockDelegate.presentReportBrokenSiteCalled, 1)
+    }
+
+    func testHandleNavigation_webpageSummary_callsDelegate() {
+        let subject = createSubject()
+        let mockDelegate = MockMainMenuCoordinatorDelegate()
+        subject.navigationHandler = mockDelegate
+
+        subject.navigateTo(MenuNavigationDestination(.webpageSummary(config: .defaultConfig)), animated: false)
+        mockRouter.savedCompletion?()
+
+        XCTAssertEqual(mockDelegate.showSummarizePanelCalled, 1)
+        XCTAssertEqual(mockDelegate.showSummarizePanelTrigger, .mainMenu)
+        XCTAssertEqual(mockRouter.dismissCalled, 1)
+    }
+
     private func createSubject(
-        file: StaticString = #file,
+        file: StaticString = #filePath,
         line: UInt = #line
     ) -> MainMenuCoordinator {
-        let subject = MainMenuCoordinator(router: mockRouter, windowUUID: .XCTestDefaultUUID, profile: MockProfile())
+        let subject = MainMenuCoordinator(router: mockRouter, windowUUID: .XCTestDefaultUUID, profile: makeProfile())
 
         trackForMemoryLeaks(subject, file: file, line: line)
         return subject

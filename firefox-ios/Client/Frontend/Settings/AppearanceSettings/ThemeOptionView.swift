@@ -7,7 +7,8 @@ import Common
 
 /// A view that represents a selectable theme option.
 struct ThemeOptionView: View {
-    let theme: ThemeSelectionView.ThemeOption
+    let themeOption: ThemeSelectionView.ThemeOption
+    let theme: Theme?
     /// A flag indicating whether this option is currently selected.
     let isSelected: Bool
     /// Callback executed when a new theme option is selected.
@@ -15,10 +16,12 @@ struct ThemeOptionView: View {
 
     var body: some View {
         GenericImageOption(
+            theme: theme,
             isSelected: isSelected,
             onSelected: onSelected,
-            label: theme.rawValue,
-            imageName: imageName(for: theme)
+            label: themeOption.rawValue,
+            imageName: imageName(for: themeOption),
+            a11yIdentifier: identifierName(for: themeOption)
         )
     }
 
@@ -30,6 +33,17 @@ struct ThemeOptionView: View {
             return ImageIdentifiers.Appearance.lightBrowserThemeGradient
         case .dark:
             return ImageIdentifiers.Appearance.darkBrowserThemeGradient
+        }
+    }
+
+    func identifierName(for themeOption: ThemeSelectionView.ThemeOption) -> String {
+        switch themeOption {
+        case .automatic:
+            return AccessibilityIdentifiers.Settings.Appearance.automaticThemeView
+        case .light:
+            return AccessibilityIdentifiers.Settings.Appearance.lightThemeView
+        case .dark:
+            return AccessibilityIdentifiers.Settings.Appearance.darkThemeView
         }
     }
 }

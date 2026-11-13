@@ -5,12 +5,13 @@
 import Foundation
 import UniformTypeIdentifiers
 
-struct MIMEType {
+enum MIMEType {
     static let Bitmap = "image/bmp"
     static let CSS = "text/css"
     static let GIF = "image/gif"
     static let JavaScript = "text/javascript"
     static let JPEG = "image/jpeg"
+    static let JSON = "application/json"
     static let HTML = "text/html"
     static let OctetStream = "application/octet-stream"
     static let Passbook = "application/vnd.apple.pkpass"
@@ -19,10 +20,12 @@ struct MIMEType {
     static let PNG = "image/png"
     static let WebP = "image/webp"
     static let Calendar = "text/calendar"
+    static let ConfigurationProfile = "application/x-apple-aspen-config"
     static let USDZ = "model/vnd.usdz+zip"
     static let Reality = "model/vnd.reality"
     static let OpenDocument = "application/msword"
     static let MicrosoftWord = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    static let WASM = "application/wasm"
 
     private static let webViewViewableTypes: [String] = [
         MIMEType.Bitmap,
@@ -35,21 +38,8 @@ struct MIMEType {
         MIMEType.WebP
     ]
 
-    private static let downloadableTypes: [String] = [
-        MIMEType.PDF,
-        MIMEType.OpenDocument,
-        MIMEType.MicrosoftWord,
-        MIMEType.PNG,
-        MIMEType.JPEG
-    ]
-
     static func canShowInWebView(_ mimeType: String) -> Bool {
         return webViewViewableTypes.contains(mimeType.lowercased())
-    }
-
-    static func canBeDownloaded(_ mimeType: String?) -> Bool {
-        guard let mimeType else { return false }
-        return downloadableTypes.contains(mimeType.lowercased())
     }
 
     static func mimeTypeFromFileExtension(_ fileExtension: String) -> String {

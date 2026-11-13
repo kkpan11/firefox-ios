@@ -2,9 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+// FXIOS-12832 We shouldn't need `@preconcurrency` on to suppress warnings
 @preconcurrency import WebKit
 import Common
 
+@MainActor
 protocol WKUIHandler: WKUIDelegate {
     var delegate: EngineSessionDelegate? { get set }
     var isActive: Bool {get set}
@@ -53,25 +55,40 @@ protocol WKUIHandler: WKUIDelegate {
     )
 }
 
-class DefaultUIHandler: NSObject, WKUIHandler {
-    weak var delegate: EngineSessionDelegate?
+public final class DefaultUIHandler: NSObject, WKUIHandler {
+    public weak var delegate: EngineSessionDelegate?
+
     public var isActive = false
     private let sessionDependencies: EngineSessionDependencies
     private let application: Application
     private let policyDecider: WKPolicyDecider
 
+    // TODO: FXIOS-13670 With Swift 6 we can use default params in the init
+    @MainActor
+    public static func factory(
+        sessionDependencies: EngineSessionDependencies,
+    ) -> DefaultUIHandler {
+        let policyDecider = WKPolicyDeciderFactory()
+        let application = UIApplication.shared
+        return DefaultUIHandler(
+            sessionDependencies: sessionDependencies,
+            application: application,
+            policyDecider: policyDecider
+        )
+    }
+
     init(sessionDependencies: EngineSessionDependencies,
-         application: Application = UIApplication.shared,
-         policyDecider: WKPolicyDecider = WKPolicyDeciderFactory()) {
+         application: Application,
+         policyDecider: WKPolicyDecider) {
         self.sessionDependencies = sessionDependencies
         self.policyDecider = policyDecider
         self.application = application
     }
 
-    func webView(_ webView: WKWebView,
-                 createWebViewWith configuration: WKWebViewConfiguration,
-                 for navigationAction: WKNavigationAction,
-                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+    public func webView(_ webView: WKWebView,
+                        createWebViewWith configuration: WKWebViewConfiguration,
+                        for navigationAction: WKNavigationAction,
+                        windowFeatures: WKWindowFeatures) -> WKWebView? {
         let policy = policyDecider.policyForPopupNavigation(action: navigationAction)
         switch policy {
         case .cancel:
@@ -83,15 +100,15 @@ class DefaultUIHandler: NSObject, WKUIHandler {
                                                          configurationProvider: configurationProvider)
 
             guard let session, let webView = session.webView as? WKWebView else { return nil }
+
             let url = navigationAction.request.url
             let urlString = url?.absoluteString ?? ""
 
             if url == nil || urlString.isEmpty,
                let blank = URL(string: EngineConstants.aboutBlank),
                let url = BrowserURL(browsingContext: BrowsingContext(type: .internalNavigation, url: blank)) {
-                session.load(browserURL: url)
+                               session.load(browserURL: url)
             }
-
             delegate?.onRequestOpenNewSession(session)
             return webView
         case .launchExternalApp:
@@ -101,7 +118,7 @@ class DefaultUIHandler: NSObject, WKUIHandler {
         }
     }
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         runJavaScriptAlertPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo,
@@ -110,7 +127,7 @@ class DefaultUIHandler: NSObject, WKUIHandler {
         // TODO: FXIOS-8244 - Handle Javascript panel messages in WebEngine (epic part 3)
     }
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         runJavaScriptConfirmPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo,
@@ -119,7 +136,7 @@ class DefaultUIHandler: NSObject, WKUIHandler {
         // TODO: FXIOS-8244 - Handle Javascript panel messages in WebEngine (epic part 3)
     }
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         runJavaScriptTextInputPanelWithPrompt prompt: String,
         defaultText: String?,
@@ -129,11 +146,11 @@ class DefaultUIHandler: NSObject, WKUIHandler {
         // TODO: FXIOS-8244 - Handle Javascript panel messages in WebEngine (epic part 3)
     }
 
-    func webViewDidClose(_ webView: WKWebView) {
+    public func webViewDidClose(_ webView: WKWebView) {
         // TODO: FXIOS-8245 - Handle webViewDidClose in WebEngine (epic part 3)
     }
 
-    func webView(
+    public func webView(
         _ webView: WKWebView,
         contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
         completionHandler: @escaping @MainActor (UIContextMenuConfiguration?) -> Void
@@ -141,11 +158,17 @@ class DefaultUIHandler: NSObject, WKUIHandler {
         completionHandler(delegate?.onProvideContextualMenu(linkURL: elementInfo.linkURL))
     }
 
-    func webView(_ webView: WKWebView,
-                 requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-                 initiatedByFrame frame: WKFrameInfo,
-                 type: WKMediaCaptureType,
-                 decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
+    public func webView(_ webView: WKWebView,
+                        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                        initiatedByFrame frame: WKFrameInfo,
+                        type: WKMediaCaptureType,
+                        decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
+        requestMediaCapturePermission(decisionHandler: decisionHandler)
+    }
+
+    func requestMediaCapturePermission(
+        decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void
+    ) {
         guard isActive && (delegate?.requestMediaCapturePermission() ?? false) else {
             decisionHandler(.deny)
             return

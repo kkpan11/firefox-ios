@@ -26,8 +26,9 @@ protocol WKEngineWebServerProtocol {
     )
 }
 
-class WKEngineWebServer: WKEngineWebServerProtocol {
-    static let shared: WKEngineWebServerProtocol = WKEngineWebServer()
+final class WKEngineWebServer: WKEngineWebServerProtocol {
+    // FXIOS-13518 - WKEngineWebServer shared is not thread safe
+    nonisolated(unsafe) static let shared: WKEngineWebServerProtocol = WKEngineWebServer()
 
     private let logger: Logger
     private let server = GCDWebServer()
@@ -152,10 +153,12 @@ of Mammon shall tremble. from The Book of Mozilla, 3:31 (Red Letter Edition) </s
                              "empty-login-form",
                              "empty-login-form-submit",
                              "test-example",
+                             "test-example-domains",
                              "test-example-link",
                              "test-mozilla-book",
                              "test-mozilla-org",
                              "test-popup-blocker",
+                             "test-translation",
                              "test-user-agent"]
         htmlFixtures.forEach {
             addHTMLFixture(name: $0, server: server)

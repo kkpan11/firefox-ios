@@ -21,7 +21,7 @@ struct HistoryActionablesModel: Hashable {
     let identifier = UUID()
 
     enum ActionableItem {
-        case clearHistory, recentlyClosed, syncHistory
+        case recentlyClosed
     }
 
     // MARK: - Init
@@ -33,11 +33,13 @@ struct HistoryActionablesModel: Hashable {
         self.imageName = imageName
     }
 
+    @MainActor
     mutating func configureImage(for window: WindowUUID) {
         if let imageName = imageName {
             let themeManager: ThemeManager = AppContainer.shared.resolve()
+            let theme = themeManager.resolveTheme(for: window, privateOverride: false)
             self.itemImage = UIImage(named: imageName)?
-                .withTintColor(themeManager.getCurrentTheme(for: window).colors.iconSecondary)
+                .withTintColor(theme.colors.iconSecondary)
         } else {
             self.itemImage = nil
         }

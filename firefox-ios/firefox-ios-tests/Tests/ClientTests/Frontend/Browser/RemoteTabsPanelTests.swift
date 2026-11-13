@@ -4,6 +4,7 @@
 
 import XCTest
 import Common
+import TestKit
 
 @testable import Client
 
@@ -14,18 +15,18 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
     }
 
     private let windowUUID: WindowUUID = .XCTestDefaultUUID
-    private var mockStore: MockStoreForMiddleware<AppState>!
+    var mockStore: MockStoreForMiddleware<AppState>!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
         setupStore()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
         resetStore()
-        super.tearDown()
+        try await  super.tearDown()
     }
 
     func testViewDidLoad_dispachesDisplayRelatedActionsToStore() throws {
@@ -33,11 +34,11 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
         subject.loadViewIfNeeded()
 
         let action1 = try XCTUnwrap(mockStore.dispatchedActions[0])
-        let action1Type = try XCTUnwrap(action1.actionType as? ScreenActionType)
+        let action1Type = try XCTUnwrap(action1.actionType as? ComponentActionType)
         let action2 = try XCTUnwrap(mockStore.dispatchedActions[1])
         let action2Type = try XCTUnwrap(action2.actionType as? RemoteTabsPanelActionType)
 
-        XCTAssertEqual(action1Type, ScreenActionType.showScreen)
+        XCTAssertEqual(action1Type, ComponentActionType.addComponent)
         XCTAssertEqual(action2Type, RemoteTabsPanelActionType.panelDidAppear)
         XCTAssertEqual(mockStore.subscribeCallCount, 1)
     }
@@ -47,13 +48,13 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
         subject.unsubscribeFromRedux()
 
         let action = try XCTUnwrap(mockStore.dispatchedActions.last)
-        let actionType = try XCTUnwrap(action.actionType as? ScreenActionType)
+        let actionType = try XCTUnwrap(action.actionType as? ComponentActionType)
 
-        XCTAssertEqual(actionType, ScreenActionType.closeScreen)
+        XCTAssertEqual(actionType, ComponentActionType.removeComponent)
     }
 
     // MARK: - Actions
-    func testTableViewControllerDidPullToRefresh_dispatchesRefreshsTabsAction() throws {
+    func testTableViewControllerDidPullToRefresh_dispatchesRefreshTabsAction() throws {
         let subject = createSubject()
         subject.tableViewControllerDidPullToRefresh()
 
@@ -63,6 +64,7 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
         XCTAssertEqual(actionType, RemoteTabsPanelActionType.refreshTabs)
     }
 
+    @MainActor
     func testNewState_setsNewStateInTableViewController() {
         let subject = createSubject()
         let newState = RemoteTabsPanelState(
@@ -70,16 +72,17 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
             refreshState: .refreshing,
             allowsRefresh: false,
             clientAndTabs: [],
-            showingEmptyState: nil,
+            contentState: .tabs,
             devices: []
         )
         subject.newState(state: newState)
 
         XCTAssertEqual(subject.state.refreshState, .refreshing)
-        XCTAssertEqual(subject.tableViewController.state.refreshState, .refreshing)
+        XCTAssertEqual(subject.tabsDisplayViewController.state.refreshState, .refreshing)
     }
 
     // MARK: - RemoteTabsClientAndTabsDataSourceDelegate
+    @MainActor
     func testRemoteTabsClientAndTabsDataSourceDidSelectURL_dispatchesCloseSelectedRemoteURLAction() throws {
         let subject = createSubject()
         subject.remoteTabsClientAndTabsDataSourceDidSelectURL(
@@ -106,19 +109,6 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
         XCTAssertEqual(actionType, RemoteTabsPanelActionType.closeSelectedRemoteURL)
     }
 
-    func testRemoteTabsClientAndTabsDataSourceDidUndo_dispatchesUndoCloseSelectedRemoteURL() throws {
-        let subject = createSubject()
-        subject.remoteTabsClientAndTabsDataSourceDidUndo(
-            deviceId: Constants.testDeviceId,
-            url: URL(string: Constants.testUrlString)!
-        )
-
-        let action = try XCTUnwrap(mockStore.dispatchedActions.first)
-        let actionType = try XCTUnwrap(action.actionType as? RemoteTabsPanelActionType)
-
-        XCTAssertEqual(actionType, RemoteTabsPanelActionType.undoCloseSelectedRemoteURL)
-    }
-
     func testRemoteTabsClientAndTabsDataSourceDidTabCommandsFlush_dispatchesFlushTabCommands() throws {
         let subject = createSubject()
         subject.remoteTabsClientAndTabsDataSourceDidTabCommandsFlush(deviceId: Constants.testDeviceId)
@@ -130,8 +120,9 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
     }
 
     // MARK: - RemotePanelDelegate
+    @MainActor
     func testRemotePanelDidRequestToSignIn_forwardsCallsToDelegate() {
-        let mockDelegate = RemoteTabsPanelDelegateMock()
+        let mockDelegate = MockRemoteTabsPanelDelegate()
         let subject = createSubject()
         subject.remoteTabsDelegate = mockDelegate
 
@@ -140,8 +131,9 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
         XCTAssertEqual(mockDelegate.presentFirefoxAccountSignInCallCount, 1)
     }
 
+    @MainActor
     func testPresentFxAccountSettings_forwardsCallsToDelegate() {
-        let mockDelegate = RemoteTabsPanelDelegateMock()
+        let mockDelegate = MockRemoteTabsPanelDelegate()
         let subject = createSubject()
         subject.remoteTabsDelegate = mockDelegate
 
@@ -151,6 +143,18 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
     }
 
     // MARK: - RemoteTabsEmptyViewDelegate
+    @MainActor
+    func testRemotePanelDidRequestToRefreshTabs_dispatchesRefreshTabsAction() throws {
+        let subject = createSubject()
+        subject.remotePanelDidRequestToRefreshTabs()
+
+        let action = try XCTUnwrap(mockStore.dispatchedActions.last)
+        let actionType = try XCTUnwrap(action.actionType as? RemoteTabsPanelActionType)
+
+        XCTAssertEqual(actionType, RemoteTabsPanelActionType.refreshTabs)
+    }
+
+    @MainActor
     func testRemotePanelDidRequestToOpenInNewTab_dispatchesCloseSelectedRemoteURLAction() throws {
         let subject = createSubject()
         subject.remotePanelDidRequestToOpenInNewTab(
@@ -167,15 +171,6 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
     // MARK: - StoreTestUtility
     func setupAppState() -> Client.AppState {
         return AppState()
-    }
-
-    func setupStore() {
-        mockStore = MockStoreForMiddleware(state: setupAppState())
-        StoreTestUtilityHelper.setupStore(with: mockStore)
-    }
-
-    func resetStore() {
-        StoreTestUtilityHelper.resetStore()
     }
 
     // MARK: - Helpers

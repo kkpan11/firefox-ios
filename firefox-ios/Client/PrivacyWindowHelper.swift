@@ -7,6 +7,7 @@ import UIKit
 final class PrivacyWindowHelper {
     private var privacyWindow: UIWindow?
 
+    @MainActor
     func showWindow(windowScene: UIWindowScene?, withThemedColor color: UIColor) {
         guard let windowScene else { return }
 
@@ -15,9 +16,12 @@ final class PrivacyWindowHelper {
         privacyWindow?.rootViewController?.view.backgroundColor = color
         // Set the privacy window level to be above alert windows (highest in importance).
         privacyWindow?.windowLevel = .alert + 1
-        privacyWindow?.makeKeyAndVisible()
+        // Avoid makeKeyAndVisible(), becoming key steals first responder
+        // and causes iOS keyboard to dismiss on background/foreground in private mode.
+        privacyWindow?.isHidden = false
     }
 
+    @MainActor
     func removeWindow() {
         privacyWindow?.isHidden = true
         privacyWindow = nil

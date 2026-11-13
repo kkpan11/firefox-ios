@@ -19,6 +19,11 @@ final class AppIconSelectionTelemetryTests: XCTestCase {
         mockGleanWrapper = MockGleanWrapper()
     }
 
+    override func tearDown() {
+        mockGleanWrapper = nil
+        super.tearDown()
+    }
+
     func testSelectedIcon_firesSelected() throws {
         // The event and event extras type under test
         let event = GleanMetrics.SettingsAppIcon.selected
@@ -27,23 +32,20 @@ final class AppIconSelectionTelemetryTests: XCTestCase {
         let subject = createSubject()
         let expectedNewAppIcon = AppIcon.darkPurple
         let expectedOldAppIcon = AppIcon.regular
-        let expectedMetricType = type(of: event)
 
         subject.selectedIcon(expectedNewAppIcon, previousIcon: expectedOldAppIcon)
 
         let savedExtras = try XCTUnwrap(
-            mockGleanWrapper.savedExtras as? EventExtrasType
+            mockGleanWrapper.savedExtras.first as? EventExtrasType
         )
         let savedMetric = try XCTUnwrap(
-            mockGleanWrapper.savedEvents?.first as? EventMetricType<EventExtrasType>
+            mockGleanWrapper.savedEvents.first as? EventMetricType<EventExtrasType>
         )
-        let resultMetricType = type(of: savedMetric)
-        let debugMessage = TelemetryDebugMessage(expectedMetric: expectedMetricType, resultMetric: resultMetricType)
 
         XCTAssertEqual(mockGleanWrapper.recordEventCalled, 1)
         XCTAssertEqual(savedExtras.newName, expectedNewAppIcon.telemetryName)
         XCTAssertEqual(savedExtras.oldName, expectedOldAppIcon.telemetryName)
-        XCTAssert(resultMetricType == expectedMetricType, debugMessage.text)
+        XCTAssert(savedMetric === event, "Received \(savedMetric) instead of \(event)")
     }
 
     func createSubject() -> AppIconSelectionTelemetry {

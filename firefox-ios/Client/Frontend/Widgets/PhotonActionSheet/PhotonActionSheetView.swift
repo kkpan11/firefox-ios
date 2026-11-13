@@ -8,6 +8,7 @@ import Shared
 
 // MARK: - PhotonActionSheetViewDelegate
 protocol PhotonActionSheetViewDelegate: AnyObject {
+    @MainActor
     func didClick(item: SingleActionViewModel?, animationCompletion: @escaping () -> Void)
 }
 
@@ -15,7 +16,7 @@ protocol PhotonActionSheetViewDelegate: AnyObject {
 // More than one PhotonActionSheetView can be in the parent container cell.
 class PhotonActionSheetView: UIView, UIGestureRecognizerDelegate, ThemeApplicable {
     // MARK: - PhotonActionSheetViewUX
-    struct UX {
+    enum UX {
         static let StatusIconSize = CGSize(width: 24, height: 24)
         static let StatusIconMaxSize = CGSize(width: 58, height: 58)
         static let SelectedOverlayColor = UIColor(white: 0.0, alpha: 0.25)
@@ -27,7 +28,6 @@ class PhotonActionSheetView: UIView, UIGestureRecognizerDelegate, ThemeApplicabl
     }
 
     // MARK: - Variables
-    private var badgeOverlay: BadgeWithBackdrop?
     private var item: SingleActionViewModel?
     weak var delegate: PhotonActionSheetViewDelegate?
 
@@ -80,23 +80,10 @@ class PhotonActionSheetView: UIView, UIGestureRecognizerDelegate, ThemeApplicabl
         icon.adjustsImageSizeForAccessibilityContentSizeCategory = true
     }
 
-    private lazy var disclosureLabel: UILabel = {
-        let label = UILabel()
-        return label
-    }()
-
     private lazy var selectedOverlay: UIView = .build { selectedOverlay in
         selectedOverlay.backgroundColor = UX.SelectedOverlayColor
         selectedOverlay.isHidden = true
     }
-
-    private lazy var disclosureIndicator: UIImageView = {
-        let disclosureIndicator = createIconImageView()
-        disclosureIndicator.image = UIImage(
-            named: StandardImageIdentifiers.Large.chevronRight
-        )?.withRenderingMode(.alwaysTemplate)
-        return disclosureIndicator
-    }()
 
     private lazy var stackView: UIStackView = .build { stackView in
         stackView.spacing = UX.InBetweenPadding
@@ -172,13 +159,13 @@ class PhotonActionSheetView: UIView, UIGestureRecognizerDelegate, ThemeApplicabl
 
     @objc
     private func didClick(_ gestureRecognizer: UITapGestureRecognizer?) {
-        guard let item = item,
+        guard var item = item,
               let handler = item.tapHandler
         else { return }
 
         isSelected = (gestureRecognizer?.state == .began) || (gestureRecognizer?.state == .changed)
 
-        item.isEnabled = !item.isEnabled
+        item = SingleActionViewModel.copy(item, isEnabled: item.isEnabled)
 
         // Notify the delegate then wait until all animations are completed before handling the item
         // (Note: The iOS16 system find interactor will only work if the settings menu dismiss animation has completed)
@@ -220,7 +207,6 @@ class PhotonActionSheetView: UIView, UIGestureRecognizerDelegate, ThemeApplicabl
             statusIcon.removeFromSuperview()
         }
 
-        setupBadgeOverlay(action: item)
         addSubBorder(action: item)
         applyTheme(theme: theme)
     }
@@ -250,9 +236,6 @@ class PhotonActionSheetView: UIView, UIGestureRecognizerDelegate, ThemeApplicabl
 
         verticalBorder.backgroundColor = colors.layer4
         bottomBorder.backgroundColor = colors.layer4
-
-        badgeOverlay?.badge.tintBackground(color: colors.layer1)
-        disclosureIndicator.tintColor = colors.iconSecondary
 
         let iconTint: UIColor? = item?.needsIconActionableTint ?? false ? colors.iconAccentYellow : tintColor
         statusIcon.tintColor = iconTint
@@ -344,9 +327,11 @@ class PhotonActionSheetView: UIView, UIGestureRecognizerDelegate, ThemeApplicabl
                 GeneralizedImageFetcher().getImageFor( url: actionIconUrl) { image in
                     guard let image = image else { return }
 
-                    self.statusIcon.image = image.createScaled(PhotonActionSheet.UX.iconSize)
-                        .withRenderingMode(.alwaysOriginal)
-                    self.statusIcon.layer.cornerRadius = PhotonActionSheet.UX.iconSize.width / 2
+                    DispatchQueue.main.async {
+                        self.statusIcon.image = image.createScaled(PhotonActionSheet.UX.iconSize)
+                            .withRenderingMode(.alwaysOriginal)
+                        self.statusIcon.layer.cornerRadius = PhotonActionSheet.UX.iconSize.width / 2
+                    }
                 }
             }
         case .TabsButton:
@@ -377,17 +362,5 @@ class PhotonActionSheetView: UIView, UIGestureRecognizerDelegate, ThemeApplicabl
                 stackView.addArrangedSubview(statusIcon)
             }
         }
-    }
-
-    private func setupBadgeOverlay(action: SingleActionViewModel) {
-        guard let name = action.badgeIconName,
-              action.isEnabled,
-              let parent = statusIcon.superview
-        else { return }
-
-        badgeOverlay = BadgeWithBackdrop(imageName: name)
-        badgeOverlay?.add(toParent: parent)
-        badgeOverlay?.layout(onButton: statusIcon)
-        badgeOverlay?.show(true)
     }
 }

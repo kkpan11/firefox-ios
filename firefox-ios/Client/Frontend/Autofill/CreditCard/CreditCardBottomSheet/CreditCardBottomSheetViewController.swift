@@ -14,7 +14,8 @@ class CreditCardBottomSheetViewController: UIViewController,
                                            BottomSheetChild,
                                            Themeable {
     // MARK: UX
-    struct UX {
+    @MainActor
+    enum UX {
         static let containerPadding: CGFloat = 18.0
         static let tableMargin: CGFloat = 0
         static let distanceBetweenHeaderAndTop: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 8 : 18
@@ -34,7 +35,8 @@ class CreditCardBottomSheetViewController: UIViewController,
 
     var notificationCenter: NotificationProtocol
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
+    private let logger: Logger
     private var viewModel: CreditCardBottomSheetViewModel
     let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { windowUUID }
@@ -42,6 +44,8 @@ class CreditCardBottomSheetViewController: UIViewController,
     var didTapYesClosure: ((Error?) -> Void)?
     var didTapManageCardsClosure: (() -> Void)?
     var didSelectCreditCardToFill: ((UnencryptedCreditCardFields) -> Void)?
+
+    private var cardTableViewObserver: NSKeyValueObservation?
 
     private var numberOfCards: Int {
         switch viewModel.state {
@@ -93,16 +97,19 @@ class CreditCardBottomSheetViewController: UIViewController,
 
     private var contentViewHeightConstraint: NSLayoutConstraint?
     private var contentWidthConstraint: NSLayoutConstraint?
+    private var glassEffectView: UIVisualEffectView?
 
     // MARK: - Initializers
     init(viewModel: CreditCardBottomSheetViewModel,
          windowUUID: WindowUUID,
          notificationCenter: NotificationProtocol = NotificationCenter.default,
-         themeManager: ThemeManager = AppContainer.shared.resolve()) {
+         themeManager: ThemeManager = AppContainer.shared.resolve(),
+         logger: Logger = DefaultLogger.shared) {
         self.viewModel = viewModel
         self.notificationCenter = notificationCenter
         self.themeManager = themeManager
         self.windowUUID = windowUUID
+        self.logger = logger
         super.init(nibName: nil, bundle: nil)
 
         self.viewModel.didUpdateCreditCard = { [weak self] in
@@ -113,23 +120,30 @@ class CreditCardBottomSheetViewController: UIViewController,
 
         // Only allow selection when we are in selectSavedCard state
         // No selection is allowed for save / update states
-        self.cardTableView.allowsSelection = viewModel.state == .selectSavedCard ? true : false
+        self.cardTableView.allowsSelection = viewModel.state == .selectSavedCard
+        observeCardTableViewContentSize()
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        cardTableViewObserver?.invalidate()
+    }
+
     // MARK: View Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        listenForThemeChange(view)
+
         addSubviews()
-        setupView()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        setupView()
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
     }
 
@@ -138,8 +152,14 @@ class CreditCardBottomSheetViewController: UIViewController,
         updateConstraints()
     }
 
-    deinit {
-        notificationCenter.removeObserver(self)
+    // Observing cardTableView content size change to update the modal height correctly because initially
+    // the size of the modal is not calculated correctly
+    private func observeCardTableViewContentSize() {
+        cardTableViewObserver = cardTableView.observe(\.contentSize, options: .new) { [weak self] _, _ in
+            ensureMainThread { [weak self] in
+                self?.updateContentHeight()
+            }
+        }
     }
 
     // MARK: View Setup
@@ -159,19 +179,8 @@ class CreditCardBottomSheetViewController: UIViewController,
     }
 
     func setupView() {
-        let headerHeight = cardTableView.estimatedSectionHeaderHeight
-        let estimatedFooterHeight = cardTableView.estimatedSectionFooterHeight
-        let estimatedCellHeight = cardTableView.estimatedRowHeight
-
-        let UXSpacing = UX.yesButtonHeight + UX.bottomSpacing + UX.buttonsSpacing
-        var estimatedContentHeight = headerHeight + estimatedCellHeight + estimatedFooterHeight + UXSpacing
-
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            estimatedContentHeight += UX.yesButtonHeight
-        }
-
         contentViewHeightConstraint = contentView.heightAnchor.constraint(
-            greaterThanOrEqualToConstant: estimatedContentHeight
+            greaterThanOrEqualToConstant: estimatedContentHeight()
         )
         contentViewHeightConstraint?.priority = UILayoutPriority(999)
         contentViewHeightConstraint?.isActive = true
@@ -217,15 +226,40 @@ class CreditCardBottomSheetViewController: UIViewController,
         )
     }
 
-    func updateConstraints() {
-        if let contentViewHeightConstraint {
-            let buttonsHeight = buttonsContainerStackView.frame.height
-            let estimatedContentHeight = cardTableView.contentSize.height +
-                buttonsHeight + UX.bottomSpacing + UX.distanceBetweenHeaderAndTop
-            let aspectRatio = estimatedContentHeight / contentView.bounds.size.height
-            contentViewHeightConstraint.constant = contentViewHeightConstraint.constant * aspectRatio
+    func estimatedContentHeight() -> CGFloat {
+        let headerHeight = cardTableView.estimatedSectionHeaderHeight
+        let estimatedFooterHeight = cardTableView.estimatedSectionFooterHeight
+        let estimatedCellHeight = cardTableView.estimatedRowHeight
+
+        if viewModel.state == .selectSavedCard {
+            return headerHeight +
+                CGFloat(numberOfCards) * estimatedCellHeight +
+                estimatedFooterHeight +
+                UX.bottomSpacing +
+                UX.distanceBetweenHeaderAndTop
         }
 
+        let UXSpacing = UX.yesButtonHeight + UX.bottomSpacing + UX.buttonsSpacing
+        var estimatedContentHeight = headerHeight + estimatedCellHeight + estimatedFooterHeight + UXSpacing
+
+        if traitCollection.horizontalSizeClass == .regular {
+            estimatedContentHeight += UX.yesButtonHeight
+        }
+
+        return estimatedContentHeight
+    }
+
+    private func updateContentHeight() {
+        let estimatedContentHeight =
+            cardTableView.contentSize.height +
+            buttonsContainerStackView.frame.height +
+            UX.bottomSpacing +
+            UX.distanceBetweenHeaderAndTop
+
+        contentViewHeightConstraint?.constant = estimatedContentHeight
+    }
+
+    func updateConstraints() {
         let contentWidthCheck = UX.contentViewWidth > view.frame.size.width
         let contentViewWidth = contentWidthCheck ? view.frame.size.width - UX.containerPadding : UX.contentViewWidth
         contentWidthConstraint?.constant = contentViewWidth
@@ -252,8 +286,8 @@ class CreditCardBottomSheetViewController: UIViewController,
     private func didTapYes() {
         self.viewModel.didTapMainButton { [weak self] error in
             DispatchQueue.main.async { [weak self] in
-                self?.dismissVC()
                 self?.didTapYesClosure?(error)
+                self?.dismissVC()
             }
         }
     }
@@ -285,7 +319,6 @@ class CreditCardBottomSheetViewController: UIViewController,
         ) as? HostingTableViewCell<CreditCardItemRow>,
               let creditCard = viewModel.getConvertedCreditCardValues(
                 bottomSheetState: viewModel.state,
-                ccNumberDecrypted: viewModel.decryptCreditCardNumber(card: viewModel.creditCard),
                 row: indexPath.row
               )
         else { return UITableViewCell() }
@@ -360,6 +393,11 @@ class CreditCardBottomSheetViewController: UIViewController,
             bottomSheetState: .selectSavedCard,
             row: row
         ) else {
+            // A nil means the card couldn't be decrypted. The Keychain key is unavailable.
+            logger.log("Credit card autofill selection failed: unable to decrypt selected card.",
+                       level: .warning,
+                       category: .autofill)
+            TelemetryWrapper.recordEvent(category: .action, method: .tap, object: .creditCardAutofillFailed)
             return
         }
         didSelectCreditCardToFill?(plainTextCreditCard)
@@ -369,8 +407,45 @@ class CreditCardBottomSheetViewController: UIViewController,
     // MARK: Themable
     func applyTheme() {
         let currentTheme = themeManager.getCurrentTheme(for: windowUUID).colors
-        view.backgroundColor = currentTheme.layer1
+
+        if #available(iOS 26.0, *) {
+            setupGlassEffect()
+            view.backgroundColor = .clear
+        } else {
+            view.backgroundColor = currentTheme.layer1
+        }
+
         cardTableView.reloadData()
+    }
+
+    @available(iOS 26.0, *)
+    private func setupGlassEffect() {
+        // Only add glass effect if it doesn't already exist
+        guard glassEffectView == nil else { return }
+
+        let effectView = UIVisualEffectView()
+
+        let glassEffect = UIGlassEffect()
+        glassEffect.isInteractive = true
+        effectView.effect = glassEffect
+
+        effectView.layer.cornerRadius = UX.yesButtonCornerRadius
+        effectView.clipsToBounds = true
+        effectView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Add glass effect to the main view instead of contentView
+        view.backgroundColor = .clear
+        contentView.backgroundColor = .clear
+        view.insertSubview(effectView, at: 0)
+
+        NSLayoutConstraint.activate([
+            effectView.topAnchor.constraint(equalTo: view.topAnchor),
+            effectView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            effectView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            effectView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        glassEffectView = effectView
     }
 
     // MARK: Telemetry

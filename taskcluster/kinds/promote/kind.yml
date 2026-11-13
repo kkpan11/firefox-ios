@@ -11,6 +11,23 @@ transforms:
 
 
 task-defaults:
+  routes:
+    by-level:
+      '3':
+        - notify.slack-channel.C03PKCHHSSD.on-failed  # firefox-ios-releases
+      default: []
+  scopes:
+    by-level:
+      '3':
+        - queue:route:notify.slack-channel.C03PKCHHSSD.on-failed
+        - notify:slack-channel:C03PKCHHSSD
+      default: []
+  extra:
+    notify:
+      slackText: >-
+        Promote failed: ${task.metadata.name}
+        | <${rootUrl}/tasks/${status.taskId}|Taskcluster>
+        | <${task.metadata.source}|Source>
   run-on-tasks-for: []
   treeherder:
     symbol:
@@ -35,6 +52,7 @@ tasks:
               - API_BITRISE_SCHEME: Firefox
       attributes:
         build-type: release
+        product-type: firefox
     beta:
       description: Start a beta build
       bitrise:
@@ -43,3 +61,28 @@ tasks:
               - API_BITRISE_SCHEME: FirefoxBeta
       attributes:
         build-type: beta
+        product-type: firefox
+    focus:
+      description: Start a focus build
+      bitrise:
+        workflows:
+          - release_promotion_promote_focus:
+            - API_BITRISE_SCHEME: Focus
+      attributes:
+        build-type: release
+        product-type: focus
+        product-variant: focus
+      treeherder:
+        symbol: Bf
+    klar:
+      description: Start a klar build
+      bitrise:
+        workflows:
+          - release_promotion_promote_focus:
+            - API_BITRISE_SCHEME: Klar
+      attributes:
+        build-type: release
+        product-type: focus
+        product-variant: klar
+      treeherder:
+        symbol: Bk

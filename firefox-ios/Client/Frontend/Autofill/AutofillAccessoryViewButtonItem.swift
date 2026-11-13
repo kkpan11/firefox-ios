@@ -21,19 +21,26 @@ import Common
 /// # Methods
 /// - `init(image:labelText:tappedAction:)`: Initializes the accessory view with an image, label, and optional tap action.
 /// - `tappedAccessoryButton()`: Handles the tap action on the accessory view.
-class AutofillAccessoryViewButtonItem: UIBarButtonItem {
+final class AutofillAccessoryViewButtonItem: UIBarButtonItem {
     // MARK: - Constants
-    private struct UX {
+    private enum UX {
         static let accessoryImageViewSize: CGFloat = 24
         static let accessoryButtonStackViewSpacing: CGFloat = 2
         static let cornerRadius: CGFloat = 4
-        static let padding: CGFloat = 4
+        static let contentHorizontalInset: CGFloat = 16
     }
 
     // MARK: - Properties
+    private let containerView = UIView()
     private let accessoryImageView: UIImageView
     private let useAccessoryTextLabel: UILabel
-    private let tappedAccessoryButtonAction: (() -> Void)?
+    private let tappedAccessoryButtonAction: (@MainActor () -> Void)?
+
+    private lazy var contentStackView: UIStackView = {
+        let stackView = UIStackView(arrangedSubviews: [accessoryImageView, useAccessoryTextLabel])
+        stackView.spacing = UX.accessoryButtonStackViewSpacing
+        return stackView
+    }()
 
     /// Tint color for the accessory image view.
     var accessoryImageViewTintColor: UIColor? {
@@ -58,7 +65,11 @@ class AutofillAccessoryViewButtonItem: UIBarButtonItem {
     ///   - image: The image for the accessory image view.
     ///   - labelText: The text for the accessory view label.
     ///   - tappedAction: The closure to be executed when the accessory view is tapped.
-    init(image: UIImage?, labelText: String, tappedAction: (() -> Void)? = nil) {
+    init(
+        image: UIImage?,
+        labelText: String,
+        tappedAction: (@MainActor () -> Void)? = nil
+    ) {
         self.accessoryImageView = .build { imageView in
             imageView.image = image?.withRenderingMode(.alwaysTemplate)
             imageView.contentMode = .scaleAspectFit
@@ -72,14 +83,17 @@ class AutofillAccessoryViewButtonItem: UIBarButtonItem {
 
         self.useAccessoryTextLabel = .build { label in
             label.font = FXFontStyles.Bold.callout.scaledFont()
+            label.adjustsFontSizeToFitWidth = true
+            label.minimumScaleFactor = 0.65
             label.text = labelText
-            label.numberOfLines = 0
+            label.numberOfLines = 1
             label.accessibilityTraits = .button
         }
 
         self.tappedAccessoryButtonAction = tappedAction
         super.init()
         setup()
+        configureOverflowBehavior(image: image, labelText: labelText)
     }
 
     required init?(coder: NSCoder) {
@@ -88,28 +102,25 @@ class AutofillAccessoryViewButtonItem: UIBarButtonItem {
 
     // MARK: - Setup
     private func setup() {
+        configureAccessibility()
         let stackViewTapped = UITapGestureRecognizer(target: self, action: #selector(tappedAccessoryButton))
 
-        // Create a container view for the stack view
-        let containerView = UIView()
-
         // Add the stack view to the container view
-        let accessoryView = UIStackView(arrangedSubviews: [accessoryImageView, useAccessoryTextLabel])
-        accessoryView.spacing = UX.accessoryButtonStackViewSpacing
-        accessoryView.distribution = .equalCentering
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(contentStackView)
+        contentStackView.translatesAutoresizingMaskIntoConstraints = false
 
-        // Add the stack view to the container view
-        containerView.addSubview(accessoryView)
+        if #available(iOS 26.0, *) {
+            sharesBackground = false
+        }
 
-        // Add constraints to provide padding
-        accessoryView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            accessoryView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
-                                                   constant: UX.padding),
-            accessoryView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
-                                                    constant: -UX.padding),
-            accessoryView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            accessoryView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            contentStackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
+                                                      constant: UX.contentHorizontalInset),
+            contentStackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
+                                                       constant: -UX.contentHorizontalInset),
+            contentStackView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            contentStackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
 
         containerView.layer.cornerRadius = UX.cornerRadius
@@ -119,9 +130,28 @@ class AutofillAccessoryViewButtonItem: UIBarButtonItem {
         self.customView = containerView
     }
 
+    private func configureAccessibility() {
+        let isiOS26Available: Bool = if #available(iOS 26, *) {
+            true
+        } else {
+            false
+        }
+        accessoryImageView.accessibilityElementsHidden = !isiOS26Available
+        accessoryImageView.accessibilityTraits = isiOS26Available ? .button : .none
+        useAccessoryTextLabel.accessibilityTraits = isiOS26Available ? .none : .button
+    }
+
     private func updateBackgroundColor() {
-        if let backgroundColor = backgroundColor {
+        if let backgroundColor {
             customView?.backgroundColor = backgroundColor
+        }
+    }
+
+    private func configureOverflowBehavior(image: UIImage?, labelText: String) {
+        if #available(iOS 16.0, *) {
+            menuRepresentation = UIAction(title: labelText, image: image) { [weak self] _ in
+                self?.tappedAccessoryButton()
+            }
         }
     }
 

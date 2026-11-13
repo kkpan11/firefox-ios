@@ -22,17 +22,20 @@ struct OneLineTableViewCellViewModel {
 
 class OneLineTableViewCell: UITableViewCell,
                             ReusableCell,
-                            ThemeApplicable,
-                            BookmarksRefactorFeatureFlagProvider {
+                            ThemeApplicable {
     // Tableview cell items
 
-    struct UX {
+    enum UX {
         static let imageSize: CGFloat = 29
         static let borderViewMargin: CGFloat = 16
         static let verticalMargin: CGFloat = 8
         static let leftImageViewSize: CGFloat = 28
         static let separatorViewHeight: CGFloat = 0.7
-        static let labelMargin: CGFloat = 4
+        static let labelMargin: CGFloat = if #available(iOS 26.0, *) {
+            8
+        } else {
+            4
+        }
         static let shortLeadingMargin: CGFloat = 5
         static let longLeadingMargin: CGFloat = 13
         static let cornerRadius: CGFloat = 5
@@ -91,7 +94,7 @@ class OneLineTableViewCell: UITableViewCell,
         updateReorderControl()
 
         // Position the accessory at the trailing edge of the cell, accounting for safe area and padding
-        if let accessoryView {
+        if !isEditing, let accessoryView {
             if UIView.userInterfaceLayoutDirection(for: semanticContentAttribute) == .rightToLeft {
                 accessoryView.frame.origin.x = UX.accessoryViewTrailingPadding + safeAreaInsets.left
             } else {
@@ -104,7 +107,6 @@ class OneLineTableViewCell: UITableViewCell,
     }
 
     private func updateReorderControl() {
-        guard isBookmarkRefactorEnabled else { return }
         reorderControlImageView?.image = reorderControlImageView?.image?.withRenderingMode(.alwaysTemplate)
     }
 
@@ -115,16 +117,11 @@ class OneLineTableViewCell: UITableViewCell,
     override var indentationLevel: Int {
         didSet {
             // Update the leading constraint based on this cell's indentationLevel value
-            if isBookmarkRefactorEnabled {
-                setBookmarksRefactorMargin()
-            } else {
-                // adding 1 since the default indentation is 0.
-                leftImageViewLeadingConstraint?.constant = UX.borderViewMargin * CGFloat(1 + indentationLevel)
-            }
+            setMargin()
         }
     }
 
-    private func setBookmarksRefactorMargin() {
+    private func setMargin() {
         // Sets the indentation so that at each level the folder icon is left
         // aligned with the label of the parent folder above it.
         if indentationLevel == 0 {
@@ -258,11 +255,9 @@ class OneLineTableViewCell: UITableViewCell,
         selectedView.backgroundColor = theme.colors.layer5Hover
         backgroundColor = theme.colors.layer5
         bottomSeparatorView.backgroundColor = theme.colors.borderPrimary
-        if isBookmarkRefactorEnabled {
-            accessoryView?.tintColor = theme.colors.iconSecondary
-            editingAccessoryView?.tintColor = theme.colors.iconSecondary
-            tintColor = theme.colors.iconSecondary
-        }
+        accessoryView?.tintColor = theme.colors.iconSecondary
+        editingAccessoryView?.tintColor = theme.colors.iconSecondary
+        tintColor = theme.colors.iconSecondary
 
         switch customization {
         case .regular:

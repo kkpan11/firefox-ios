@@ -14,6 +14,9 @@ public enum LoggerCategory: String {
     /// Related to setting an alternative app icon and resetting to the default app icon.
     case appIcon
 
+    /// Related to our MLPA authentication service.
+    case mlpa
+
     /// Related to address, credit card and password autofill
     case autofill
 
@@ -25,9 +28,6 @@ public enum LoggerCategory: String {
 
     /// Related to experiments, nimbus and the messaging framework.
     case experiments
-
-    /// Related to old homepage UI and it's data management. To be replaced by the homepage rebuild project.
-    case legacyHomepage
 
     /// Related to new homepage UI and it's data management for the homepage rebuild project.
     case homepage
@@ -42,14 +42,29 @@ public enum LoggerCategory: String {
     /// Related to the application lifecycle.
     case lifecycle
 
+    /// Related to all things locale.
+    case locale
+
     /// Related to the main menu.
     case mainMenu
+
+    /// Related to Merino AS.
+    case merino
 
     /// Related to onboarding
     case onboarding
 
+    /// Related to Relay email mask
+    case relay
+
     /// Related to redux library or integration
     case redux
+
+    /// Related to the search engines
+    case searchEngines
+
+    /// Related to the settings
+    case settings
 
     /// Related to the setup of services on app launch.
     case setup
@@ -57,14 +72,29 @@ public enum LoggerCategory: String {
     /// Related to showing the share sheet from multiple places in the app.
     case shareSheet
 
+    /// Related to the shortcuts library
+    case shortcutsLibrary
+
     /// Related to storage (keychain, SQL database, store of different types, etc).
     case storage
+
+    /// Related to speech (microphone, audio).
+    case speech
 
     /// Related to sync accounts, sync management, application services.
     case sync
 
     /// Related to the tabs UI, setup and management
     case tabs
+
+    /// Related to Glean telemetry pings and events
+    case telemetry
+
+    /// Related to translations feature
+    case translations
+
+    /// Related to VPN feature
+    case vpn
 
     /// Webview scripts, webview delegate, webserver like GCDWebserver, showing webview alerts, webview navigation
     case webview

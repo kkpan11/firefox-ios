@@ -7,22 +7,33 @@ import ComponentLibrary
 import UIKit
 import Shared
 
-protocol RemoteTabsEmptyViewProtocol: UIView, ThemeApplicable {
+@MainActor
+protocol RemoteTabsEmptyViewProtocol: UIView, ThemeApplicable, InsetUpdatable {
+    @MainActor
+    var needsSafeArea: Bool { get }
     func configure(config: RemoteTabsPanelEmptyStateReason,
-                   delegate: RemoteTabsEmptyViewDelegate?)
+                   delegate: RemoteTabsEmptyViewDelegate?,
+                   isSyncing: Bool)
 }
 
-class ExperimentRemoteTabsEmptyView: UIView, RemoteTabsEmptyViewProtocol {
-    struct UX {
+class ExperimentRemoteTabsEmptyView: UIView,
+                                     RemoteTabsEmptyViewProtocol {
+    enum UX {
+        static let topPadding: CGFloat = 55
+        static let bottomPadding: CGFloat = 35
         static let paddingInBetweenItems: CGFloat = 15
-        static let verticalPadding: CGFloat = 20
+        static let buttonTopPadding: CGFloat = 24
         static let horizontalPadding: CGFloat = 24
         static let imageSize = CGSize(width: 72, height: 72)
     }
 
+    var needsSafeArea: Bool { true }
     weak var delegate: RemoteTabsEmptyViewDelegate?
 
     // MARK: - UI
+    private let scrollView: UIScrollView = .build { scrollview in
+        scrollview.backgroundColor = .clear
+    }
 
     private lazy var containerView: UIView = .build { _ in }
 
@@ -33,6 +44,7 @@ class ExperimentRemoteTabsEmptyView: UIView, RemoteTabsEmptyViewProtocol {
     private let titleLabel: UILabel = .build { label in
         label.adjustsFontForContentSizeCategory = true
         label.font = FXFontStyles.Regular.headline.scaledFont()
+        label.numberOfLines = 0
         label.textAlignment = .center
     }
 
@@ -43,13 +55,7 @@ class ExperimentRemoteTabsEmptyView: UIView, RemoteTabsEmptyViewProtocol {
         label.textAlignment = .center
     }
 
-    private let signInButton: SecondaryRoundedButton = .build { button in
-        let viewModel = SecondaryRoundedButtonViewModel(
-            title: .Settings.Sync.ButtonTitle,
-            a11yIdentifier: AccessibilityIdentifiers.TabTray.syncDataButton
-        )
-        button.configure(viewModel: viewModel)
-    }
+    private let signInButton: RoundedButtonWithImage = .build()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -61,50 +67,71 @@ class ExperimentRemoteTabsEmptyView: UIView, RemoteTabsEmptyViewProtocol {
     }
 
     func configure(config: RemoteTabsPanelEmptyStateReason,
-                   delegate: RemoteTabsEmptyViewDelegate?) {
+                   delegate: RemoteTabsEmptyViewDelegate?,
+                   isSyncing: Bool) {
         self.delegate = delegate
 
         iconImageView.image = UIImage.templateImageNamed(StandardImageIdentifiers.Large.cloud)
         titleLabel.text =  .EmptySyncedTabsPanelStateTitle
         descriptionLabel.text = config.localizedString()
 
-        if config == .notLoggedIn || config == .failedToSync {
+        let viewModel = RoundedButtonWithImageViewModel(
+            title: isSyncing ? .SyncingMessageWithEllipsis : .Settings.Sync.ButtonTitle,
+            image: isSyncing ? StandardImageIdentifiers.Large.sync : nil,
+            isAnimating: isSyncing,
+            a11yIdentifier: AccessibilityIdentifiers.TabTray.syncDataButton
+        )
+        signInButton.configure(viewModel: viewModel)
+
+        signInButton.removeTarget(nil, action: nil, for: .touchUpInside)
+
+        switch config {
+        case .noClients, .noTabs:
+            signInButton.addTarget(self, action: #selector(refreshTabs), for: .touchUpInside)
+        case .notLoggedIn, .failedToSync:
             signInButton.addTarget(self, action: #selector(presentSignIn), for: .touchUpInside)
-        } else if config == .syncDisabledByUser {
+        case .syncDisabledByUser:
             signInButton.addTarget(self, action: #selector(openAccountSettings), for: .touchUpInside)
         }
 
-        signInButton.isHidden = shouldHideButton(config)
-    }
+        signInButton.isHidden = false
+        signInButton.isEnabled = !isSyncing
 
-    private func shouldHideButton(_ state: RemoteTabsPanelEmptyStateReason) -> Bool {
-        return state == .noClients && state == .noTabs
+        // Recalculate layout after setting text. Labels initialize empty, causing button to clip
+        // multi-line text at large Dynamic Type sizes if intrinsic size isn't updated.
+        signInButton.invalidateIntrinsicContentSize()
+        signInButton.layoutIfNeeded()
     }
 
     private func setupLayout() {
         containerView.addSubviews(iconImageView, titleLabel, descriptionLabel, signInButton)
-        addSubview(containerView)
+        scrollView.addSubview(containerView)
+        addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            containerView.leadingAnchor.constraint(equalTo: leadingAnchor,
-                                                   constant: UX.horizontalPadding),
-            containerView.topAnchor.constraint(equalTo: topAnchor,
-                                               constant: UX.verticalPadding),
-            containerView.trailingAnchor.constraint(equalTo: trailingAnchor,
-                                                    constant: -UX.horizontalPadding),
-            containerView.bottomAnchor.constraint(equalTo: bottomAnchor,
-                                                  constant: -UX.verticalPadding),
+            scrollView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
+            scrollView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            containerView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            containerView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            containerView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            containerView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
 
             iconImageView.topAnchor.constraint(equalTo: containerView.topAnchor,
-                                               constant: UX.paddingInBetweenItems),
+                                               constant: UX.topPadding),
             iconImageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             iconImageView.widthAnchor.constraint(equalToConstant: UX.imageSize.width),
             iconImageView.heightAnchor.constraint(equalToConstant: UX.imageSize.height),
 
             titleLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor,
                                             constant: UX.paddingInBetweenItems),
-            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
+                                                constant: UX.horizontalPadding),
+            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
+                                                 constant: -UX.horizontalPadding),
 
             descriptionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor,
                                                   constant: UX.paddingInBetweenItems),
@@ -114,12 +141,13 @@ class ExperimentRemoteTabsEmptyView: UIView, RemoteTabsEmptyViewProtocol {
                                                        constant: -UX.horizontalPadding),
 
             signInButton.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor,
-                                              constant: UX.paddingInBetweenItems),
-            signInButton.leadingAnchor.constraint(greaterThanOrEqualTo: containerView.leadingAnchor),
-            signInButton.trailingAnchor.constraint(lessThanOrEqualTo: containerView.trailingAnchor),
-            signInButton.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+                                              constant: UX.buttonTopPadding),
+            signInButton.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
+                                                  constant: UX.horizontalPadding),
+            signInButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
+                                                   constant: -UX.horizontalPadding),
             signInButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor,
-                                                 constant: -UX.paddingInBetweenItems),
+                                                 constant: -UX.bottomPadding),
         ])
     }
 
@@ -128,7 +156,7 @@ class ExperimentRemoteTabsEmptyView: UIView, RemoteTabsEmptyViewProtocol {
         titleLabel.textColor = theme.colors.textPrimary
         descriptionLabel.textColor = theme.colors.textPrimary
         signInButton.applyTheme(theme: theme)
-        backgroundColor = theme.colors.layer3
+        backgroundColor = theme.isNova ? theme.colors.layer1 : theme.colors.layer3
     }
 
     @objc
@@ -140,7 +168,19 @@ class ExperimentRemoteTabsEmptyView: UIView, RemoteTabsEmptyViewProtocol {
     }
 
     @objc
+    private func refreshTabs() {
+        delegate?.remotePanelDidRequestToRefreshTabs()
+    }
+
+    @objc
     private func openAccountSettings() {
         delegate?.presentFxAccountSettings()
+    }
+
+    // MARK: - InsetUpdatable
+
+    func updateInsets(top: CGFloat, bottom: CGFloat) {
+        scrollView.contentInset.top = top
+        scrollView.contentInset.bottom = bottom
     }
 }

@@ -5,7 +5,7 @@
 import UIKit
 import Common
 
-protocol ImageHandler {
+protocol ImageHandler: Sendable {
     /// The ImageHandler will fetch the favicon with the following precedence:
     ///     1. Tries to fetch from the cache.
     ///     2. If there is a URL, tries to fetch from the web.
@@ -17,6 +17,9 @@ protocol ImageHandler {
     ///   - domain: The domain this favicon will be associated with
     /// - Returns: The favicon image
     func fetchFavicon(imageModel: SiteImageModel) async -> UIImage
+
+    /// Same precedence as `fetchFavicon`, limited to what resolves without suspending.
+    func fetchFaviconFromMemory(imageModel: SiteImageModel) -> UIImage?
 
     /// The ImageHandler will fetch the hero image with the following precedence
     ///     1. Tries to fetch from the cache.
@@ -34,12 +37,12 @@ protocol ImageHandler {
     func clearCache()
 }
 
-class DefaultImageHandler: ImageHandler {
+final class DefaultImageHandler: ImageHandler {
     private let imageCache: SiteImageCache
     private let faviconFetcher: FaviconFetcher
     private let letterImageGenerator: LetterImageGenerator
     private let heroImageFetcher: HeroImageFetcher
-    private var logger: Logger = DefaultLogger.shared
+    private let logger: Logger = DefaultLogger.shared
 
     init(imageCache: SiteImageCache = DefaultSiteImageCache(),
          faviconFetcher: FaviconFetcher = DefaultFaviconFetcher(),
@@ -68,15 +71,27 @@ class DefaultImageHandler: ImageHandler {
         }
     }
 
+    func fetchFaviconFromMemory(imageModel: SiteImageModel) -> UIImage? {
+        if case let .bundleAsset(assetName, _) = imageModel.siteResource {
+            return try? loadDefaultFaviconFromBundle(assetName: assetName)
+        }
+
+        // Bundled default images never enter the image cache, so the lookup below can't find them.
+        if let image = try? getBundleImage(assetName: imageModel.cacheKey) {
+            return image
+        }
+
+        return imageCache.getImageFromMemory(cacheKey: imageModel.cacheKey, type: imageModel.imageType)
+    }
+
     private func loadDefaultFaviconFromBundle(assetName: String) throws -> UIImage {
         do {
             return try getBundleImage(assetName: assetName)
         } catch {
             logger.log(
-                "Could not get image from bundle",
+                "Could not get image from bundle with asset name \(assetName)",
                 level: .warning,
-                category: .images,
-                extra: ["assetName": assetName]
+                category: .images
             )
             throw error
         }
@@ -146,7 +161,7 @@ class DefaultImageHandler: ImageHandler {
 
             return image
         } catch {
-            return UIImage(named: "globeLarge")?.withRenderingMode(.alwaysTemplate) ?? UIImage()
+            return UIImage(named: StandardImageIdentifiers.Large.globe)?.withRenderingMode(.alwaysTemplate) ?? UIImage()
         }
     }
 

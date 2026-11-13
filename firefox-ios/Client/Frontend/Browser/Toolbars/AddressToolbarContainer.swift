@@ -7,17 +7,49 @@ import Redux
 import ToolbarKit
 import UIKit
 
+protocol URLBarViewProtocol {
+    @MainActor
+    var inOverlayMode: Bool { get }
+    @MainActor
+    func enterOverlayMode(_ locationText: String?, pasted: Bool, search: Bool)
+    @MainActor
+    func leaveOverlayMode(reason: URLBarLeaveOverlayModeReason, shouldCancelLoading cancel: Bool)
+}
+
+/// Describes the reason for leaving overlay mode.
+enum URLBarLeaveOverlayModeReason {
+    /// The user committed their edits.
+    case finished
+
+    /// The user aborted their edits.
+    case cancelled
+}
+
 protocol AddressToolbarContainerDelegate: AnyObject {
+    @MainActor
     func searchSuggestions(searchTerm: String)
+    @MainActor
     func openBrowser(searchTerm: String)
+    @MainActor
     func openSuggestions(searchTerm: String)
+    @MainActor
     func configureContextualHint(for button: UIButton, with contextualHintType: String)
+    @MainActor
+    func addressToolbarDidHideEditingAccessoryButton()
+    @MainActor
     func addressToolbarDidBeginEditing(searchTerm: String, shouldShowSuggestions: Bool)
+    @MainActor
     func addressToolbarContainerAccessibilityActions() -> [UIAccessibilityCustomAction]?
+    @MainActor
     func addressToolbarDidEnterOverlayMode(_ view: UIView)
+    @MainActor
     func addressToolbar(_ view: UIView, didLeaveOverlayModeForReason: URLBarLeaveOverlayModeReason)
+    @MainActor
     func addressToolbarDidBeginDragInteraction()
+    @MainActor
     func addressToolbarDidTapSearchEngine(_ searchEngineView: UIView)
+    @MainActor
+    func contextMenu(for actionType: ToolbarActionConfiguration.ActionType) -> UIMenu?
 }
 
 final class AddressToolbarContainer: UIView,
@@ -28,6 +60,7 @@ final class AddressToolbarContainer: UIView,
                                      AddressToolbarDelegate,
                                      Autocompletable,
                                      URLBarViewProtocol,
+                                     FeatureFlaggable,
                                      PrivateModeUI {
     private enum UX {
         static let toolbarHorizontalPadding: CGFloat = 16
@@ -35,11 +68,13 @@ final class AddressToolbarContainer: UIView,
         static let skeletonBarOffset: CGFloat = 8
         static let skeletonBarBottomPositionOffset: CGFloat = 4
         static let skeletonBarWidthOffset: CGFloat = 32
+        static let addNewTabFadeAnimationDuration: TimeInterval = 0.2
+        static let addNewTabPercentageAnimationThreshold: CGFloat = 0.3
+        static let keyboardAccessoryViewOffset: CGFloat = 22
+        static let accessoryViewGradientOffset: CGFloat = 74
     }
 
-    typealias SubscriberStateType = ToolbarState
-
-    private let isSwipingTabsEnabled: Bool
+    private let toolbarHelper: ToolbarHelperInterface
     private var windowUUID: WindowUUID?
     private var profile: Profile?
     private var model: AddressToolbarContainerModel?
@@ -71,35 +106,67 @@ final class AddressToolbarContainer: UIView,
         }
     }
 
-    var parent: UIStackView?
+    weak var parent: UIStackView?
+    var onContainerTap: (() -> Void)?
     private lazy var regularToolbar: RegularBrowserAddressToolbar = .build()
     private lazy var leftSkeletonAddressBar: RegularBrowserAddressToolbar = .build()
     private lazy var rightSkeletonAddressBar: RegularBrowserAddressToolbar = .build()
     private lazy var progressBar: GradientProgressBar = .build { bar in
-        bar.clipsToBounds = false
+        bar.clipsToBounds = true
     }
+    private lazy var addNewTabView: AddressToolbarAddTabView = .build()
+    private lazy var accessoryViewGradient = CAGradientLayer()
+
+    private var addNewTabTrailingConstraint: NSLayoutConstraint?
+    private var addNewTabLeadingConstraint: NSLayoutConstraint?
+    private var addNewTabTopConstraint: NSLayoutConstraint?
+    private var addNewTabBottomConstraint: NSLayoutConstraint?
+
+    private var toolbarLeadingConstraint: NSLayoutConstraint?
+    private var toolbarTrailingConstraint: NSLayoutConstraint?
+    /// Provided by the iOS 27.1 API `UIView.layoutGuide(for: .bar(onEdge:extent:))`.
+    private var systemTopBarLayoutGuide: UILayoutGuide?
 
     private var progressBarTopConstraint: NSLayoutConstraint?
     private var progressBarBottomConstraint: NSLayoutConstraint?
 
+    /// View the progress bar is pinned below when the toolbar is at the top. `nil` pins it to the container itself.
+    weak var progressBarAnchorView: UIView? {
+        didSet {
+            let position = state?.toolbarPosition ?? .top
+            let activeConstraint = position == .top ? progressBarTopConstraint : progressBarBottomConstraint
+            guard oldValue !== progressBarAnchorView || activeConstraint?.isActive != true else { return }
+
+            updateProgressBarPosition(position)
+        }
+    }
+
     private func calculateToolbarTrailingSpace() -> CGFloat {
+        // Expanded iPhone Duo gives plenty of space.
+        if traitCollection.duoExpanded, systemTopBarLayoutGuide != nil {
+            return 0
+        }
         if shouldDisplayCompact {
             return UX.toolbarHorizontalPadding
         }
-        if traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular {
+        if traitCollection.verticalSizeClass == .regular && traitCollection.horizontalSizeClass == .regular {
             return UX.toolbarHorizontalPadding
         }
-        // Provide 0 padding in iPhone landscape due to safe area insets
+        // Use no extra padding in compact height, safe area insets provide spacing.
         return 0
     }
 
     private func calculateToolbarLeadingSpace(isEditing: Bool, toolbarLayoutStyle: ToolbarLayoutStyle) -> CGFloat {
+        // Expanded iPhone Duo gives plenty of space.
+        if traitCollection.duoExpanded, systemTopBarLayoutGuide != nil {
+            return 0
+        }
         if shouldDisplayCompact {
             return UX.toolbarHorizontalPadding
         }
 
-        // Provide 0 padding in iPhone landscape due to safe area insets
-        if traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular {
+        // Use no extra padding in compact height, safe area insets provide spacing.
+        if traitCollection.verticalSizeClass == .regular && traitCollection.horizontalSizeClass == .regular {
             return UX.toolbarHorizontalPadding
         }
         return 0
@@ -109,14 +176,38 @@ final class AddressToolbarContainer: UIView,
     /// and the Cancel button is visible (allowing the user to leave overlay mode).
     var inOverlayMode = false
 
-    init(isSwipingTabsEnabled: Bool) {
-        self.isSwipingTabsEnabled = isSwipingTabsEnabled
+    init(toolbarHelper: ToolbarHelperInterface = ToolbarHelper()) {
+        self.toolbarHelper = toolbarHelper
         super.init(frame: .zero)
-        setupLayout()
+
+        #if compiler(>=6.4)
+        if #available(iOS 27.1, *) {
+            registerForTraitChanges(UITraitCollection.systemTraitsAffectingVerticalBarEdge) { (self: Self, _) in
+                self.updateSkeletonAddressBarsFixedHorizontalSafeAreaInsets()
+            }
+        }
+        #endif
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits
+        guard Thread.isMainThread else {
+            DefaultLogger.shared.log(
+                "AddressToolbarContainer was not deallocated on the main thread. Redux was not cleaned up.",
+                level: .fatal,
+                category: .lifecycle
+            )
+            assertionFailure("The view was not deallocated on the main thread. Redux was not cleaned up.")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            unsubscribeFromRedux()
+        }
     }
 
     func configure(
@@ -124,17 +215,20 @@ final class AddressToolbarContainer: UIView,
         profile: Profile,
         searchEnginesManager: SearchEnginesManagerProvider,
         delegate: AddressToolbarContainerDelegate,
-        isUnifiedSearchEnabled: Bool
+        isUnifiedSearchEnabled: Bool,
+        isBottomSearchBar: Bool
     ) {
         self.windowUUID = windowUUID
         self.profile = profile
         self.delegate = delegate
         self.isUnifiedSearchEnabled = isUnifiedSearchEnabled
+        setupLayout(isBottomSearchBar: isBottomSearchBar)
         subscribeToRedux()
     }
 
     func updateProgressBar(progress: Double) {
-        DispatchQueue.main.async { [unowned self] in
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             progressBar.alpha = 1
             progressBar.isHidden = false
             progressBar.setProgress(Float(progress), animated: !isTransitioning)
@@ -147,12 +241,48 @@ final class AddressToolbarContainer: UIView,
     }
 
     func hideSkeletonBars() {
+        if !leftSkeletonAddressBar.isHidden || !rightSkeletonAddressBar.isHidden {
+            configureSkeletonAddressBars(previousTab: nil, forwardTab: nil)
+        }
+
         leftSkeletonAddressBar.isHidden = true
         rightSkeletonAddressBar.isHidden = true
     }
 
+    func offsetForKeyboardAccessory(hasAccessoryView: Bool) -> CGFloat {
+        guard #available(iOS 26.0, *), let windowUUID else { return 0 }
+
+        let isEditingAddress = state?.addressToolbar.isEditing == true
+        let isAccessoryViewVisible = state?.isAccessoryViewVisible ?? false
+        let isBottomToolbar = state?.toolbarPosition == .bottom
+        let shouldAdjustForAccessory = hasAccessoryView &&
+                                       !isEditingAddress &&
+                                       isBottomToolbar
+
+        let accessoryViewOffset = shouldAdjustForAccessory ? UX.keyboardAccessoryViewOffset : 0
+
+        /// We want to check here if the keyboard accessory view state has changed
+        /// To avoid spamming redux actions.
+        guard hasAccessoryView != isAccessoryViewVisible else { return accessoryViewOffset }
+        // Dispatch action to change address bar to minimized state
+        store.dispatch(ToolbarModernAction.accessoryViewVisibilityChanged(isVisible: hasAccessoryView),
+                       forWindowUUID: windowUUID)
+
+        return accessoryViewOffset
+    }
+
     func updateSkeletonAddressBarsVisibility(tabManager: TabManager) {
-        guard let selectedTab = tabManager.selectedTab else { return }
+        let isToolbarAtBottom = state?.toolbarPosition == .bottom
+        guard let selectedTab = tabManager.selectedTab, isToolbarAtBottom else {
+            hideSkeletonBars()
+            return
+        }
+
+        if leftSkeletonAddressBar.superview == nil {
+            applyBottomLayoutConstraints()
+            setupSkeletonAddressBarsLayout(isBottomSearchBar: true)
+        }
+
         let tabs = selectedTab.isPrivate ? tabManager.privateTabs : tabManager.normalTabs
         guard let index = tabs.firstIndex(where: { $0 === selectedTab }) else { return }
 
@@ -162,6 +292,67 @@ final class AddressToolbarContainer: UIView,
         configureSkeletonAddressBars(previousTab: previousTab, forwardTab: forwardTab)
         leftSkeletonAddressBar.isHidden = previousTab == nil
         rightSkeletonAddressBar.isHidden = forwardTab == nil
+    }
+
+    private func applyBottomLayoutConstraints() {
+        insertSubview(leftSkeletonAddressBar, aboveSubview: toolbar)
+        insertSubview(rightSkeletonAddressBar, aboveSubview: toolbar)
+
+        toolbarLeadingConstraint?.isActive = false
+        toolbarTrailingConstraint?.isActive = false
+
+        toolbarLeadingConstraint = toolbar.leadingAnchor.constraint(equalTo: leftSkeletonAddressBar.trailingAnchor)
+        toolbarTrailingConstraint = toolbar.trailingAnchor.constraint(equalTo: rightSkeletonAddressBar.leadingAnchor)
+
+        toolbarLeadingConstraint?.isActive = true
+        toolbarTrailingConstraint?.isActive = true
+    }
+
+    /// Keeps the top address toolbar clear of Duo's status area using the system bar layout guide.
+    /// Removes extra horizontal padding when the guide already provides the required spacing.
+    func updateSystemTopBarLayoutGuide(_ guide: UILayoutGuide?, isBottomSearchBar: Bool) {
+        let shouldUpdateConstraints = systemTopBarLayoutGuide !== guide
+            || toolbarLeadingConstraint?.isActive != true
+            || toolbarTrailingConstraint?.isActive != true
+        systemTopBarLayoutGuide = guide
+        toolbar.alignsTrailingContentToEdge = guide != nil && traitCollection.duoExpanded
+        if let model {
+            toolbar.updateSpacing(
+                leading: calculateToolbarLeadingSpace(isEditing: model.isEditing,
+                                                      toolbarLayoutStyle: model.toolbarLayoutStyle),
+                trailing: calculateToolbarTrailingSpace()
+            )
+        }
+
+        guard shouldUpdateConstraints else { return }
+
+        if isBottomSearchBar, toolbarHelper.isSwipingTabsEnabled {
+            let needsSkeletonLayout = leftSkeletonAddressBar.superview == nil
+            applyBottomLayoutConstraints()
+            if needsSkeletonLayout {
+                setupSkeletonAddressBarsLayout(isBottomSearchBar: true)
+            }
+        } else {
+            applyTopLayoutConstraints()
+        }
+    }
+
+    private func applyTopLayoutConstraints() {
+        leftSkeletonAddressBar.removeFromSuperview()
+        rightSkeletonAddressBar.removeFromSuperview()
+
+        toolbarLeadingConstraint?.isActive = false
+        toolbarTrailingConstraint?.isActive = false
+
+        toolbarLeadingConstraint = toolbar.leadingAnchor.constraint(
+            equalTo: systemTopBarLayoutGuide?.leadingAnchor ?? leadingAnchor
+        )
+        toolbarTrailingConstraint = toolbar.trailingAnchor.constraint(
+            equalTo: systemTopBarLayoutGuide?.trailingAnchor ?? trailingAnchor
+        )
+
+        toolbarLeadingConstraint?.isActive = true
+        toolbarTrailingConstraint?.isActive = true
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -174,30 +365,19 @@ final class AddressToolbarContainer: UIView,
         return toolbar.resignFirstResponder()
     }
 
-    override var transform: CGAffineTransform {
-        get {
-            return toolbar.transform
-        }
-        set {
-            toolbar.transform = newValue
-            leftSkeletonAddressBar.transform = newValue
-            rightSkeletonAddressBar.transform = newValue
-        }
-    }
-
     // MARK: - Redux
 
     func subscribeToRedux() {
         guard let windowUUID else { return }
 
-        let action = ScreenAction(windowUUID: windowUUID,
-                                  actionType: ScreenActionType.showScreen,
-                                  screen: .toolbar)
+        let action = ComponentAction(windowUUID: windowUUID,
+                                     actionType: ComponentActionType.addComponent,
+                                     component: .toolbar)
         store.dispatch(action)
 
         store.subscribe(self, transform: {
             $0.select({ appState in
-                return ToolbarState(appState: appState, uuid: windowUUID)
+                return AddressToolbarContainerLens(appState: appState, uuid: windowUUID)
             })
         })
     }
@@ -208,45 +388,94 @@ final class AddressToolbarContainer: UIView,
             return
         }
 
-        let action = ScreenAction(windowUUID: windowUUID,
-                                  actionType: ScreenActionType.closeScreen,
-                                  screen: .toolbar)
+        let action = ComponentAction(windowUUID: windowUUID,
+                                     actionType: ComponentActionType.removeComponent,
+                                     component: .toolbar)
         store.dispatch(action)
         store.unsubscribe(self)
     }
 
-    func newState(state: ToolbarState) {
-        self.state = state
-        updateModel(toolbarState: state)
+    func newState(state: AddressToolbarContainerLens) {
+        let wasShowingAccessoryGradient = shouldShowAccessoryGradient(for: self.state)
+        self.state = state.toolbarState
+        updateModel(addressToolbarContainerLens: state)
+        if shouldShowAccessoryGradient(for: self.state) != wasShowingAccessoryGradient {
+            setNeedsLayout()
+        }
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        updateSkeletonAddressBarsFixedHorizontalSafeAreaInsets()
+    }
+
+    /// The skeleton bars sit off screen, where next to a vertical system bar (folded iPhone Duo) their own safe area
+    /// insets differ from the ones they get once on screen, so in that case they use the container's insets instead.
+    private func updateSkeletonAddressBarsFixedHorizontalSafeAreaInsets() {
+        let insets = traitCollection.hasVerticalSystemBar ? safeAreaInsets : nil
+        [leftSkeletonAddressBar, rightSkeletonAddressBar].forEach {
+            $0.fixedHorizontalSafeAreaInsets = insets
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard #available(iOS 26.0, *) else { return }
+
+        // Synchronize accessory gradient during rotation or resizing.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        accessoryViewGradient.frame = CGRect(width: bounds.width,
+                                             height: bounds.height + UX.accessoryViewGradientOffset)
+        accessoryViewGradient.opacity = shouldShowAccessoryGradient(for: state) ? 1 : 0
+        CATransaction.commit()
+    }
+
+    private func shouldShowAccessoryGradient(for state: ToolbarState?) -> Bool {
+        return state?.toolbarPosition == .bottom
+            && state?.isAccessoryViewVisible == true
+            && state?.addressToolbar.isEditing == false
     }
 
     // MARK: - AlphaDimmable
     func updateAlphaForSubviews(_ alpha: CGFloat) {
-        // when the user scrolls the webpage the address toolbar gets hidden by changing its alpha
-        regularToolbar.alpha = alpha
-        if isSwipingTabsEnabled {
-            leftSkeletonAddressBar.alpha = alpha
-            rightSkeletonAddressBar.alpha = alpha
+        let isReaderModeActive = state?.addressToolbar.readerModeState == .active
+        if isReaderModeActive {
+            // when the user scrolls the webpage the address toolbar gets hidden by changing its alpha
+            regularToolbar.alpha = alpha
         }
+
+        let isMinimizedAddressBar = alpha.isZero
+        updateSkeletonAddressBarsAlpha(forMinimizedAddressBar: isMinimizedAddressBar)
     }
 
-    private func updateModel(toolbarState: ToolbarState) {
+    private func updateModel(addressToolbarContainerLens: AddressToolbarContainerLens) {
         guard let windowUUID, let profile else { return }
+        let toolbarState = addressToolbarContainerLens.toolbarState
         let newModel = AddressToolbarContainerModel(state: toolbarState,
+                                                    addressToolbarContainerLens: addressToolbarContainerLens,
                                                     profile: profile,
+                                                    longPressMenuProvider: { [weak self] actionType in
+                                                        self?.delegate?.contextMenu(for: actionType)
+                                                    },
                                                     windowUUID: windowUUID)
 
         shouldDisplayCompact = newModel.shouldDisplayCompact
 
         guard self.model != newModel else { return }
-
+        updateSkeletonAddressBarsAlpha(forMinimizedAddressBar: newModel.isAddressBarMinimized)
         // in case we are in edit mode but overlay is not active yet we have to activate it
         // so that `inOverlayMode` is set to true so we avoid getting stuck in overlay mode
+        // Redux already has isEditing == true here, so we only sync the local flag/UI to avoid
+        // re-dispatch didStartEditingUrl, which can race with an in-flight cancelEdit.
         if newModel.isEditing, !inOverlayMode {
-            enterOverlayMode(nil, pasted: false, search: true)
+            inOverlayMode = true
+            delegate?.addressToolbarDidEnterOverlayMode(self)
         }
         updateProgressBarPosition(toolbarState.toolbarPosition)
-
+        // When frame is zero it means the toolbar hasn't appeared on screen yet for the first time
+        // so to prevent a flashy animation on start disable the animation.
+        let shouldAnimate = newModel.shouldAnimate && frame != .zero
         regularToolbar.configure(
             config: newModel.addressToolbarConfig,
             toolbarPosition: toolbarState.toolbarPosition,
@@ -255,7 +484,13 @@ final class AddressToolbarContainer: UIView,
                                                        toolbarLayoutStyle: newModel.toolbarLayoutStyle),
             trailingSpace: calculateToolbarTrailingSpace(),
             isUnifiedSearchEnabled: isUnifiedSearchEnabled,
-            animated: newModel.shouldAnimate)
+            animated: shouldAnimate)
+
+        let addressBarVerticalPaddings = newModel.addressToolbarConfig.uxConfiguration
+            .locationViewVerticalPaddings(addressBarPosition: toolbarState.toolbarPosition)
+        addNewTabTopConstraint?.constant = addressBarVerticalPaddings.top
+        addNewTabBottomConstraint?.constant = -addressBarVerticalPaddings.bottom
+        addNewTabView.configure(newModel.addressToolbarConfig.uxConfiguration)
 
         // Replace the old model after we are done using it for comparison
         // All functionality that depends on the new model should come after this
@@ -265,58 +500,62 @@ final class AddressToolbarContainer: UIView,
     }
 
     private func configureSkeletonAddressBars(previousTab: Tab?, forwardTab: Tab?) {
-        guard let model, let state else { return }
-        leftSkeletonAddressBar.configure(
-            config: model.configureSkeletonAddressBar(
-                with: previousTab?.url?.displayURL,
-                isReaderModeAvailableOrActive: previousTab?.readerModeAvailableOrActive
-            ),
-            toolbarPosition: state.toolbarPosition,
-            toolbarDelegate: self,
+        guard let model else { return }
+        leftSkeletonAddressBar.configureNonInteractive(
+            config: model.getSkeletonAddressBarConfiguration(for: previousTab),
             leadingSpace: UX.skeletonBarOffset,
-            trailingSpace: -UX.skeletonBarOffset,
-            isUnifiedSearchEnabled: isUnifiedSearchEnabled,
-            animated: model.shouldAnimate
+            trailingSpace: -UX.skeletonBarOffset
         )
-
-        rightSkeletonAddressBar.configure(
-            config: model.configureSkeletonAddressBar(
-                with: forwardTab?.url?.displayURL,
-                isReaderModeAvailableOrActive: forwardTab?.readerModeAvailableOrActive
-            ),
-            toolbarPosition: state.toolbarPosition,
-            toolbarDelegate: self,
+        rightSkeletonAddressBar.configureNonInteractive(
+            config: model.getSkeletonAddressBarConfiguration(for: forwardTab),
             leadingSpace: -UX.skeletonBarOffset,
-            trailingSpace: UX.skeletonBarOffset,
-            isUnifiedSearchEnabled: isUnifiedSearchEnabled,
-            animated: model.shouldAnimate
+            trailingSpace: UX.skeletonBarOffset
         )
+        leftSkeletonAddressBar.accessibilityIdentifier = AccessibilityIdentifiers.Browser.AddressToolbar.leadingSkeleton
+        rightSkeletonAddressBar.accessibilityIdentifier = AccessibilityIdentifiers.Browser.AddressToolbar.trailingSkeleton
     }
 
-    private func setupLayout() {
+    private func updateSkeletonAddressBarsAlpha(forMinimizedAddressBar: Bool) {
+        guard toolbarHelper.isSwipingTabsEnabled else { return }
+
+        let alpha: CGFloat = forMinimizedAddressBar ? 0 : 1
+        leftSkeletonAddressBar.alpha = alpha
+        rightSkeletonAddressBar.alpha = alpha
+    }
+
+    private func setupLayout(isBottomSearchBar: Bool) {
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(onContainerTapped))
+        addGestureRecognizer(tapGesture)
+
         addSubview(progressBar)
+        setupAccessoryViewGradient()
 
         NSLayoutConstraint.activate([
-            progressBar.leadingAnchor.constraint(equalTo: leadingAnchor),
-            progressBar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            progressBar.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
+            progressBar.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
         ])
 
-        setupToolbarConstraints()
-        setupSkeletonAddressBarsLayout()
+        setupToolbarConstraints(isBottomSearchBar: isBottomSearchBar)
+        setupSkeletonAddressBarsLayout(isBottomSearchBar: isBottomSearchBar)
+
+        addSubview(addNewTabView)
+        addNewTabLeadingConstraint = addNewTabView.leadingAnchor.constraint(equalTo: trailingAnchor)
+        addNewTabTrailingConstraint = addNewTabView.trailingAnchor.constraint(equalTo: trailingAnchor)
+        addNewTabTopConstraint = addNewTabView.topAnchor.constraint(equalTo: topAnchor)
+        addNewTabBottomConstraint = addNewTabView.bottomAnchor.constraint(equalTo: bottomAnchor)
+
+        addNewTabTrailingConstraint?.isActive = true
+        addNewTabTopConstraint?.isActive = true
+        addNewTabBottomConstraint?.isActive = true
+        addNewTabLeadingConstraint?.isActive = true
     }
 
-    private func setupToolbarConstraints() {
+    private func setupToolbarConstraints(isBottomSearchBar: Bool) {
         addSubview(toolbar)
-        if isSwipingTabsEnabled {
-            addSubviews(leftSkeletonAddressBar, rightSkeletonAddressBar)
-            insertSubview(leftSkeletonAddressBar, aboveSubview: toolbar)
-            insertSubview(rightSkeletonAddressBar, aboveSubview: toolbar)
-
-            toolbar.leadingAnchor.constraint(equalTo: leftSkeletonAddressBar.trailingAnchor).isActive = true
-            toolbar.trailingAnchor.constraint(equalTo: rightSkeletonAddressBar.leadingAnchor).isActive = true
+        if toolbarHelper.isSwipingTabsEnabled && isBottomSearchBar {
+            applyBottomLayoutConstraints()
         } else {
-            toolbar.leadingAnchor.constraint(equalTo: leadingAnchor).isActive = true
-            toolbar.trailingAnchor.constraint(equalTo: trailingAnchor).isActive = true
+            applyTopLayoutConstraints()
         }
 
         NSLayoutConstraint.activate([
@@ -325,20 +564,21 @@ final class AddressToolbarContainer: UIView,
         ])
     }
 
-    private func setupSkeletonAddressBarsLayout() {
-        if isSwipingTabsEnabled {
-            NSLayoutConstraint.activate([
-                leftSkeletonAddressBar.topAnchor.constraint(equalTo: topAnchor),
-                leftSkeletonAddressBar.trailingAnchor.constraint(equalTo: leadingAnchor),
-                leftSkeletonAddressBar.bottomAnchor.constraint(equalTo: bottomAnchor),
-                leftSkeletonAddressBar.widthAnchor.constraint(equalTo: widthAnchor, constant: -UX.skeletonBarWidthOffset),
+    private func setupSkeletonAddressBarsLayout(isBottomSearchBar: Bool) {
+        guard toolbarHelper.isSwipingTabsEnabled, isBottomSearchBar else { return }
 
-                rightSkeletonAddressBar.topAnchor.constraint(equalTo: topAnchor),
-                rightSkeletonAddressBar.leadingAnchor.constraint(equalTo: trailingAnchor),
-                rightSkeletonAddressBar.bottomAnchor.constraint(equalTo: bottomAnchor),
-                rightSkeletonAddressBar.widthAnchor.constraint(equalTo: widthAnchor, constant: -UX.skeletonBarWidthOffset)
-            ])
-        }
+        // The active toolbar determines height before the placeholders are configured.
+        NSLayoutConstraint.activate([
+            leftSkeletonAddressBar.topAnchor.constraint(equalTo: topAnchor),
+            leftSkeletonAddressBar.trailingAnchor.constraint(equalTo: leadingAnchor),
+            leftSkeletonAddressBar.bottomAnchor.constraint(equalTo: bottomAnchor).priority(.defaultHigh),
+            leftSkeletonAddressBar.widthAnchor.constraint(equalTo: widthAnchor, constant: -UX.skeletonBarWidthOffset),
+
+            rightSkeletonAddressBar.topAnchor.constraint(equalTo: topAnchor),
+            rightSkeletonAddressBar.leadingAnchor.constraint(equalTo: trailingAnchor),
+            rightSkeletonAddressBar.bottomAnchor.constraint(equalTo: bottomAnchor).priority(.defaultHigh),
+            rightSkeletonAddressBar.widthAnchor.constraint(equalTo: widthAnchor, constant: -UX.skeletonBarWidthOffset)
+        ])
     }
 
     private func updateProgressBarPosition(_ position: AddressToolbarPosition) {
@@ -347,7 +587,11 @@ final class AddressToolbarContainer: UIView,
 
         switch position {
         case .top:
-            progressBarTopConstraint = progressBar.topAnchor.constraint(lessThanOrEqualTo: bottomAnchor)
+            if let progressBarAnchorView {
+                progressBarTopConstraint = progressBar.topAnchor.constraint(equalTo: progressBarAnchorView.bottomAnchor)
+            } else {
+                progressBarTopConstraint = progressBar.topAnchor.constraint(lessThanOrEqualTo: bottomAnchor)
+            }
             progressBarTopConstraint?.isActive = true
         case .bottom:
             progressBarBottomConstraint = progressBar.bottomAnchor.constraint(lessThanOrEqualTo: topAnchor)
@@ -355,26 +599,70 @@ final class AddressToolbarContainer: UIView,
         }
     }
 
+    private func setupAccessoryViewGradient() {
+        guard #available(iOS 26.0, *) else { return }
+        accessoryViewGradient.opacity = 0
+        accessoryViewGradient.startPoint = CGPoint(x: 0.5, y: 0)
+        accessoryViewGradient.endPoint = CGPoint(x: 0.5, y: 1)
+        layer.insertSublayer(accessoryViewGradient, at: 0)
+    }
+
+    func applyTransform(_ transform: CGAffineTransform, shouldAddNewTab: Bool) {
+        regularToolbar.transform = transform
+        leftSkeletonAddressBar.transform = transform
+        rightSkeletonAddressBar.transform = transform
+        if shouldAddNewTab {
+            let percentageTransform = abs(transform.tx) / bounds.width
+            UIView.animate(withDuration: UX.addNewTabFadeAnimationDuration) {
+                self.addNewTabView.showHideAddTabIcon(shouldShow:
+                                                        percentageTransform > UX.addNewTabPercentageAnimationThreshold)
+                self.addNewTabTrailingConstraint?.constant =
+                percentageTransform > UX.addNewTabPercentageAnimationThreshold ?
+                    -UX.toolbarHorizontalPadding : 0.0
+                self.layoutIfNeeded()
+            }
+            let isRTL = UIView.userInterfaceLayoutDirection(for: semanticContentAttribute) == .rightToLeft
+            addNewTabLeadingConstraint?.constant = isRTL ? -transform.tx : transform.tx
+        // if the add new tab was modified but we are not adding a new tab then restore it.
+        } else if addNewTabLeadingConstraint?.constant != 0 {
+            addNewTabLeadingConstraint?.constant = 0
+            addNewTabTrailingConstraint?.constant = 0
+            addNewTabView.showHideAddTabIcon(shouldShow: false)
+        }
+    }
+
     // MARK: - ThemeApplicable
     func applyTheme(theme: Theme) {
         regularToolbar.applyTheme(theme: theme)
-        if isSwipingTabsEnabled {
+        if toolbarHelper.isSwipingTabsEnabled {
             leftSkeletonAddressBar.applyTheme(theme: theme)
             rightSkeletonAddressBar.applyTheme(theme: theme)
+            addNewTabView.applyTheme(theme: theme)
         }
         applyProgressBarTheme(isPrivateMode: model?.isPrivateMode ?? false, theme: theme)
+
+        guard #available(iOS 26.0, *) else { return }
+        accessoryViewGradient.colors = [
+            theme.colors.layer3.withAlphaComponent(0).cgColor,
+            theme.colors.layer3.cgColor
+        ]
+    }
+
+    // MARK: - GestureRecognizer
+    @objc
+    private func onContainerTapped() {
+        onContainerTap?()
     }
 
     // MARK: - AddressToolbarDelegate
     func searchSuggestions(searchTerm: String) {
         if let windowUUID,
-           let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID) {
-            if searchTerm.isEmpty, !toolbarState.addressToolbar.isEmptySearch {
-                let action = ToolbarAction(windowUUID: windowUUID, actionType: ToolbarActionType.didDeleteSearchTerm)
-                store.dispatch(action)
-            } else if !searchTerm.isEmpty, toolbarState.addressToolbar.isEmptySearch {
-                let action = ToolbarAction(windowUUID: windowUUID, actionType: ToolbarActionType.didEnterSearchTerm)
-                store.dispatch(action)
+           let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID) {
+            if searchTerm.isEmpty != toolbarState.addressToolbar.isEmptySearch {
+                store.dispatch(
+                    ToolbarModernAction.searchTermDidChange(isEmpty: searchTerm.isEmpty),
+                    forWindowUUID: windowUUID
+                )
             } else if !toolbarState.addressToolbar.didStartTyping {
                 let action = ToolbarAction(windowUUID: windowUUID, actionType: ToolbarActionType.didStartTyping)
                 store.dispatch(action)
@@ -407,13 +695,31 @@ final class AddressToolbarContainer: UIView,
         let locationText = shouldShowSuggestions ? searchTerm : nil
         enterOverlayMode(locationText, pasted: false, search: false)
 
-        if shouldShowSuggestions {
-            delegate?.openSuggestions(searchTerm: locationText ?? "")
+        // We want to show suggestions if we turn on the trending searches or recent searches
+        // which displays the zero search state. Only if not in private mode.
+        let isTrendingSearchEnabled = featureFlagsProvider.isEnabled(.trendingSearches)
+        let isRecentSearchEnabled = featureFlagsProvider.isEnabled(.recentSearches)
+        let isRecentOrTrendingSearchEnabled = isTrendingSearchEnabled || isRecentSearchEnabled
+        let isPrivateMode = model?.isPrivateMode ?? false
+        let isZeroSearchEnabled = isRecentOrTrendingSearchEnabled && !isPrivateMode
+
+        if shouldShowSuggestions || isZeroSearchEnabled {
+            // This runs inside the text field's `becomeFirstResponder` frame, during the keyboard bring-up.
+            // Presenting the suggestions (which may build the search controller) is deferred by one runloop.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, inOverlayMode, state?.addressToolbar.didStartTyping != true else { return }
+                delegate?.openSuggestions(searchTerm: locationText ?? "")
+            }
         }
     }
 
     func addressToolbarAccessibilityActions() -> [UIAccessibilityCustomAction]? {
         delegate?.addressToolbarContainerAccessibilityActions()
+    }
+
+    func addressToolbarDidHideEditingAccessoryButton(_ addressToolbar: BrowserAddressToolbar) {
+        guard addressToolbar === toolbar else { return }
+        delegate?.addressToolbarDidHideEditingAccessoryButton()
     }
 
     func configureContextualHint(
@@ -422,7 +728,7 @@ final class AddressToolbarContainer: UIView,
         with contextualHintType: String
     ) {
         guard addressToolbar == toolbar,
-              let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID)
+              let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID)
         else { return }
 
         if contextualHintType == ContextualHintType.navigation.rawValue && !toolbarState.canShowNavigationHint { return }
@@ -451,22 +757,23 @@ final class AddressToolbarContainer: UIView,
         toolbar.setAutocompleteSuggestion(suggestion)
     }
 
+    func performAfterContextMenuDismissal(_ action: @escaping () -> Void) {
+        toolbar.performAfterContextMenuDismissal(action)
+    }
+
     // MARK: - Overlay Mode
     func enterOverlayMode(_ locationText: String?, pasted: Bool, search: Bool) {
         guard let windowUUID else { return }
+
         inOverlayMode = true
         delegate?.addressToolbarDidEnterOverlayMode(self)
 
         if pasted {
-            let action = ToolbarAction(
-                searchTerm: locationText,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.didPasteSearchTerm
-            )
-            store.dispatch(action)
+            store.dispatch(ToolbarModernAction.didPasteSearchTerm(searchTerm: locationText), forWindowUUID: windowUUID)
 
             delegate?.openSuggestions(searchTerm: locationText ?? "")
         } else {
+            store.dispatch(ToolbarModernAction.animationStateChanged(shouldAnimate: true), forWindowUUID: windowUUID)
             let action = ToolbarAction(searchTerm: locationText,
                                        windowUUID: windowUUID,
                                        actionType: ToolbarActionType.didStartEditingUrl)
@@ -476,7 +783,7 @@ final class AddressToolbarContainer: UIView,
 
     func leaveOverlayMode(reason: URLBarLeaveOverlayModeReason, shouldCancelLoading cancel: Bool) {
         guard let windowUUID,
-              let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID)
+              let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID)
         else { return }
 
         _ = toolbar.resignFirstResponder()
@@ -490,6 +797,13 @@ final class AddressToolbarContainer: UIView,
     }
 
     private func applyProgressBarTheme(isPrivateMode: Bool, theme: Theme) {
+        if theme.isNova,
+           let startColor = theme.colors.gradientAccent.colors.first,
+           let endColor = theme.colors.gradientAccent.colors.last {
+            progressBar.setGradientColors(startColor: startColor, middleColor: nil, endColor: endColor)
+            return
+        }
+
         let gradientStartColor = isPrivateMode ? theme.colors.borderAccentPrivate : theme.colors.borderAccent
         let gradientMiddleColor = isPrivateMode ? nil : theme.colors.iconAccentPink
         let gradientEndColor = isPrivateMode ? theme.colors.borderAccentPrivate : theme.colors.iconAccentYellow
@@ -504,5 +818,33 @@ final class AddressToolbarContainer: UIView,
     // MARK: - PrivateModeUI
     func applyUIMode(isPrivate: Bool, theme: Theme) {
         applyProgressBarTheme(isPrivateMode: isPrivate, theme: theme)
+    }
+
+    // MARK: - Key Command Utilities
+
+    override var keyCommands: [UIKeyCommand]? {
+        let defaultCommands: [UIKeyCommand]? = super.keyCommands
+        guard UIDevice.current.userInterfaceIdiom == .pad else { return defaultCommands }
+
+        return (defaultCommands ?? []) + [
+            UIKeyCommand(
+                action: #selector(escapeKeyCommand),
+                input: UIKeyCommand.inputEscape,
+                modifierFlags: []
+            )
+        ]
+    }
+
+    @objc
+    private func escapeKeyCommand() {
+        guard let windowUUID else { return }
+        guard state?.addressToolbar.isEditing ?? false else { return }
+
+        store.dispatch(ToolbarMiddlewareAction(
+            buttonType: .cancelEdit,
+            gestureType: .tap,
+            windowUUID: windowUUID,
+            actionType: ToolbarMiddlewareActionType.didTapButton
+        ))
     }
 }

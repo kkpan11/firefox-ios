@@ -6,10 +6,12 @@ import UIKit
 import Common
 
 /// A wrapped UIImageView which displays a plain search engine icon with no tapping features.
-final class PlainSearchEngineView: UIView, SearchEngineView, ThemeApplicable {
+final class PlainSearchEngineView: UIView,
+                                   SearchEngineView,
+                                   ThemeApplicable {
     // MARK: - Properties
     private enum UX {
-        static let cornerRadius: CGFloat = 4
+        static let cornerRadius: CGFloat = if #available(iOS 26.0, *) { 12 } else { 4 }
         static let imageViewSize = CGSize(width: 24, height: 24)
     }
 
@@ -76,7 +78,7 @@ final class PlainSearchEngineView: UIView, SearchEngineView, ThemeApplicable {
 
     func applyTheme(theme: Theme) {
         let colors = theme.colors
-        searchEngineImageView.backgroundColor = isURLTextFieldCentered ? colors.layer3 : colors.layer2
+        searchEngineImageView.backgroundColor = isURLTextFieldCentered ? colors.layerSurfaceLow : colors.layer2
         self.theme = theme
     }
 }

@@ -6,7 +6,7 @@ import Foundation
 import Shared
 import Common
 
-class OpenWithSettingsViewController: ThemedTableViewController {
+class OpenWithSettingsViewController: ThemedTableViewController, Notifiable {
     struct MailtoProviderEntry {
         let name: String
         let scheme: String
@@ -18,8 +18,14 @@ class OpenWithSettingsViewController: ThemedTableViewController {
     fileprivate let prefs: Prefs
     fileprivate var currentChoice = "mailto"
 
-    init(prefs: Prefs, windowUUID: WindowUUID) {
+    /// Keep the private theme override just for Settings, since this is also presented from the Site Menu.
+    private let _shouldUsePrivateOverride: Bool
+    override var shouldUsePrivateOverride: Bool { return _shouldUsePrivateOverride }
+    override var shouldBeInPrivateTheme: Bool { return false }
+
+    init(prefs: Prefs, windowUUID: WindowUUID, shouldUsePrivateOverride: Bool = true) {
         self.prefs = prefs
+        self._shouldUsePrivateOverride = shouldUsePrivateOverride
         super.init(windowUUID: windowUUID)
     }
 
@@ -35,10 +41,13 @@ class OpenWithSettingsViewController: ThemedTableViewController {
         tableView.register(ThemedTableSectionHeaderFooterView.self,
                            forHeaderFooterViewReuseIdentifier: ThemedTableSectionHeaderFooterView.cellIdentifier)
 
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(appDidBecomeActive),
-                                               name: UIApplication.didBecomeActiveNotification,
-                                               object: nil)
+        startObservingNotifications(
+            withNotificationCenter: NotificationCenter.default,
+            forObserver: self,
+            observing: [
+                UIApplication.didBecomeActiveNotification
+            ]
+        )
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -51,7 +60,6 @@ class OpenWithSettingsViewController: ThemedTableViewController {
         self.prefs.setString(currentChoice, forKey: PrefsKeys.KeyMailToOption)
     }
 
-    @objc
     func appDidBecomeActive() {
         reloadMailProviderSource()
         updateCurrentChoice()
@@ -104,7 +112,7 @@ class OpenWithSettingsViewController: ThemedTableViewController {
         let cell = dequeueCellFor(indexPath: indexPath)
         let option = mailProviderSource[indexPath.row]
 
-        cell.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+        cell.applyTheme(theme: currentTheme())
 
         cell.textLabel?.attributedText = tableRowTitle(option.name, enabled: option.enabled)
         cell.accessoryType = (currentChoice == option.scheme && option.enabled) ? .checkmark : .none
@@ -142,7 +150,7 @@ class OpenWithSettingsViewController: ThemedTableViewController {
 
     private func tableRowTitle(_ string: String, enabled: Bool) -> NSAttributedString {
         var color: [NSAttributedString.Key: UIColor]
-        let theme = themeManager.getCurrentTheme(for: windowUUID)
+        let theme = currentTheme()
         if enabled {
             color = [
                 NSAttributedString.Key.foregroundColor: theme.colors.textPrimary
@@ -154,5 +162,18 @@ class OpenWithSettingsViewController: ThemedTableViewController {
         }
 
         return NSAttributedString(string: string, attributes: color)
+    }
+
+    // MARK: - Notifiable
+
+    public func handleNotifications(_ notification: Notification) {
+        switch notification.name {
+        case UIApplication.didBecomeActiveNotification:
+            ensureMainThread {
+                self.appDidBecomeActive
+            }
+        default:
+            return
+        }
     }
 }

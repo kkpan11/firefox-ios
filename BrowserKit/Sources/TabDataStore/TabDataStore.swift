@@ -5,7 +5,7 @@
 import Foundation
 import Common
 
-public protocol TabDataStore {
+public protocol TabDataStore: Sendable {
     /// Fetches the previously saved window data matching the provided UUID,
     /// if it exists. This data contains the list of tabs.
     /// - Returns: The window data object if one was previously saved
@@ -23,7 +23,7 @@ public protocol TabDataStore {
     /// saved files in the directory) it is faster than fetchWindowData() and is
     /// preferable when only the UUIDs are needed.
     /// - Returns: a list of UUIDs for any saved WindowData.
-    func fetchWindowDataUUIDs() -> [WindowUUID]
+    nonisolated func fetchWindowDataUUIDs() -> [WindowUUID]
 
     /// Erases the on-disk data for tab windows matching the provided UUIDs.
     /// - Parameter forUUIDs: the UUIDs to delete the on-disk tab files for.
@@ -64,12 +64,17 @@ public actor DefaultTabDataStore: TabDataStore {
             if shouldLogFileFailure {
                 let errorMessage: String
                 errorMessage = shouldLogBackupFailure
-                                ? "Failed to open window data (including backup data) for UUID: \(uuid)"
-                                : "Failed to open window data (but backup recovery worked) for UUID: \(uuid)"
+                                ? "Failed to open window data (including backup data)"
+                                : "Failed to open window data (but backup recovery worked)"
                 logger.log(
-                    "\(errorMessage) File Info: [\(fileInfoMessage)] Backup File Info: [\(backupInfoMessage)]",
+                    errorMessage,
                     level: .fatal,
-                    category: .tabs
+                    category: .tabs,
+                    extra: [
+                        "windowUUID": uuid.uuidString,
+                        "fileInfo": fileInfoMessage,
+                        "backupFileInfo": backupInfoMessage
+                    ]
                 )
             }
         }
@@ -274,7 +279,7 @@ public actor DefaultTabDataStore: TabDataStore {
     /// for that window based on the file name.
     /// - Parameter url: the URL to parse.
     /// - Returns: a window UUID or nil if the URL was invalid.
-    private nonisolated func windowUUID(fromURL url: URL) -> WindowUUID? {
+    nonisolated private func windowUUID(fromURL url: URL) -> WindowUUID? {
         let file = url.lastPathComponent
         guard file.hasPrefix(filePrefix) else { return nil }
         let uuidString = String(file.dropFirst(filePrefix.count))

@@ -4,6 +4,7 @@
 
 import Shared
 import UIKit
+import Common
 
 // Naming functions: use the suffix 'KeyCommand' for an additional level of namespacing (bug 1415830)
 extension BrowserViewController {
@@ -55,15 +56,8 @@ extension BrowserViewController {
                                      method: .press,
                                      object: .keyCommand,
                                      extras: ["action": "reload"])
-        guard let tab = tabManager.selectedTab else { return }
-        if isToolbarRefactorEnabled {
-            store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
-                                                actionType: GeneralBrowserActionType.reloadWebsite))
-        } else {
-            if !contentContainer.hasAnyHomepage {
-                tab.reload()
-            }
-        }
+        store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
+                                            actionType: GeneralBrowserActionType.reloadWebsite))
     }
 
     @objc
@@ -72,15 +66,8 @@ extension BrowserViewController {
                                      method: .press,
                                      object: .keyCommand,
                                      extras: ["action": "reload-no-cache"])
-        guard let tab = tabManager.selectedTab else { return }
-        if isToolbarRefactorEnabled {
-            store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
-                                                actionType: GeneralBrowserActionType.reloadWebsiteNoCache))
-        } else {
-            if !contentContainer.hasAnyHomepage {
-                tab.reload(bypassCache: true)
-            }
-        }
+        store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
+                                            actionType: GeneralBrowserActionType.reloadWebsiteNoCache))
     }
 
     @objc
@@ -90,14 +77,9 @@ extension BrowserViewController {
                                      object: .keyCommand,
                                      extras: ["action": "go-back"])
         guard let tab = tabManager.selectedTab, tab.canGoBack else { return }
-        if isToolbarRefactorEnabled {
-            store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
-                                                actionType: GeneralBrowserActionType.navigateBack))
-        } else {
-            if !contentContainer.hasAnyHomepage {
-                tab.goBack()
-            }
-        }
+
+        store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
+                                            actionType: GeneralBrowserActionType.navigateBack))
     }
 
     @objc
@@ -107,14 +89,9 @@ extension BrowserViewController {
                                      object: .keyCommand,
                                      extras: ["action": "go-forward"])
         guard let tab = tabManager.selectedTab, tab.canGoForward else { return }
-        if isToolbarRefactorEnabled {
-            store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
-                                                actionType: GeneralBrowserActionType.navigateForward))
-        } else {
-            if !contentContainer.hasAnyHomepage {
-                tab.goForward()
-            }
-        }
+
+        store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
+                                            actionType: GeneralBrowserActionType.navigateForward))
     }
 
     @objc
@@ -146,12 +123,7 @@ extension BrowserViewController {
                                      object: .keyCommand,
                                      extras: ["action": "select-location-bar"])
         scrollController.showToolbars(animated: true)
-
-        if isToolbarRefactorEnabled {
-            store.dispatch(ToolbarAction(windowUUID: windowUUID, actionType: ToolbarActionType.didStartEditingUrl))
-        } else if let legacyUrlBar {
-            legacyUrlBar.tabLocationViewDidTapLocation(legacyUrlBar.locationView)
-        }
+        store.dispatch(ToolbarAction(windowUUID: windowUUID, actionType: ToolbarActionType.didStartEditingUrl))
     }
 
     @objc
@@ -161,14 +133,9 @@ extension BrowserViewController {
                                      object: .keyCommand,
                                      extras: ["action": "new-tab"])
 
-        if isToolbarRefactorEnabled {
-            store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
-                                                actionType: GeneralBrowserActionType.addNewTab))
-        } else {
-            let isPrivate = tabManager.selectedTab?.isPrivate ?? false
-            openBlankNewTab(focusLocationField: true, isPrivate: isPrivate)
-            keyboardPressesHandler().reset()
-        }
+        store.dispatch(GeneralBrowserAction(windowUUID: windowUUID,
+                                            actionType: GeneralBrowserActionType.addNewTab))
+        keyboardPressesHandler().reset()
     }
 
     @objc
@@ -195,15 +162,15 @@ extension BrowserViewController {
 
     @objc
     func closeTabKeyCommand() {
-        Task {
+        ensureMainThread {
             TelemetryWrapper.recordEvent(category: .action,
                                          method: .press,
                                          object: .keyCommand,
                                          extras: ["action": "close-tab"])
-            guard let currentTab = tabManager.selectedTab else { return }
-            tabsPanelTelemetry.tabClosed(mode: currentTab.isPrivate ? .private : .normal)
-            await tabManager.removeTab(currentTab.tabUUID)
-            keyboardPressesHandler().reset()
+            guard let currentTab = self.tabManager.selectedTab else { return }
+            self.tabsPanelTelemetry.tabClosed(mode: currentTab.isPrivate ? .private : .normal)
+            self.tabManager.removeTab(currentTab.tabUUID)
+            self.keyboardPressesHandler().reset()
         }
     }
 
@@ -342,7 +309,7 @@ extension BrowserViewController {
 
     @objc
     func zoomIn() {
-        guard contentContainer.hasAnyHomepage else { return }
+        guard !contentContainer.hasAnyHomepage else { return }
 
         let zoomValue = zoomManager.zoomIn()
         zoomPageBar?.updateZoomLabel(zoomValue: zoomValue)
@@ -350,7 +317,7 @@ extension BrowserViewController {
 
     @objc
     func zoomOut() {
-        guard contentContainer.hasAnyHomepage else { return }
+        guard !contentContainer.hasAnyHomepage else { return }
 
         let zoomValue = zoomManager.zoomOut()
         zoomPageBar?.updateZoomLabel(zoomValue: zoomValue)
@@ -358,7 +325,7 @@ extension BrowserViewController {
 
     @objc
     func resetZoom() {
-        guard contentContainer.hasAnyHomepage else { return }
+        guard !contentContainer.hasAnyHomepage else { return }
 
         zoomManager.resetZoom()
     }
@@ -409,6 +376,11 @@ extension BrowserViewController {
             UIKeyCommand(action: #selector(undoLastTabClosedKeyCommand), input: "t", modifierFlags: [.command, .shift]),
             UIKeyCommand(action: #selector(newNormalTabKeyCommand), input: "n", modifierFlags: [.command, .shift]),
             UIKeyCommand(action: #selector(zoomIn), input: "=", modifierFlags: .command),
+            UIKeyCommand(
+                action: #selector(reloadTabIgnoringCacheKeyCommand),
+                input: UIKeyCommand.f5,
+                modifierFlags: .control
+            ),
             UIKeyCommand(action: #selector(selectTabTwo), input: "2", modifierFlags: .command),
             UIKeyCommand(action: #selector(selectTabThree), input: "3", modifierFlags: .command),
             UIKeyCommand(action: #selector(selectTabFour), input: "4", modifierFlags: .command),
@@ -420,9 +392,7 @@ extension BrowserViewController {
 
         let isEditingText = tabManager.selectedTab?.isEditing ?? false
 
-        if !isToolbarRefactorEnabled, let legacyUrlBar, legacyUrlBar.inOverlayMode {
-            return commands + searchLocationCommands
-        } else if !isEditingText {
+        if !isEditingText {
             return commands + overridesTextEditing
         }
         return commands

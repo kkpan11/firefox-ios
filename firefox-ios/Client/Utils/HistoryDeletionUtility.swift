@@ -16,13 +16,13 @@ enum HistoryDeletionUtilityDateOptions: String, CaseIterable {
 }
 
 protocol HistoryDeletionProtocol {
-    func delete(_ sites: [String], completion: @escaping (Bool) -> Void)
+    @MainActor
     func deleteHistoryFrom(_ dateOption: HistoryDeletionUtilityDateOptions,
-                           completion: @escaping (HistoryDeletionUtilityDateOptions) -> Void)
+                           completion: @Sendable @escaping @MainActor (HistoryDeletionUtilityDateOptions) -> Void)
 }
 
-class HistoryDeletionUtility: HistoryDeletionProtocol {
-    private var profile: Profile
+final class HistoryDeletionUtility: HistoryDeletionProtocol, Sendable {
+    private let profile: Profile
     private let gleanWrapper: GleanWrapper
 
     init(with profile: Profile, gleanWrapper: GleanWrapper = DefaultGleanWrapper()) {
@@ -31,26 +31,19 @@ class HistoryDeletionUtility: HistoryDeletionProtocol {
     }
 
     // MARK: Interface
-    func delete(
-        _ sites: [String],
-        completion: @escaping (Bool) -> Void
-    ) {
-        deleteFromHistory(sites)
-        deleteMetadata(sites) { result in
-            completion(result)
-        }
-    }
-
+    @MainActor
     func deleteHistoryFrom(
         _ dateOption: HistoryDeletionUtilityDateOptions,
-        completion: @escaping (HistoryDeletionUtilityDateOptions) -> Void
+        completion: @Sendable @escaping @MainActor (HistoryDeletionUtilityDateOptions) -> Void
     ) {
         deleteWKWebsiteDataSince(dateOption, for: WKWebsiteDataStore.allWebsiteDataTypes())
         // For efficiency, we'll delete data in parallel, which is why closures are
         // not encloning each subsequent call
         deleteProfileHistorySince(dateOption) { result in
             self.clearRecentlyClosedTabs(using: dateOption)
-            completion(dateOption)
+            DispatchQueue.main.async {
+                completion(dateOption)
+            }
         }
 
         deleteProfileMetadataSince(dateOption)
@@ -58,29 +51,8 @@ class HistoryDeletionUtility: HistoryDeletionProtocol {
         HistoryDeletionUtilityTelemetry().clearedHistory(dateOption)
     }
 
-    // MARK: URL based deletion functions
-    private func deleteFromHistory(_ sites: [String]) {
-        sites.forEach { _ = profile.places.deleteVisitsFor($0) }
-    }
-
-    private func deleteMetadata(
-        _ sites: [String],
-        completion: @escaping (Bool) -> Void
-    ) {
-        sites.forEach { currentSite in
-            profile.places
-                .deleteVisitsFor(url: currentSite)
-                .uponQueue(.global()) { result in
-                    guard let lastSite = sites.last,
-                          lastSite == currentSite
-                    else { return }
-
-                    completion(result.isSuccess)
-                }
-        }
-    }
-
     // MARK: - Date based deletion functions
+    @MainActor
     private func deleteWKWebsiteDataSince(
         _ dateOption: HistoryDeletionUtilityDateOptions,
         for types: Set<String>
@@ -96,7 +68,7 @@ class HistoryDeletionUtility: HistoryDeletionProtocol {
 
     private func deleteProfileHistorySince(
         _ dateOption: HistoryDeletionUtilityDateOptions,
-        completion: @escaping (Bool?) -> Void
+        completion: @Sendable @escaping (Bool?) -> Void
     ) {
         switch dateOption {
         case .allTime:

@@ -3,10 +3,105 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import Foundation
+import Shared
 
-struct ErrorPageModel: Equatable {
-    let errorTitle: String
-    let errorDescription: String
-    let foxImageName: String
+enum ErrorPageModel: Equatable {
+    case internetConnection
+    case badCertDomain(BadCertDomainModel)
+    case generic(GenericErrorModel)
+    case wayback(WaybackErrorModel)
+    case vpnConnection(VPNConnectionErrorModel)
+
+    var title: String {
+        switch self {
+        case .internetConnection: return .NativeErrorPage.NoInternetConnection.TitleLabel
+        case .badCertDomain: return String.NativeErrorPage.BadCertDomain.TitleLabel
+        case .generic: return .NativeErrorPage.GenericError.TitleLabel
+        case .wayback: return .NativeErrorPage.Wayback.TitleLabel
+        case .vpnConnection: return .VPN.ErrorPage.Title
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .internetConnection: return .NativeErrorPage.NoInternetConnection.Description
+        case .badCertDomain: return String.NativeErrorPage.BadCertDomain.Description
+        case .generic(let model):
+            if let host = model.url?.host {
+                return String(format: .NativeErrorPage.GenericError.DescriptionPrefixWithURL,
+                              AppName.shortName.description,
+                              host) + " " +
+                       String.NativeErrorPage.GenericError.DescriptionSuffix
+            } else {
+                return String(format: .NativeErrorPage.GenericError.DescriptionPrefixWithoutURL,
+                              AppName.shortName.description) + " " +
+                       String.NativeErrorPage.GenericError.DescriptionSuffix
+            }
+        case .wayback: return String(format: .NativeErrorPage.Wayback.Description, AppName.shortName.description)
+        case .vpnConnection: return .VPN.ErrorPage.Body
+        }
+    }
+
+    var foxImageName: String {
+        switch self {
+        case .internetConnection, .generic, .wayback:
+            return ImageIdentifiers.NativeErrorPage.noInternetConnection
+        case .badCertDomain: return ImageIdentifiers.NativeErrorPage.securityError
+        case .vpnConnection: return ImageIdentifiers.NativeErrorPage.vpnConnectionError
+        }
+    }
+
+    var url: URL? {
+        switch self {
+        case .internetConnection: return nil
+        case .badCertDomain(let model): return model.url
+        case .generic(let model): return model.url
+        case .wayback(let model): return model.url
+        case .vpnConnection(let model): return model.url
+        }
+    }
+
+    var advancedSection: AdvancedSectionConfig? {
+        switch self {
+        case .badCertDomain(let model): return model.advancedSection
+        default: return nil
+        }
+    }
+
+    var isRegularUI: Bool {
+        switch self {
+        case .internetConnection, .generic, .wayback, .vpnConnection: return true
+        case .badCertDomain: return false
+        }
+    }
+
+    var isWayback: Bool {
+        if case .wayback = self { return true }
+        return false
+    }
+
+    struct AdvancedSectionConfig: Equatable {
+        let buttonText: String
+        let infoText: String
+        let warningText: String
+        let certificateErrorCode: String?
+        let showProceedButton: Bool
+    }
+}
+
+struct BadCertDomainModel: Equatable {
+    let url: URL
+    let advancedSection: ErrorPageModel.AdvancedSectionConfig
+}
+
+struct GenericErrorModel: Equatable {
     let url: URL?
+}
+
+struct WaybackErrorModel: Equatable {
+    let url: URL
+}
+
+struct VPNConnectionErrorModel: Equatable {
+    let url: URL
 }

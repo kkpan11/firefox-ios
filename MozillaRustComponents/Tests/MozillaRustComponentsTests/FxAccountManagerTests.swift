@@ -1,0 +1,265 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@testable import MozillaRustComponents
+@testable import MozillaAppServices
+import XCTest
+
+class FxAccountManagerTests: XCTestCase {
+    func testAccountNotFound() {
+        let mgr = mockFxAManager()
+
+        let initDone = expectation(description: "Initialization done")
+        mgr.initialize { _ in
+            initDone.fulfill()
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        let account = mgr.account as! MockFxAccount
+        let constellation = mgr.constellation as! MockDeviceConstellation
+
+        XCTAssertFalse(mgr.hasAccount())
+        XCTAssertEqual(mgr.state, .disconnected)
+        // processEvent should be called, but no device/profile calls
+        XCTAssertTrue(account.invocations.contains(.processEvent))
+        XCTAssertFalse(account.invocations.contains(.getProfile))
+        XCTAssertEqual(constellation.invocations, [])
+    }
+
+    func testAccountRestoration() {
+        let mgr = mockFxAManager()
+        let account = MockFxAccount()
+        account.initializeResult = .connected
+        mgr.storedAccount = account
+
+        expectation(forNotification: .accountAuthenticated, object: nil, handler: nil)
+        expectation(forNotification: .accountProfileUpdate, object: nil, handler: nil)
+
+        let initDone = expectation(description: "Initialization done")
+        mgr.initialize { _ in
+            initDone.fulfill()
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        XCTAssertTrue(mgr.hasAccount())
+        XCTAssertEqual(mgr.state, .connected)
+        XCTAssertTrue(account.invocations.contains(MockFxAccount.MethodInvocation.registerPersistCallback))
+        XCTAssertTrue(account.invocations.contains(MockFxAccount.MethodInvocation.getProfile))
+
+        let constellation = mgr.constellation as! MockDeviceConstellation
+        // initDevice/ensureCapabilities are now handled by the Rust state machine internally;
+        // only refreshState is called from postAuthenticated on the iOS side.
+        XCTAssertEqual(constellation.invocations, [
+            MockDeviceConstellation.MethodInvocation.refreshState,
+        ])
+    }
+
+    func testAccountRestorationWithAuthIssues() {
+        let mgr = mockFxAManager()
+        let account = MockFxAccount()
+        account.initializeResult = .authIssues
+        mgr.storedAccount = account
+
+        expectation(forNotification: .accountAuthProblems, object: nil, handler: nil)
+
+        let initDone = expectation(description: "Initialization done")
+        mgr.initialize { _ in
+            initDone.fulfill()
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        XCTAssertTrue(mgr.accountNeedsReauth())
+        XCTAssertEqual(mgr.state, .authIssues)
+    }
+
+    func testNewAccountLogIn() {
+        let mgr = mockFxAManager()
+        let beginAuthDone = expectation(description: "beginAuthDone")
+        nonisolated(unsafe) var authURL: String?
+        mgr.initialize { _ in
+            mgr.beginAuthentication(entrypoint: "test_new_account_log_in") { url in
+                authURL = try! url.get().absoluteString
+                beginAuthDone.fulfill()
+            }
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+        XCTAssertEqual(authURL, "https://foo.bar/oauth?state=bobo")
+
+        expectation(forNotification: .accountAuthenticated, object: nil, handler: nil)
+        expectation(forNotification: .accountProfileUpdate, object: nil, handler: nil)
+
+        let finishAuthDone = expectation(description: "finishAuthDone")
+        mgr.finishAuthentication(authData: FxaAuthData(code: "bobo", state: "bobo", actionQueryParam: "email")) { result in
+            if case .success = result {
+                finishAuthDone.fulfill()
+            }
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        XCTAssertTrue(mgr.hasAccount())
+        XCTAssertEqual(mgr.state, .connected)
+
+        let account = mgr.account! as! MockFxAccount
+        XCTAssertTrue(account.invocations.contains(MockFxAccount.MethodInvocation.registerPersistCallback))
+        XCTAssertTrue(account.invocations.contains(MockFxAccount.MethodInvocation.getProfile))
+
+        let constellation = mgr.constellation as! MockDeviceConstellation
+        // initDevice is now handled by the Rust state machine internally;
+        // only refreshState is called from postAuthenticated on the iOS side.
+        XCTAssertEqual(constellation.invocations, [
+            MockDeviceConstellation.MethodInvocation.refreshState,
+        ])
+    }
+
+    func testAuthStateVerification() {
+        let mgr = mockFxAManager()
+        let beginAuthDone = expectation(description: "beginAuthDone")
+        nonisolated(unsafe) var authURL: String?
+        mgr.initialize { _ in
+            mgr.beginAuthentication(entrypoint: "test_auth_state_verification") { url in
+                authURL = try! url.get().absoluteString
+                beginAuthDone.fulfill()
+            }
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+        XCTAssertEqual(authURL, "https://foo.bar/oauth?state=bobo")
+
+        // The mock simulates Rust's OAuth state validation: wrong state → disconnected.
+        // finishAuthentication returns .failure when the FSM lands in a non-connected state.
+        let finishAuthDone = expectation(description: "finishAuthDone")
+        mgr.finishAuthentication(authData: FxaAuthData(code: "bobo", state: "NOTBOBO", actionQueryParam: "email")) { result in
+            if case .failure = result {
+                finishAuthDone.fulfill()
+            }
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        // State should be disconnected since wrong OAuth state was provided
+        XCTAssertEqual(mgr.state, .disconnected)
+        XCTAssertFalse(mgr.hasAccount())
+    }
+
+    func testReLoginAfterLogout() {
+        // Regression test: after logout, onDisconnected() creates a fresh account.
+        // That account must be re-initialized so that beginAuthentication works again.
+        let mgr = mockFxAManager()
+
+        let initDone = expectation(description: "initDone")
+        mgr.initialize { _ in initDone.fulfill() }
+        waitForExpectations(timeout: 5, handler: nil)
+        XCTAssertEqual(mgr.state, .disconnected)
+
+        // Simulate logout
+        let logoutDone = expectation(description: "logoutDone")
+        expectation(forNotification: .accountLoggedOut, object: nil, handler: nil)
+        mgr.logout { _ in logoutDone.fulfill() }
+        waitForExpectations(timeout: 5, handler: nil)
+        XCTAssertEqual(mgr.state, .disconnected)
+
+        // After logout, sign in must still work (account was re-initialized by onDisconnected)
+        let beginAuthDone = expectation(description: "beginAuthDone")
+        nonisolated(unsafe) var authURL: String?
+        mgr.beginAuthentication(entrypoint: "test_re_login_after_logout") { url in
+            authURL = try? url.get().absoluteString
+            beginAuthDone.fulfill()
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+        XCTAssertEqual(authURL, "https://foo.bar/oauth?state=bobo",
+                       "beginAuthentication must succeed after logout — onDisconnected must re-initialize the account")
+    }
+
+    func testPairingFromAuthIssuesDisconnectsFirst() {
+        // Regression test: the Rust state machine rejects .beginPairingFlow from .authIssues,
+        // so the manager must disconnect first and pair from the fresh .disconnected account.
+        let mgr = mockFxAManager()
+        let pausedAccount = MockFxAccount()
+        pausedAccount.initializeResult = .authIssues
+        mgr.storedAccount = pausedAccount
+
+        let initDone = expectation(description: "initDone")
+        mgr.initialize { _ in initDone.fulfill() }
+        waitForExpectations(timeout: 5, handler: nil)
+        XCTAssertEqual(mgr.state, .authIssues)
+
+        expectation(forNotification: .accountLoggedOut, object: nil, handler: nil)
+        let beginPairingDone = expectation(description: "beginPairingDone")
+        nonisolated(unsafe) var pairingResult: Result<URL, Error>?
+        mgr.beginPairingAuthentication(pairingUrl: "https://foo.bar/pair#channel_id=abc&channel_key=def",
+                                       entrypoint: "test_pairing_from_auth_issues") { result in
+            pairingResult = result
+            beginPairingDone.fulfill()
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        XCTAssertEqual(try pairingResult?.get().absoluteString, "https://foo.bar/oauth?state=bobo")
+        guard case .authenticating = mgr.state else {
+            return XCTFail("Expected .authenticating, got \(mgr.state).")
+        }
+
+        var pausedEvents = [FxaEvent]()
+        var freshEvents = [FxaEvent]()
+        let freshAccount = mgr.account as! MockFxAccount
+        queue.sync {
+            pausedEvents = pausedAccount.processedEvents
+            freshEvents = freshAccount.processedEvents
+        }
+        XCTAssertTrue(freshAccount !== pausedAccount, "`onDisconnected` must replace the paused account.")
+        XCTAssertEqual(pausedEvents.last, .disconnect)
+        XCTAssertFalse(pausedEvents.contains { if case .beginPairingFlow = $0 { return true } else { return false } },
+                       "Pairing must not be attempted on the paused account.")
+        XCTAssertEqual(freshEvents.count, 2)
+        if case .initialize = freshEvents[0] {} else { XCTFail("Fresh account must be initialized first.") }
+        if case .beginPairingFlow = freshEvents[1] {} else { XCTFail("Pairing must run on the fresh account.") }
+    }
+
+    func testPairingFromDisconnectedDoesNotDisconnect() {
+        let mgr = mockFxAManager()
+        let initDone = expectation(description: "initDone")
+        mgr.initialize { _ in initDone.fulfill() }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        let beginPairingDone = expectation(description: "beginPairingDone")
+        mgr.beginPairingAuthentication(pairingUrl: "https://foo.bar/pair#channel_id=abc&channel_key=def",
+                                       entrypoint: "test_pairing_from_disconnected") { _ in
+            beginPairingDone.fulfill()
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        let account = mgr.account as! MockFxAccount
+        var events = [FxaEvent]()
+        queue.sync { events = account.processedEvents }
+        XCTAssertFalse(events.contains(.disconnect))
+        guard case .authenticating = mgr.state else {
+            return XCTFail("Expected .authenticating, got \(mgr.state).")
+        }
+    }
+
+    func testGetTokenServerEndpointURL() {
+        class MockAccount: MockFxAccount {
+            override func getTokenServerEndpointURL() throws -> URL {
+                return URL(string: "https://token.services.mozilla.com/")!
+            }
+        }
+        let mgr = mockFxAManager()
+        let account = MockAccount()
+        account.initializeResult = .connected
+        mgr.storedAccount = account
+
+        let initDone = expectation(description: "Initialization done")
+        mgr.initialize { _ in
+            initDone.fulfill()
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+
+        let tokenServerURLCorrect = expectation(description: "Server URL is correct")
+        mgr.getTokenServerEndpointURL { url in
+            XCTAssertEqual(
+                try! url.get().absoluteString,
+                "https://token.services.mozilla.com/1.0/sync/1.5"
+            )
+            tokenServerURLCorrect.fulfill()
+        }
+        waitForExpectations(timeout: 5, handler: nil)
+    }
+}

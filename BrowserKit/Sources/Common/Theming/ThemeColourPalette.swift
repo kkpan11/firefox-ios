@@ -27,28 +27,25 @@ public protocol ThemeColourPalette {
     var layerSuccess: UIColor { get }
     var layerWarning: UIColor { get }
     var layerCritical: UIColor { get }
+    var layerCriticalSubdued: UIColor { get }
     var layerSelectedText: UIColor { get }
     var layerAutofillText: UIColor { get }
-    var layerSearch: UIColor { get }
+    var layerEmphasis: UIColor { get }
     var layerGradientURL: Gradient { get }
-
-    // MARK: - Ratings
-    var layerRatingA: UIColor { get }
-    var layerRatingASubdued: UIColor { get }
-    var layerRatingB: UIColor { get }
-    var layerRatingBSubdued: UIColor { get }
-    var layerRatingC: UIColor { get }
-    var layerRatingCSubdued: UIColor { get }
-    var layerRatingD: UIColor { get }
-    var layerRatingDSubdued: UIColor { get }
-    var layerRatingF: UIColor { get }
-    var layerRatingFSubdued: UIColor { get }
+    var layerSurfaceLow: UIColor { get }
+    var layerSurfaceMedium: UIColor { get }
+    var layerSurfaceMediumAlpha: UIColor { get }
+    var layerSurfaceMediumAlt: UIColor { get }
+    var layerSurfaceMediumAltGlass: UIColor { get }
+    var layerGradientSummary: Gradient { get }
+    var layerToolbarGlass: UIColor { get }
 
     // MARK: - Actions
     var actionPrimary: UIColor { get }
     var actionPrimaryHover: UIColor { get }
     var actionPrimaryDisabled: UIColor { get }
     var actionSecondary: UIColor { get }
+    var actionSecondaryDisabled: UIColor { get }
     var actionSecondaryHover: UIColor { get }
     var formSurfaceOff: UIColor { get }
     var formKnob: UIColor { get }
@@ -60,6 +57,7 @@ public protocol ThemeColourPalette {
     var actionInformation: UIColor { get }
     var actionTabActive: UIColor { get }
     var actionTabInactive: UIColor { get }
+    var actionCloseButton: UIColor { get }
 
     // MARK: - Text
     var textPrimary: UIColor { get }
@@ -89,6 +87,7 @@ public protocol ThemeColourPalette {
 
     // MARK: - Border
     var borderPrimary: UIColor { get }
+    var borderSecondary: UIColor { get }
     var borderAccent: UIColor { get }
     var borderAccentNonOpaque: UIColor { get }
     var borderAccentPrivate: UIColor { get }
@@ -99,4 +98,39 @@ public protocol ThemeColourPalette {
     var shadowSubtle: UIColor { get }
     var shadowDefault: UIColor { get }
     var shadowStrong: UIColor { get }
+    var shadowBorder: UIColor { get }
+
+    // MARK: - Gradient
+    var gradientOnboardingStop1: UIColor { get }
+    var gradientOnboardingStop2: UIColor { get }
+    var gradientOnboardingStop3: UIColor { get }
+    var gradientOnboardingStop4: UIColor { get }
+    var gradientAIStrongStop1: UIColor { get }
+    var gradientAIStrongStop2: UIColor { get }
+    var gradientAIStrongStop3: UIColor { get }
+
+    var faviconLetterColorSet: FaviconLetterColorSet { get }
+
+    // MARK: - Nova tokens
+    var layerAccentSubtle: UIColor { get }
+    var layerInverse: UIColor { get }
+    var layerGlassTintNova: UIColor { get }
+    var layerGlassSelectedFill: UIColor { get }
+    var textToast: UIColor { get }
+    var iconInverted: UIColor { get }
+    var iconOnColorDisabled: UIColor { get }
+    var iconPrivate: UIColor { get }
+    var borderStrong: UIColor { get }
+    var borderAccentToast: UIColor { get }
+    var borderRadioButtonDefault: UIColor { get }
+    var gradient: Gradient { get }
+    var gradientAccent: Gradient { get }
+    var gradientAccentSubtle: Gradient { get }
+    var gradientAIStrong: Gradient { get }
+    var gradientBorder: Gradient { get }
+    var gradientPrivacy: Gradient { get }
+    var gradientPrivacyMask: Gradient { get }
+    var gradientWidgetSurface: Gradient { get }
+    var gradientWidgetSurfaceStandard: Gradient { get }
+    var gradientWidgetSurfacePrivate: Gradient { get }
 }

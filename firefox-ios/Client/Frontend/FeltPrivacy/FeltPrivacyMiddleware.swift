@@ -6,14 +6,21 @@ import Foundation
 import Redux
 import Common
 
-class FeltPrivacyMiddleware {
+@MainActor
+final class FeltPrivacyMiddleware {
     var privacyStateManager: ThemeManager
 
     init(privacyStateManager: ThemeManager = AppContainer.shared.resolve()) {
         self.privacyStateManager = privacyStateManager
     }
 
-    lazy var privacyManagerProvider: Middleware<AppState> = { state, action in
+    lazy var privacyManagerProvider: Middleware<AppState> = (legacyProvider, modernProvider)
+
+    lazy var modernProvider: MiddlewareClosure<AppState> = { [self] state, action, windowUUID in
+        // Does not test any modern actions
+    }
+
+    lazy var legacyProvider: LegacyMiddlewareClosure<AppState> = { [self] state, action in
         guard let action = action as? PrivateModeAction else { return }
         switch action.actionType {
         case PrivateModeActionType.setPrivateModeTo:

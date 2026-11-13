@@ -8,17 +8,28 @@ import ComponentLibrary
 import Common
 
 protocol SearchEnginePickerDelegate: AnyObject {
+    @MainActor
     func searchEnginePicker(
         _ searchEnginePicker: SearchEnginePicker?,
         didSelectSearchEngine engine: OpenSearchEngine?
     )
 }
 
-final class SearchSettingsTableViewController: ThemedTableViewController, FeatureFlaggable {
+final class SearchSettingsTableViewController: ThemedTableViewController,
+                                               FeatureFlaggable,
+                                               UserFeaturePreferenceProvider {
+    private enum UX {
+        static let imageViewCornerRadius: CGFloat = 4
+        static let textLabelMinimumScaleFactor: CGFloat = 0.5
+        static let textLabelLinesLimit = 0
+    }
+
     // MARK: - Properties
     private enum Section: Int, CaseIterable {
         case defaultEngine
         case alternateEngines
+        case preSearch
+        case googleLens
         case searchEnginesSuggestions
         case firefoxSuggestSettings
 
@@ -28,6 +39,14 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
                 return .Settings.Search.DefaultSearchEngineTitle
             case .alternateEngines:
                 return .Settings.Search.AlternateSearchEnginesTitle
+            case .preSearch:
+                // This section doesn't have a title since we don't want
+                // to introduce a new term such as pre-search for users.
+                // There should be some rework of the search settings in the future
+                // so that cross-platform we're more in sync.
+                return ""
+            case .googleLens:
+                return ""
             case .searchEnginesSuggestions:
                 return .Settings.Search.EnginesSuggestionsTitle
             case .firefoxSuggestSettings:
@@ -42,11 +61,49 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
     private let profile: Profile
     private let model: SearchEnginesManager
     private let logger: Logger
+    let featureFlagsProvider: FeatureFlagProviding
+    let userPreferences: UserFeaturePreferring
 
     var shouldHidePrivateModeFirefoxSuggestSetting: Bool {
         return !model.shouldShowBookmarksSuggestions &&
         !model.shouldShowSyncedTabsSuggestions &&
         !model.shouldShowBrowsingHistorySuggestions
+    }
+
+    // MARK: - Pre Search Section
+    var isTrendingSearchesEnabled: Bool {
+        return featureFlagsProvider.isEnabled(.trendingSearches)
+    }
+
+    var isRecentSearchesEnabled: Bool {
+        return featureFlagsProvider.isEnabled(.recentSearches)
+    }
+
+    private var shouldShowGoogleLensSetting: Bool {
+        guard featureFlagsProvider.isEnabled(.googleLens),
+              let defaultEngine = model.defaultEngine,
+              !defaultEngine.isCustomEngine
+        else { return false }
+
+        return defaultEngine.isGoogleEngine
+    }
+
+    private var isFirefoxSuggestFeatureEnabled: Bool {
+        featureFlagsProvider.isEnabled(.firefoxSuggestFeature)
+        && userPreferences.getPreferenceFor(.firefoxSuggestFeature)
+    }
+
+    // Determines how to display the pre search settings based on the feature flags
+    private var visiblePreSearchItems: [PreSearchItem] {
+        var items: [PreSearchItem] = []
+        if isTrendingSearchesEnabled { items.append(.trendingSearches) }
+        if isRecentSearchesEnabled { items.append(.recentSearches) }
+        return items
+    }
+
+    private enum PreSearchItem: Int, CaseIterable {
+        case trendingSearches
+        case recentSearches
     }
 
     private enum SearchSuggestItem: Int, CaseIterable {
@@ -81,13 +138,25 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
         return defaultEngine.isCustomEngine ? customEngineCount > 1 : customEngineCount > 0
     }
 
+    /// Keep the private theme override just for Settings, since this is also presented from the
+    /// address bar's "manage search engines" action.
+    private let _shouldUsePrivateOverride: Bool
+    override var shouldUsePrivateOverride: Bool { return _shouldUsePrivateOverride }
+    override var shouldBeInPrivateTheme: Bool { return false }
+
     init(profile: Profile,
          searchEnginesManager: SearchEnginesManager = AppContainer.shared.resolve(),
+         featureFlagsProvider: FeatureFlagProviding = AppContainer.shared.resolve(),
+         userPreferences: UserFeaturePreferring = AppContainer.shared.resolve(),
          windowUUID: WindowUUID,
-         logger: Logger = DefaultLogger.shared) {
+         logger: Logger = DefaultLogger.shared,
+         shouldUsePrivateOverride: Bool = true) {
         self.profile = profile
         self.logger = logger
+        self.featureFlagsProvider = featureFlagsProvider
+        self.userPreferences = userPreferences
         model = searchEnginesManager
+        self._shouldUsePrivateOverride = shouldUsePrivateOverride
 
         super.init(windowUUID: windowUUID)
     }
@@ -116,10 +185,14 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
         if !(self.navigationController is ThemedNavigationController) {
             self.navigationItem.leftBarButtonItem = UIBarButtonItem(
                 title: .SettingsSearchDoneButton,
-                style: .done,
+                style: .plain,
                 target: self,
                 action: #selector(self.dismissAnimated)
             )
+            if #available(iOS 26.0, *) {
+                let textColor = currentTheme().colors.textPrimary
+                self.navigationItem.leftBarButtonItem?.tintColor = textColor
+            }
         }
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(
@@ -149,9 +222,10 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
             withIdentifier: ThemedSubtitleTableViewCell.cellIdentifier,
             for: indexPath
         ) as? ThemedSubtitleTableViewCell else {
-            logger.log("Failed to dequeue ThemedSubtitleTableViewCell at indexPath: \(indexPath)",
+            logger.log("Failed to dequeue ThemedSubtitleTableViewCell",
                        level: .fatal,
-                       category: .lifecycle)
+                       category: .lifecycle,
+                       extra: ["indexPath": "\(indexPath)"])
             return UITableViewCell()
         }
 
@@ -160,146 +234,50 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
         switch section {
         case .defaultEngine:
             guard let engine = model.defaultEngine else { break }
-            cell.editingAccessoryType = .disclosureIndicator
-            cell.accessibilityLabel = .Settings.Search.AccessibilityLabels.DefaultSearchEngine
-            cell.accessibilityValue = engine.shortName
-            cell.textLabel?.text = engine.shortName
-            cell.imageView?.image = engine.image.createScaled(IconSize)
-            cell.imageView?.layer.cornerRadius = 4
-            cell.imageView?.layer.masksToBounds = true
-            cell.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            configureCellForDefaultEngineAction(cell: cell, engine: engine)
 
         case .alternateEngines:
-            // The default engine is not an alternate search engine.
-            let index = indexPath.item + 1
-            if index < model.orderedEngines.count {
-                let engine = model.orderedEngines[index]
-                cell.showsReorderControl = true
+            configureCellForAlternateEnginesAction(cell: cell, indexPath: indexPath)
 
-                let toggle = ThemedSwitch()
-                toggle.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
-                // This is an easy way to get from the toggle control to the corresponding index.
-                toggle.tag = index
-                toggle.addTarget(self, action: #selector(didToggleEngine), for: .valueChanged)
-                toggle.isOn = model.isEngineEnabled(engine)
-
-                cell.editingAccessoryView = toggle
-                cell.textLabel?.text = engine.shortName
-                cell.textLabel?.adjustsFontSizeToFitWidth = true
-                cell.textLabel?.minimumScaleFactor = 0.5
-                cell.textLabel?.numberOfLines = 0
-                cell.imageView?.image = engine.image.createScaled(IconSize)
-                cell.imageView?.layer.cornerRadius = 4
-                cell.imageView?.layer.masksToBounds = true
-                cell.selectionStyle = .none
-                cell.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
-            } else {
-                cell.editingAccessoryType = .disclosureIndicator
-                cell.accessibilityLabel = .SettingsAddCustomEngineTitle
-                cell.accessibilityIdentifier = AccessibilityIdentifiers.Settings.Search.customEngineViewButton
-                cell.textLabel?.text = .SettingsAddCustomEngine
-                cell.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+        case .preSearch:
+            let item = visiblePreSearchItems[indexPath.item]
+            switch item {
+            case .trendingSearches:
+                configureCellForTrendingSearchesAction(cell: cell)
+            case .recentSearches:
+                configureCellForRecentSearchesAction(cell: cell)
             }
+
+        case .googleLens:
+            configureCellForGoogleLensAction(cell: cell)
 
         case .searchEnginesSuggestions:
             switch indexPath.item {
             case SearchSuggestItem.defaultSuggestions.rawValue:
-                buildSettingWith(
-                    prefKey: PrefsKeys.SearchSettings.showSearchSuggestions,
-                    defaultValue: model.shouldShowSearchSuggestions,
-                    titleText: String.localizedStringWithFormat(
-                        .Settings.Search.ShowSearchSuggestions
-                    ),
-                    cell: cell,
-                    selector: #selector(didToggleSearchSuggestions)
-                )
+                configureCellForDefaultSuggestionsAction(cell: cell)
 
             case SearchSuggestItem.privateSuggestions.rawValue:
-                if featureFlags.isFeatureEnabled(.feltPrivacySimplifiedUI, checking: .buildOnly) {
-                    buildSettingWith(
-                        prefKey: PrefsKeys.SearchSettings.showPrivateModeSearchSuggestions,
-                        defaultValue: model.shouldShowPrivateModeSearchSuggestions,
-                        titleText: String.localizedStringWithFormat(
-                            .Settings.Search.PrivateSessionSetting
-                        ),
-                        statusText: String.localizedStringWithFormat(
-                            .Settings.Search.PrivateSessionDescription
-                        ),
-                        cell: cell,
-                        selector: #selector(didToggleShowSearchSuggestionsInPrivateMode)
-                    )
-                }
+                configureCellForPrivateSuggestionsAction(cell: cell)
+
             default: break
             }
 
         case .firefoxSuggestSettings:
             switch indexPath.item {
             case FirefoxSuggestItem.browsingHistory.rawValue:
-                buildSettingWith(
-                    prefKey: PrefsKeys.SearchSettings.showFirefoxBrowsingHistorySuggestions,
-                    defaultValue: model.shouldShowBrowsingHistorySuggestions,
-                    titleText: String.localizedStringWithFormat(
-                        .Settings.Search.Suggest.SearchBrowsingHistory
-                    ),
-                    cell: cell,
-                    selector: #selector(didToggleBrowsingHistorySuggestions)
-                )
+                configureCellForBrowsingHistoryAction(cell: cell)
 
             case FirefoxSuggestItem.bookmarks.rawValue:
-                buildSettingWith(
-                    prefKey: PrefsKeys.SearchSettings.showFirefoxBookmarksSuggestions,
-                    defaultValue: model.shouldShowBookmarksSuggestions,
-                    titleText: String.localizedStringWithFormat(
-                        .Settings.Search.Suggest.SearchBookmarks
-                    ),
-                    cell: cell,
-                    selector: #selector(didToggleBookmarksSuggestions)
-                )
+                configureCellForBookmarksAction(cell: cell)
 
             case FirefoxSuggestItem.syncedTabs.rawValue:
-                buildSettingWith(
-                    prefKey: PrefsKeys.SearchSettings.showFirefoxSyncedTabsSuggestions,
-                    defaultValue: model.shouldShowSyncedTabsSuggestions,
-                    titleText: String.localizedStringWithFormat(
-                        .Settings.Search.Suggest.SearchSyncedTabs
-                    ),
-                    cell: cell,
-                    selector: #selector(didToggleSyncedTabsSuggestions)
-                )
+                configureCellForSyncedTabsAction(cell: cell)
 
             case FirefoxSuggestItem.nonSponsored.rawValue:
-                if featureFlags.isFeatureEnabled(.firefoxSuggestFeature, checking: .buildAndUser) {
-                    buildSettingWith(
-                        prefKey: PrefsKeys.SearchSettings.showFirefoxNonSponsoredSuggestions,
-                        defaultValue: model.shouldShowFirefoxSuggestions,
-                        titleText: String.localizedStringWithFormat(
-                            .Settings.Search.Suggest.ShowNonSponsoredSuggestionsTitle
-                        ),
-                        statusText: String.localizedStringWithFormat(
-                            .Settings.Search.Suggest.ShowNonSponsoredSuggestionsDescription,
-                            AppName.shortName.rawValue
-                        ),
-                        cell: cell,
-                        selector: #selector(didToggleEnableNonSponsoredSuggestions)
-                    )
-                }
+                configureCellForNonSponsoredAction(cell: cell)
 
             case FirefoxSuggestItem.sponsored.rawValue:
-                if featureFlags.isFeatureEnabled(.firefoxSuggestFeature, checking: .buildAndUser) {
-                    buildSettingWith(
-                        prefKey: PrefsKeys.SearchSettings.showFirefoxSponsoredSuggestions,
-                        defaultValue: model.shouldShowSponsoredSuggestions,
-                        titleText: String.localizedStringWithFormat(
-                            .Settings.Search.Suggest.ShowSponsoredSuggestionsTitle
-                        ),
-                        statusText: String.localizedStringWithFormat(
-                            .Settings.Search.Suggest.ShowSponsoredSuggestionsDescription,
-                            AppName.shortName.rawValue
-                        ),
-                        cell: cell,
-                        selector: #selector(didToggleEnableSponsoredSuggestions)
-                    )
-                }
+                configureCellForSponsoredAction(cell: cell)
 
 //            case FirefoxSuggestItem.privateSuggestions.rawValue:
 //                buildSettingWith(
@@ -317,18 +295,7 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
 //                cell.isHidden = shouldHidePrivateModeFirefoxSuggestSetting
 
             case FirefoxSuggestItem.suggestionLearnMore.rawValue:
-                cell.accessibilityLabel = String.localizedStringWithFormat(
-                    .Settings.Search.AccessibilityLabels.LearnAboutSuggestions,
-                    AppName.shortName.rawValue
-                )
-                cell.textLabel?.text = String.localizedStringWithFormat(
-                    .Settings.Search.Suggest.LearnAboutSuggestions,
-                    AppName.shortName.rawValue
-                )
-                cell.imageView?.layer.cornerRadius = 4
-                cell.imageView?.layer.masksToBounds = true
-                cell.selectionStyle = .none
-                cell.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+                configureCellForSuggestionLearnMoreAction(cell: cell)
 
             default:
                 break
@@ -336,9 +303,220 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
         }
 
         // So that the separator line goes all the way to the left edge.
-        cell.separatorInset = .zero
+        cell.separatorInset = ThemedTableViewController.UX.cellSeparatorInsetForCurrentOS
 
         return cell
+    }
+
+    private func configureCellForDefaultEngineAction(cell: ThemedSubtitleTableViewCell, engine: OpenSearchEngine) {
+        cell.editingAccessoryType = .disclosureIndicator
+        cell.accessibilityLabel = .Settings.Search.AccessibilityLabels.DefaultSearchEngine
+        cell.accessibilityValue = engine.shortName
+        cell.textLabel?.text = engine.shortName
+        cell.imageView?.image = engine.image.createScaled(IconSize)
+        cell.imageView?.layer.cornerRadius = UX.imageViewCornerRadius
+        cell.imageView?.layer.masksToBounds = true
+        cell.applyTheme(theme: currentTheme())
+    }
+
+    private func configureCellForAlternateEnginesAction(cell: ThemedSubtitleTableViewCell, indexPath: IndexPath) {
+        // The default engine is not an alternate search engine.
+        let index = indexPath.item + 1
+        if index < model.orderedEngines.count {
+            let engine = model.orderedEngines[index]
+            cell.showsReorderControl = true
+
+            let toggle = ThemedSwitch()
+            toggle.applyTheme(theme: currentTheme())
+            // This is an easy way to get from the toggle control to the corresponding index.
+            toggle.tag = index
+            toggle.addTarget(self, action: #selector(didToggleEngine), for: .valueChanged)
+            toggle.isOn = model.isEngineEnabled(engine)
+
+            cell.editingAccessoryView = toggle
+            cell.textLabel?.text = engine.shortName
+            cell.textLabel?.adjustsFontSizeToFitWidth = true
+            cell.textLabel?.minimumScaleFactor = UX.textLabelMinimumScaleFactor
+            cell.textLabel?.numberOfLines = UX.textLabelLinesLimit
+            cell.imageView?.image = engine.image.createScaled(IconSize)
+            cell.imageView?.layer.cornerRadius = UX.imageViewCornerRadius
+            cell.imageView?.layer.masksToBounds = true
+            cell.selectionStyle = .none
+            cell.applyTheme(theme: currentTheme())
+        } else {
+            cell.editingAccessoryType = .disclosureIndicator
+            cell.accessibilityLabel = .SettingsAddCustomEngineTitle
+            cell.accessibilityIdentifier = AccessibilityIdentifiers.Settings.Search.customEngineViewButton
+            cell.textLabel?.text = .SettingsAddCustomEngine
+            cell.applyTheme(theme: currentTheme())
+        }
+    }
+
+    private func configureCellForGoogleLensAction(cell: ThemedSubtitleTableViewCell) {
+        // Backed by the `.googleLens` feature-flag user preference (defaults to on while the feature is enabled).
+        let setting = BoolSetting(
+            with: .googleLens,
+            titleText: NSAttributedString(
+                string: .Settings.Search.GoogleLens.Title,
+                attributes: [NSAttributedString.Key.foregroundColor: currentTheme().colors.textPrimary]
+            ),
+            statusText: NSAttributedString(
+                string: .Settings.Search.GoogleLens.Description,
+                attributes: [NSAttributedString.Key.foregroundColor: currentTheme().colors.textSecondary]
+            )
+        )
+        setting.onConfigureCell(cell, theme: currentTheme())
+        setting.control.switchView.addTarget(
+            self,
+            action: #selector(didToggleGoogleLens),
+            for: .valueChanged
+        )
+        cell.editingAccessoryView = setting.control
+        cell.selectionStyle = .none
+    }
+
+    private func configureCellForDefaultSuggestionsAction(cell: ThemedSubtitleTableViewCell) {
+        buildSettingWith(
+            prefKey: PrefsKeys.SearchSettings.showSearchSuggestions,
+            defaultValue: model.shouldShowSearchSuggestions,
+            titleText: String.localizedStringWithFormat(
+                .Settings.Search.ShowSearchSuggestions
+            ),
+            cell: cell,
+            selector: #selector(didToggleSearchSuggestions)
+        )
+    }
+
+    private func configureCellForPrivateSuggestionsAction(cell: ThemedSubtitleTableViewCell) {
+        buildSettingWith(
+            prefKey: PrefsKeys.SearchSettings.showPrivateModeSearchSuggestions,
+            defaultValue: model.shouldShowPrivateModeSearchSuggestions,
+            titleText: String.localizedStringWithFormat(
+                .Settings.Search.PrivateSessionSetting
+            ),
+            statusText: String.localizedStringWithFormat(
+                .Settings.Search.PrivateSessionDescription
+            ),
+            cell: cell,
+            selector: #selector(didToggleShowSearchSuggestionsInPrivateMode)
+        )
+        cell.accessibilityIdentifier = AccessibilityIdentifiers.Settings.Search.showPrivateSuggestions
+    }
+
+    // MARK: Pre Search Cells
+    private func configureCellForTrendingSearchesAction(cell: ThemedSubtitleTableViewCell) {
+        if isTrendingSearchesEnabled {
+            buildSettingWith(
+                prefKey: PrefsKeys.SearchSettings.showTrendingSearches,
+                defaultValue: model.shouldShowTrendingSearches,
+                titleText: .Settings.Search.SearchZero.TrendingSearchesToggle,
+                cell: cell,
+                selector: #selector(didToggleShowTrendingSearches)
+            )
+            cell.accessibilityIdentifier = AccessibilityIdentifiers.Settings.Search.showTrendingSearches
+        }
+    }
+
+    private func configureCellForRecentSearchesAction(cell: ThemedSubtitleTableViewCell) {
+        if isRecentSearchesEnabled {
+            buildSettingWith(
+                prefKey: PrefsKeys.SearchSettings.showRecentSearches,
+                defaultValue: model.shouldShowRecentSearches,
+                titleText: .Settings.Search.SearchZero.RecentSearchesToggle,
+                cell: cell,
+                selector: #selector(didToggleShowRecentSearches)
+            )
+            cell.accessibilityIdentifier = AccessibilityIdentifiers.Settings.Search.showRecentSearches
+        }
+    }
+
+    private func configureCellForBrowsingHistoryAction(cell: ThemedSubtitleTableViewCell) {
+        buildSettingWith(
+            prefKey: PrefsKeys.SearchSettings.showFirefoxBrowsingHistorySuggestions,
+            defaultValue: model.shouldShowBrowsingHistorySuggestions,
+            titleText: String.localizedStringWithFormat(
+                .Settings.Search.Suggest.SearchBrowsingHistory
+            ),
+            cell: cell,
+            selector: #selector(didToggleBrowsingHistorySuggestions)
+        )
+    }
+
+    private func configureCellForBookmarksAction(cell: ThemedSubtitleTableViewCell) {
+        buildSettingWith(
+            prefKey: PrefsKeys.SearchSettings.showFirefoxBookmarksSuggestions,
+            defaultValue: model.shouldShowBookmarksSuggestions,
+            titleText: String.localizedStringWithFormat(
+                .Settings.Search.Suggest.SearchBookmarks
+            ),
+            cell: cell,
+            selector: #selector(didToggleBookmarksSuggestions)
+        )
+    }
+
+    private func configureCellForSyncedTabsAction(cell: ThemedSubtitleTableViewCell) {
+        buildSettingWith(
+            prefKey: PrefsKeys.SearchSettings.showFirefoxSyncedTabsSuggestions,
+            defaultValue: model.shouldShowSyncedTabsSuggestions,
+            titleText: String.localizedStringWithFormat(
+                .Settings.Search.Suggest.SearchSyncedTabs
+            ),
+            cell: cell,
+            selector: #selector(didToggleSyncedTabsSuggestions)
+        )
+    }
+
+    private func configureCellForNonSponsoredAction(cell: ThemedSubtitleTableViewCell) {
+        if featureFlagsProvider.isEnabled(.firefoxSuggestFeature)
+            && userPreferences.getPreferenceFor(.firefoxSuggestFeature) {
+            buildSettingWith(
+                prefKey: PrefsKeys.SearchSettings.showFirefoxNonSponsoredSuggestions,
+                defaultValue: model.shouldShowFirefoxSuggestions,
+                titleText: String.localizedStringWithFormat(
+                    .Settings.Search.Suggest.ShowNonSponsoredSuggestionsTitle
+                ),
+                statusText: String.localizedStringWithFormat(
+                    .Settings.Search.Suggest.ShowNonSponsoredSuggestionsDescription,
+                    AppName.shortName.rawValue
+                ),
+                cell: cell,
+                selector: #selector(didToggleEnableNonSponsoredSuggestions)
+            )
+        }
+    }
+
+    private func configureCellForSponsoredAction(cell: ThemedSubtitleTableViewCell) {
+        if featureFlagsProvider.isEnabled(.firefoxSuggestFeature)
+            && userPreferences.getPreferenceFor(.firefoxSuggestFeature) {
+            buildSettingWith(
+                prefKey: PrefsKeys.SearchSettings.showFirefoxSponsoredSuggestions,
+                defaultValue: model.shouldShowSponsoredSuggestions,
+                titleText: String.localizedStringWithFormat(
+                    .Settings.Search.Suggest.ShowSponsoredSuggestionsTitle
+                ),
+                statusText: String.localizedStringWithFormat(
+                    .Settings.Search.Suggest.ShowSponsoredSuggestionsDescription,
+                    AppName.shortName.rawValue
+                ),
+                cell: cell,
+                selector: #selector(didToggleEnableSponsoredSuggestions)
+            )
+        }
+    }
+
+    private func configureCellForSuggestionLearnMoreAction(cell: ThemedSubtitleTableViewCell) {
+        cell.accessibilityLabel = String.localizedStringWithFormat(
+            .Settings.Search.AccessibilityLabels.LearnAboutSuggestions,
+            AppName.shortName.rawValue
+        )
+        cell.textLabel?.text = String.localizedStringWithFormat(
+            .Settings.Search.Suggest.LearnAboutSuggestions,
+            AppName.shortName.rawValue
+        )
+        cell.imageView?.layer.cornerRadius = UX.imageViewCornerRadius
+        cell.imageView?.layer.masksToBounds = true
+        cell.selectionStyle = .none
+        cell.applyTheme(theme: currentTheme())
     }
 
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -348,6 +526,13 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
             .searchEnginesSuggestions,
             .firefoxSuggestSettings
         ]
+        if isTrendingSearchesEnabled || isRecentSearchesEnabled {
+            sectionsToDisplay.insert(.preSearch, at: 2)
+        }
+        if shouldShowGoogleLensSetting,
+           let alternateEnginesIndex = sectionsToDisplay.firstIndex(of: .alternateEngines) {
+            sectionsToDisplay.insert(.googleLens, at: alternateEnginesIndex)
+        }
         return sectionsToDisplay.count
     }
 
@@ -360,12 +545,14 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
             // The first engine -- the default engine -- is not shown in the alternate search engines list.
             // But the option to add a Search Engine is.
             return model.orderedEngines.count
+        case .preSearch:
+            return visiblePreSearchItems.count
+        case .googleLens:
+            return 1
         case .searchEnginesSuggestions:
-            return featureFlags.isFeatureEnabled(.feltPrivacySimplifiedUI, checking: .buildOnly)
-            ? SearchSuggestItem.allCases.count : 1
+            return SearchSuggestItem.allCases.count
         case .firefoxSuggestSettings:
-            return featureFlags.isFeatureEnabled(.firefoxSuggestFeature, checking: .buildAndUser)
-            ? FirefoxSuggestItem.allCases.count : 3
+            return isFirefoxSuggestFeatureEnabled ? FirefoxSuggestItem.allCases.count : 3
         }
     }
 
@@ -375,34 +562,54 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
         switch section {
         case .defaultEngine:
             guard indexPath.item == 0 else { return nil }
-            let searchEnginePicker = SearchEnginePicker(windowUUID: windowUUID)
+            let searchEnginePicker = SearchEnginePicker(
+                windowUUID: windowUUID,
+                shouldUsePrivateOverride: shouldUsePrivateOverride
+            )
             // Order alphabetically, so that picker is always consistently ordered.
             // Every engine is a valid choice for the default engine, even the current default engine.
             searchEnginePicker.engines = model.orderedEngines.sorted { e, f in e.shortName < f.shortName }
             searchEnginePicker.delegate = self
-            searchEnginePicker.selectedSearchEngineName = model.defaultEngine?.shortName
+            searchEnginePicker.selectedSearchEngineID = model.defaultEngine?.engineID
             navigationController?.pushViewController(searchEnginePicker, animated: true)
         case .alternateEngines:
             let isLastItem = indexPath.item + 1 == model.orderedEngines.count
             guard isLastItem else { return nil }
-            let customSearchEngineForm = CustomSearchViewController(windowUUID: windowUUID)
+            let customSearchEngineForm = CustomSearchViewController(
+                windowUUID: windowUUID,
+                shouldUsePrivateOverride: shouldUsePrivateOverride
+            )
             customSearchEngineForm.profile = self.profile
-            customSearchEngineForm.successCallback = {
-                guard let window = self.view.window else { return }
-                SimpleToast().showAlertWithText(.ThirdPartySearchEngineAdded,
-                                                bottomContainer: window,
-                                                theme: self.themeManager.getCurrentTheme(for: self.windowUUID))
-            }
             navigationController?.pushViewController(customSearchEngineForm, animated: true)
-        case .searchEnginesSuggestions:
+        case .searchEnginesSuggestions, .preSearch, .googleLens:
             return nil
         case .firefoxSuggestSettings:
             guard indexPath.item == FirefoxSuggestItem.suggestionLearnMore.rawValue else { return nil }
-            let viewController = SettingsContentViewController(windowUUID: windowUUID)
+            let viewController = SettingsContentViewController(
+                windowUUID: windowUUID,
+                shouldUsePrivateOverride: shouldUsePrivateOverride,
+                shouldBeInPrivateTheme: false
+            )
             viewController.url = SupportUtils.URLForTopic("search-suggestions-firefox")
             navigationController?.pushViewController(viewController, animated: true)
         }
         return nil
+    }
+
+    private func showPlainToast() {
+        let viewModel = PlainToastViewModel(labelText: .ThirdPartySearchEngineAdded)
+        let toast = PlainToast(viewModel: viewModel, theme: currentTheme())
+        toast.showToast(viewController: self,
+                        delay: Toast.UX.toastDelayBefore,
+                        duration: Toast.UX.toastDismissAfter) { toast in
+            [
+                toast.leadingAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.leadingAnchor,
+                                               constant: Toast.UX.toastSidePadding),
+                toast.trailingAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.trailingAnchor,
+                                                constant: -Toast.UX.toastSidePadding),
+                toast.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor)
+            ]
+        }
     }
 
     // Don't show delete button on the left.
@@ -412,7 +619,7 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
     ) -> UITableViewCell.EditingStyle {
         let section = Section(rawValue: sectionsToDisplay[indexPath.section].rawValue) ?? .defaultEngine
         switch section {
-        case .defaultEngine, .searchEnginesSuggestions, .firefoxSuggestSettings:
+        case .defaultEngine, .preSearch, .googleLens, .searchEnginesSuggestions, .firefoxSuggestSettings:
             return UITableViewCell.EditingStyle.none
         case .alternateEngines:
             let isLastItem = indexPath.item + 1 == model.orderedEngines.count
@@ -449,7 +656,8 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
     }
 
     override func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
-        return 0
+        let section = Section(rawValue: sectionsToDisplay[section].rawValue) ?? .defaultEngine
+        return section == .googleLens ? UITableView.automaticDimension : 0
     }
 
     override func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
@@ -463,10 +671,23 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
         return headerView
     }
 
+    override func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
+        let sectionType = Section(rawValue: sectionsToDisplay[section].rawValue) ?? .defaultEngine
+        guard sectionType == .googleLens,
+              let footerView = super.tableView(
+                tableView,
+                viewForFooterInSection: section
+              ) as? ThemedTableSectionHeaderFooterView else { return nil }
+        footerView.titleLabel.text = .Settings.Search.GoogleLens.Footnote
+        footerView.titleAlignment = .top
+
+        return footerView
+    }
+
     override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
         let section = Section(rawValue: sectionsToDisplay[indexPath.section].rawValue) ?? .defaultEngine
         switch section {
-        case .defaultEngine, .searchEnginesSuggestions, .firefoxSuggestSettings:
+        case .defaultEngine, .preSearch, .googleLens, .searchEnginesSuggestions, .firefoxSuggestSettings:
             return false
         case .alternateEngines:
             let isLastItem = indexPath.item + 1 == model.orderedEngines.count
@@ -494,7 +715,10 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
         toProposedIndexPath proposedDestinationIndexPath: IndexPath
     ) -> IndexPath {
         // Make drag or drop available only for alternateEngines section
-        guard proposedDestinationIndexPath.section == Section.alternateEngines.rawValue else {
+        let proposedDestinationSection = Section(
+            rawValue: sectionsToDisplay[proposedDestinationIndexPath.section].rawValue
+        ) ?? .defaultEngine
+        guard proposedDestinationSection == .alternateEngines else {
             return sourceIndexPath
         }
 
@@ -517,10 +741,13 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
             let engine = model.orderedEngines[index]
 
             model.deleteCustomEngine(engine) { [weak self] in
-                tableView.deleteRows(at: [indexPath], with: .right)
-                // Change navigationItem's right button item title to Edit and disable the edit button
-                // once the deletion is done
-                self?.setEditing(false, animated: true)
+                ensureMainThread {
+                    self?.tableView.deleteRows(at: [indexPath], with: .right)
+
+                    // Change navigationItem's right button item title to Edit and disable the edit button
+                    // once the deletion is done
+                    self?.setEditing(false, animated: true)
+                }
             }
 
             // End editing if we are no longer edit since we've deleted all editable cells.
@@ -536,6 +763,9 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
         showDeletion = editing
         UIView.performWithoutAnimation {
             self.navigationItem.rightBarButtonItem?.title = editing ? .SettingsSearchDoneButton : .SettingsSearchEditButton
+            let theme = currentTheme()
+            let textColor = editing ? theme.colors.textAccent : theme.colors.textPrimary
+            self.navigationItem.rightBarButtonItem?.tintColor = textColor
         }
         navigationItem.rightBarButtonItem?.isEnabled = isEditable
         navigationItem.rightBarButtonItem?.action = editing ?
@@ -554,13 +784,13 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
     ) {
         let setting = BoolSetting(
             prefs: profile.prefs,
-            theme: themeManager.getCurrentTheme(for: windowUUID),
+            theme: currentTheme(),
             prefKey: prefKey,
             defaultValue: defaultValue,
             titleText: titleText,
             statusText: statusText
         )
-        setting.onConfigureCell(cell, theme: themeManager.getCurrentTheme(for: windowUUID))
+        setting.onConfigureCell(cell, theme: currentTheme())
         setting.control.switchView.addTarget(
             self,
             action: selector,
@@ -619,7 +849,7 @@ final class SearchSettingsTableViewController: ThemedTableViewController, Featur
     // MARK: - Theming System
     override func applyTheme() {
         super.applyTheme()
-        tableView.separatorColor = themeManager.getCurrentTheme(for: windowUUID).colors.borderPrimary
+        tableView.separatorColor = currentTheme().colors.borderPrimary
     }
 }
 
@@ -642,8 +872,35 @@ extension SearchSettingsTableViewController {
     }
 
     @objc
+    func didToggleGoogleLens(_ toggle: ThemedSwitch) {
+        userPreferences.setPreferenceFor(.googleLens, to: toggle.isOn)
+        store.dispatch(ToolbarAction(windowUUID: windowUUID,
+                                     actionType: ToolbarActionType.googleLensSettingDidChange))
+    }
+
+    @objc
     func didToggleShowSearchSuggestionsInPrivateMode(_ toggle: ThemedSwitch) {
         model.shouldShowPrivateModeSearchSuggestions = toggle.isOn
+    }
+
+    @objc
+    func didToggleShowTrendingSearches(_ toggle: ThemedSwitch) {
+        model.shouldShowTrendingSearches = toggle.isOn
+        SettingsTelemetry().changedSetting(
+            "TrendingSearches",
+            to: "\(toggle.isOn)",
+            from: "\(!toggle.isOn)"
+        )
+    }
+
+    @objc
+    func didToggleShowRecentSearches(_ toggle: ThemedSwitch) {
+        model.shouldShowRecentSearches = toggle.isOn
+        SettingsTelemetry().changedSetting(
+            "RecentSearches",
+            to: "\(toggle.isOn)",
+            from: "\(!toggle.isOn)"
+        )
     }
 
     @objc
@@ -705,14 +962,16 @@ extension SearchSettingsTableViewController: SearchEnginePickerDelegate {
         didSelectSearchEngine searchEngine: OpenSearchEngine?
     ) {
         if let engine = searchEngine {
+            let previousEngine = model.defaultEngine
             model.defaultEngine = engine
             NotificationCenter.default.post(name: .SearchSettingsDidUpdateDefaultSearchEngine)
             self.tableView.reloadData()
 
-            let engineID: String = engine.telemetryID
-            let extras = [TelemetryWrapper.EventExtraKey.preference.rawValue: "defaultSearchEngine",
-                          TelemetryWrapper.EventExtraKey.preferenceChanged.rawValue: engineID]
-            TelemetryWrapper.recordEvent(category: .action, method: .change, object: .setting, extras: extras)
+            SettingsTelemetry().changedSetting(
+                "defaultSearchEngine",
+                to: engine.telemetryID,
+                from: previousEngine?.telemetryID ?? SettingsTelemetry.Placeholders.missingValue
+            )
         }
         _ = navigationController?.popViewController(animated: true)
     }

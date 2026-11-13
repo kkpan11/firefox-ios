@@ -87,13 +87,20 @@ final class SiteImageCacheTests: XCTestCase {
     }
 }
 
-private class MockDefaultImageCache: DefaultImageCache {
+private final class MockDefaultImageCache: DefaultImageCache, @unchecked Sendable {
     var image: UIImage?
     var retrievalError: KingfisherError?
     var capturedRetrievalKey: String?
     var capturedImage: UIImage?
     var capturedStorageKey: String?
     var clearCacheCalledCount = 0
+    var memoryImage: UIImage?
+    var capturedMemoryRetrievalKey: String?
+
+    func retrieveFromMemory(forKey key: String) -> UIImage? {
+        capturedMemoryRetrievalKey = key
+        return memoryImage
+    }
 
     func retrieve(forKey key: String) async throws -> UIImage? {
         capturedRetrievalKey = key

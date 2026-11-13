@@ -7,6 +7,7 @@ import XCTest
 import Shared
 @testable import Client
 
+@MainActor
 class ContextualHintEligibilityUtilityTests: XCTestCase {
     typealias CFRPrefsKeys = PrefsKeys.ContextualHints
 
@@ -15,97 +16,61 @@ class ContextualHintEligibilityUtilityTests: XCTestCase {
     var urlBar: MockURLBarView!
     var overlayState: MockOverlayModeManager!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
 
-        profile = MockProfile()
+        profile = makeProfile()
         urlBar = MockURLBarView()
         overlayState = MockOverlayModeManager()
         overlayState.setURLBar(urlBarView: urlBar)
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
-        subject = ContextualHintEligibilityUtility(with: profile,
-                                                   overlayState: nil)
+        subject = ContextualHintEligibilityUtility(with: profile, overlayState: nil)
     }
 
-    override func tearDown() {
-        super.tearDown()
-
-        profile.shutdown()
+    override func tearDown() async throws {
         profile = nil
         urlBar = nil
         overlayState = nil
         subject = nil
+        try await super.tearDown()
     }
 
     // MARK: - Test should Present cases
 
-    func test_shouldPresentInactiveTabsHint() {
-        let result = subject.canPresent(.inactiveTabs)
-        XCTAssertTrue(result)
-    }
-
-    func test_shouldPresentInactiveTabsHint_WithNilOverlayMode() {
-        subject = ContextualHintEligibilityUtility(with: profile,
-                                                   overlayState: nil)
-        let result = subject.canPresent(.inactiveTabs)
-        XCTAssertTrue(result)
-    }
-
-    func test_shouldPresentDataClearanceHint() {
-        let result = subject.canPresent(.dataClearance)
+    func test_shouldPresentNavigationHint() {
+        let result = subject.canPresent(.navigation)
         XCTAssertTrue(result)
     }
 
     // MARK: Jump Back in and Synced tabs
     func test_shouldPresentJumpBackHint() {
         subject = ContextualHintEligibilityUtility(with: profile,
-                                                   overlayState: overlayState,
-                                                   isToolbarUpdateCFRFeatureEnabled: true)
-        profile.prefs.setBool(true, forKey: CFRPrefsKeys.toolbarUpdateKey.rawValue)
+                                                   overlayState: overlayState)
         let result = subject.canPresent(.jumpBackIn)
         XCTAssertTrue(result)
     }
 
     func test_shouldPresentJumpBackHint_withToolbarUpdateFeatureDisabled() {
         subject = ContextualHintEligibilityUtility(with: profile,
-                                                   overlayState: overlayState,
-                                                   isToolbarUpdateCFRFeatureEnabled: false)
+                                                   overlayState: overlayState)
         let result = subject.canPresent(.jumpBackIn)
         XCTAssertTrue(result)
     }
 
     func test_shouldPresentSyncedTabHint() {
         subject = ContextualHintEligibilityUtility(with: profile,
-                                                   overlayState: overlayState,
-                                                   isToolbarUpdateCFRFeatureEnabled: true)
-        profile.prefs.setBool(true, forKey: CFRPrefsKeys.toolbarUpdateKey.rawValue)
+                                                   overlayState: overlayState)
         let result = subject.canPresent(.jumpBackInSyncedTab)
         XCTAssertTrue(result)
     }
 
     func test_shouldPresentSyncedHint_withToolbarUpdateFeatureDisabled() {
         subject = ContextualHintEligibilityUtility(with: profile,
-                                                   overlayState: overlayState,
-                                                   isToolbarUpdateCFRFeatureEnabled: false)
+                                                   overlayState: overlayState)
         let result = subject.canPresent(.jumpBackInSyncedTab)
         XCTAssertTrue(result)
     }
 
     // MARK: - Test should NOT Present cases
-
-    func test_shouldNotPresentInactiveTabsHint() {
-        profile.prefs.setBool(true, forKey: CFRPrefsKeys.inactiveTabsKey.rawValue)
-
-        let result = subject.canPresent(.inactiveTabs)
-        XCTAssertFalse(result)
-    }
-
-    func test_shouldNotPresentDataClearanceHint() {
-        profile.prefs.setBool(true, forKey: CFRPrefsKeys.dataClearanceKey.rawValue)
-
-        let result = subject.canPresent(.dataClearance)
-        XCTAssertFalse(result)
-    }
 
     func test_shouldNotPresentJumpBackInHint() {
         profile.prefs.setBool(true, forKey: CFRPrefsKeys.jumpBackinKey.rawValue)
@@ -116,8 +81,7 @@ class ContextualHintEligibilityUtilityTests: XCTestCase {
 
     func test_shouldNotPresentJumpBackHint_WithOverlayMode() {
         subject = ContextualHintEligibilityUtility(with: profile,
-                                                   overlayState: overlayState,
-                                                   isToolbarUpdateCFRFeatureEnabled: false)
+                                                   overlayState: overlayState)
         overlayState.openNewTab(url: nil, newTabSettings: .topSites)
         let result = subject.canPresent(.jumpBackIn)
         XCTAssertFalse(result)
@@ -139,8 +103,7 @@ class ContextualHintEligibilityUtilityTests: XCTestCase {
 
     func test_shouldNotPresentSyncedHint_WithOverlayMode() {
         subject = ContextualHintEligibilityUtility(with: profile,
-                                                   overlayState: overlayState,
-                                                   isToolbarUpdateCFRFeatureEnabled: false)
+                                                   overlayState: overlayState)
         overlayState.openNewTab(url: nil, newTabSettings: .topSites)
         let result = subject.canPresent(.jumpBackInSyncedTab)
         XCTAssertFalse(result)

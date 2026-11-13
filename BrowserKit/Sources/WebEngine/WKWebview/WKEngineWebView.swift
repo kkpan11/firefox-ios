@@ -6,6 +6,7 @@ import Common
 import Foundation
 import WebKit
 
+@MainActor
 protocol WKEngineWebViewDelegate: AnyObject {
     func tabWebView(_ webView: WKEngineWebView, findInPageSelection: String)
     func tabWebView(_ webView: WKEngineWebView, searchSelection: String)
@@ -16,6 +17,7 @@ protocol WKEngineWebViewDelegate: AnyObject {
 }
 
 /// Abstraction on top of the `WKWebView`
+@MainActor
 protocol WKEngineWebView: UIView {
     var navigationDelegate: WKNavigationDelegate? { get set }
     var uiDelegate: WKUIDelegate? { get set }
@@ -73,7 +75,7 @@ protocol WKEngineWebView: UIView {
         _ javaScript: String,
         in frame: WKFrameInfo?,
         in contentWorld: WKContentWorld,
-        completionHandler: ((Result<Any, Error>) -> Void)?
+        completionHandler: (@MainActor (Result<Any, Error>) -> Void)?
     )
 
     func close()
@@ -84,7 +86,7 @@ extension WKEngineWebView {
         _ javaScript: String,
         in frame: WKFrameInfo? = nil,
         in contentWorld: WKContentWorld,
-        completionHandler: ((Result<Any, Error>) -> Void)? = nil
+        completionHandler: (@MainActor (Result<Any, Error>) -> Void)? = nil
     ) {
         evaluateJavaScript(javaScript,
                            in: frame,
@@ -108,7 +110,8 @@ extension WKEngineWebView {
     ///   - completion: Tuple containing optional data and an optional error.
     func evaluateJavascriptInDefaultContentWorld(
         _ javascript: String,
-        _ frame: WKFrameInfo? = nil, _ completion: @escaping (Any?, Error?) -> Void
+        _ frame: WKFrameInfo? = nil,
+        _ completion: @escaping (Any?, Error?) -> Void
     ) {
         evaluateJavaScript(javascript, in: frame, in: .defaultClient) { result in
             switch result {
@@ -177,7 +180,15 @@ final class DefaultWKEngineWebView: WKWebView,
     }
 
     deinit {
-        close()
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits
+        guard Thread.isMainThread else {
+            assertionFailure("DevicePickerViewController was not deallocated on the main thread. Observer was not removed")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            close()
+        }
     }
 
     func close() {
@@ -192,46 +203,62 @@ final class DefaultWKEngineWebView: WKWebView,
 
     private func setupObservers() {
         let loadingToken = observe(\.isLoading, options: [.new]) { [weak self] _, change in
-            guard let isLoading = change.newValue else { return }
-            self?.handleWebsiteLoadingChanged(isLoading)
-            self?.delegate?.webViewPropertyChanged(.loading(isLoading))
+            guard let isLoading = change.newValue, let self else { return }
+            ensureMainThread {
+                self.handleWebsiteLoadingChanged(isLoading)
+                self.delegate?.webViewPropertyChanged(.loading(isLoading))
+            }
         }
 
         let progressObserver = observe(\.estimatedProgress, options: [.new]) { [weak self] _, change in
-            guard let progress = change.newValue else { return }
-            self?.delegate?.webViewPropertyChanged(.estimatedProgress(progress))
+            guard let progress = change.newValue, let self else { return }
+            ensureMainThread {
+                self.delegate?.webViewPropertyChanged(.estimatedProgress(progress))
+            }
         }
 
         let urlObserver = observe(\.url, options: [.new]) { [weak self] _, change in
-            guard let url = change.newValue else { return }
-            self?.delegate?.webViewPropertyChanged(.URL(url))
+            guard let url = change.newValue, let self else { return }
+            ensureMainThread {
+                self.delegate?.webViewPropertyChanged(.URL(url))
+            }
         }
 
         let titleObserver = observe(\.title, options: [.new]) { [weak self] _, change in
-            guard let title = change.newValue as? String else { return }
-            self?.delegate?.webViewPropertyChanged(.title(title))
+            guard let title = change.newValue as? String, let self else { return }
+            ensureMainThread {
+                self.delegate?.webViewPropertyChanged(.title(title))
+            }
         }
 
         let canGoBackObserver = observe(\.canGoBack, options: [.new]) { [weak self] _, change in
-            guard let canGoBack = change.newValue else { return }
-            self?.delegate?.webViewPropertyChanged(.canGoBack(canGoBack))
+            guard let canGoBack = change.newValue, let self else { return }
+            ensureMainThread {
+                self.delegate?.webViewPropertyChanged(.canGoBack(canGoBack))
+            }
         }
 
         let canGoForwardObserver = observe(\.canGoForward, options: [.new]) { [weak self] _, change in
-            guard let canGoForward = change.newValue else { return }
-            self?.delegate?.webViewPropertyChanged(.canGoForward(canGoForward))
+            guard let canGoForward = change.newValue, let self else { return }
+            ensureMainThread {
+                self.delegate?.webViewPropertyChanged(.canGoForward(canGoForward))
+            }
         }
 
         let hasOnlySecureBrowserObserver = observe(\.hasOnlySecureContent, options: [.new]) { [weak self] _, change in
-            guard let hasOnlySecureContent = change.newValue else { return }
-            self?.delegate?.webViewPropertyChanged(.hasOnlySecureContent(hasOnlySecureContent))
+            guard let hasOnlySecureContent = change.newValue, let self else { return }
+            ensureMainThread {
+                self.delegate?.webViewPropertyChanged(.hasOnlySecureContent(hasOnlySecureContent))
+            }
         }
 
         let contentSizeObserver = scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, change in
-            guard let newSize = change.newValue else { return }
-            self?.pullRefreshViewHeightConstraint?.constant = newSize.height
-            self?.pullRefreshViewWidthConstraint?.constant = newSize.width
-            self?.delegate?.webViewPropertyChanged(.contentSize(newSize))
+            guard let newSize = change.newValue, let self else { return }
+            ensureMainThread {
+                self.pullRefreshViewHeightConstraint?.constant = newSize.height
+                self.pullRefreshViewWidthConstraint?.constant = newSize.width
+                self.delegate?.webViewPropertyChanged(.contentSize(newSize))
+            }
         }
 
         observedTokens.append(
@@ -246,19 +273,6 @@ final class DefaultWKEngineWebView: WKWebView,
                 contentSizeObserver
             ]
         )
-
-        // Observe fullscreen state, there are four states but we are reacting to `.enteringFullscreen`
-        // and `.exitingFullscreen` only. When the view is on fullscreen is removed from the view hierarchy
-        // so we add it back for `.exitingFullscreen`
-        if #available(iOS 16.0, *) {
-            let fullscreenObserver = observe(\.fullscreenState, options: [.new]) {  [weak self] object, change in
-                guard object.fullscreenState == .enteringFullscreen ||
-                        object.fullscreenState == .exitingFullscreen else { return }
-
-                self?.delegate?.webViewPropertyChanged(.isFullScreen(object.fullscreenState == .enteringFullscreen))
-            }
-            observedTokens.append(fullscreenObserver)
-        }
     }
 
     private func removeObservers() {
@@ -275,7 +289,8 @@ final class DefaultWKEngineWebView: WKWebView,
         refresh.configure(with: scrollView) { [weak self] in
             self?.delegate?.webViewNeedsReload()
         }
-        guard pullRefreshViewType != UIRefreshControl.self else { return }
+
+        guard !(refresh is UIRefreshControl) else { return }
         scrollView.addSubview(refresh)
         refresh.translatesAutoresizingMaskIntoConstraints = false
         pullRefreshViewHeightConstraint = refresh.heightAnchor.constraint(equalToConstant: scrollView.frame.height)
@@ -290,6 +305,9 @@ final class DefaultWKEngineWebView: WKWebView,
     }
 
     private func removePullRefresh() {
+        if pullRefreshView is UIRefreshControl {
+            scrollView.refreshControl = nil
+        }
         pullRefreshView?.removeFromSuperview()
         pullRefreshViewWidthConstraint = nil
         pullRefreshViewHeightConstraint = nil
@@ -317,27 +335,24 @@ final class DefaultWKEngineWebView: WKWebView,
         configuration.userContentController.removeAllScriptMessageHandlers()
     }
 
-    func menuHelperFindInPage() {
-        evaluateJavascriptInDefaultContentWorld("getSelection().toString()") { result, _ in
-            let selection = result as? String ?? ""
-            self.delegate?.tabWebView(self, findInPageSelection: selection)
+    @objc
+    nonisolated func menuHelperFindInPage() {
+        ensureMainThread {
+            self.evaluateJavascriptInDefaultContentWorld("getSelection().toString()") { result, _ in
+                let selection = result as? String ?? ""
+                self.delegate?.tabWebView(self, findInPageSelection: selection)
+            }
         }
     }
 
-    func menuHelperSearchWith() {
-        evaluateJavascriptInDefaultContentWorld("getSelection().toString()") { result, _ in
-            let selection = result as? String ?? ""
-            self.delegate?.tabWebView(self, searchSelection: selection)
+    @objc
+    nonisolated func menuHelperSearchWith() {
+        ensureMainThread {
+            self.evaluateJavascriptInDefaultContentWorld("getSelection().toString()") { result, _ in
+                let selection = result as? String ?? ""
+                self.delegate?.tabWebView(self, searchSelection: selection)
+            }
         }
-    }
-
-    override internal func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        // The find-in-page selection menu only appears if the webview is the first responder.
-        // Do not becomeFirstResponder on a mouse event.
-        if let event = event, event.allTouches?.contains(where: { $0.type != .indirectPointer }) ?? false {
-            becomeFirstResponder()
-        }
-        return super.hitTest(point, with: event)
     }
 
     // MARK: - UIScrollViewDelegate

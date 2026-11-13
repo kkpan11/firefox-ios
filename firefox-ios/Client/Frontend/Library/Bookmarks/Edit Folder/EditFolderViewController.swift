@@ -9,7 +9,7 @@ class EditFolderViewController: UIViewController,
                                 UITableViewDelegate,
                                 UITableViewDataSource,
                                 Themeable {
-    private struct UX {
+    private enum UX {
         static let editFolderCellTopPadding: CGFloat = 25.0
         static let parentFolderHeaderHorizontalPadding: CGFloat = 16.0
         static let parentFolderHeaderBottomPadding: CGFloat = 8.0
@@ -21,17 +21,22 @@ class EditFolderViewController: UIViewController,
     }
     var currentWindowUUID: WindowUUID?
     var themeManager: any ThemeManager
-    var themeObserver: (any NSObjectProtocol)?
+    var themeListenerCancellable: Any?
     var notificationCenter: any NotificationProtocol
     var onViewWillDisappear: (() -> Void)?
     var onViewWillAppear: (() -> Void)?
+    let shouldUsePrivateOverride: Bool
+    var shouldBeInPrivateTheme: Bool { return false }
+
     private var theme: any Theme {
-        return themeManager.getCurrentTheme(for: currentWindowUUID)
+        return themeManager.resolveTheme(for: currentWindowUUID,
+                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme)
     }
 
     private let viewModel: EditFolderViewModel
 
-    private lazy var tableView: UITableView = .build { view in
+    private lazy var tableView: UITableView = .build({ view in
         view.dataSource = self
         view.delegate = self
         view.register(cellType: EditFolderCell.self)
@@ -42,12 +47,14 @@ class EditFolderViewController: UIViewController,
                                                     size: CGSize(width: 0, height: UX.editFolderCellTopPadding)))
         view.tableHeaderView = headerSpacerView
         view.keyboardDismissMode = .onDrag
-    }
+    }, {
+        UITableView(frame: .zero, style: .insetGrouped)
+    })
 
     private lazy var saveBarButton: UIBarButtonItem =  {
         let button = UIBarButtonItem(
             title: String.Bookmarks.Menu.EditBookmarkSave,
-            style: .done,
+            style: .plain,
             target: self,
             action: #selector(saveButtonAction)
         )
@@ -57,14 +64,15 @@ class EditFolderViewController: UIViewController,
 
     init(viewModel: EditFolderViewModel,
          windowUUID: WindowUUID,
+         shouldUsePrivateOverride: Bool = true,
          themeManager: any ThemeManager = AppContainer.shared.resolve(),
          notificationCenter: any NotificationProtocol = NotificationCenter.default) {
         self.currentWindowUUID = windowUUID
         self.themeManager = themeManager
         self.notificationCenter = notificationCenter
         self.viewModel = viewModel
+        self.shouldUsePrivateOverride = shouldUsePrivateOverride
         super.init(nibName: nil, bundle: nil)
-        listenForThemeChange(view)
     }
 
     required init?(coder: NSCoder) {
@@ -81,11 +89,14 @@ class EditFolderViewController: UIViewController,
             self?.tableView.reloadSections(IndexSet(integer: Section.parentFolder.rawValue), with: .automatic)
         }
         setupSubviews()
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(false, animated: true)
+        navigationController?.setNavigationBarHidden(false, animated: false)
         navigationController?.interactivePopGestureRecognizer?.isEnabled = false
         setTheme(theme)
         onViewWillAppear?()
@@ -102,14 +113,9 @@ class EditFolderViewController: UIViewController,
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         if let isDraggingDown = transitionCoordinator?.isInteractive, !isDraggingDown {
-            navigationController?.setNavigationBarHidden(true, animated: true)
+            navigationController?.setNavigationBarHidden(true, animated: false)
         }
         onViewWillDisappear?()
-
-        // Only save when clicking the back button, not when we swipe the view controller away
-        if isMovingFromParent {
-            viewModel.save()
-        }
     }
 
     private func setupSubviews() {
@@ -117,7 +123,7 @@ class EditFolderViewController: UIViewController,
         NSLayoutConstraint.activate([
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
@@ -126,7 +132,7 @@ class EditFolderViewController: UIViewController,
 
     @objc
     func saveButtonAction() {
-        // Save will happen in viewWillDisappear
+        viewModel.save()
         navigationController?.popViewController(animated: true)
     }
 
@@ -138,18 +144,21 @@ class EditFolderViewController: UIViewController,
     }
 
     private func setTheme(_ theme: any Theme) {
-        let appearence = UINavigationBarAppearance()
-        appearence.backgroundColor = theme.colors.layer1
+        let appearance = UINavigationBarAppearance()
+        appearance.backgroundColor = theme.colors.layer1
         // remove divider from navigation bar
-        appearence.shadowColor = .clear
-        appearence.titleTextAttributes = [
+        appearance.shadowColor = .clear
+        appearance.titleTextAttributes = [
             .foregroundColor: theme.colors.textPrimary
         ]
-        navigationController?.navigationBar.standardAppearance = appearence
-        navigationController?.navigationBar.scrollEdgeAppearance = appearence
+        navigationController?.navigationBar.standardAppearance = appearance
+        navigationController?.navigationBar.scrollEdgeAppearance = appearance
         navigationController?.navigationBar.tintColor = theme.colors.actionPrimary
         view.backgroundColor = theme.colors.layer1
         tableView.backgroundColor = theme.colors.layer1
+        if #available(iOS 26.0, *) {
+            saveBarButton.tintColor = theme.colors.textAccent
+        }
     }
 
     // MARK: - UITableViewDataSource & UITableViewDelegate

@@ -7,14 +7,13 @@ import Foundation
 import Shared
 import SiteImageView
 
-class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell, FeatureFlaggable {
-    struct UX {
+class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell {
+    enum UX {
         // MARK: - Favicon and Title Constants
         static let faviconSize: CGFloat = 20
         static let faviconCornerRadius: CGFloat = 2
         static let tabTitlePadding: CGFloat = 10
         static let tabTitlePaddingVersion: CGFloat = 14
-        static let tabNudge: CGFloat = 1 // Nudge the favicon and close button by 1px
 
         // MARK: - Tab Appearance Constants
         static let tabCornerRadius: CGFloat = 8
@@ -54,7 +53,6 @@ class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell, FeatureFl
         label.lineBreakMode = .byCharWrapping
         label.font = FXFontStyles.Regular.caption1.scaledFont()
         label.semanticContentAttribute = .forceLeftToRight
-        label.isAccessibilityElement = false
     }
 
     let favicon: FaviconImageView = .build { _ in }
@@ -81,40 +79,35 @@ class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell, FeatureFl
         isSelectedTab = selected
         windowUUID = tab.windowUUID
 
-        titleText.text = tab.getTabTrayTitle()
-        accessibilityLabel = getA11yTitleLabel(tab: tab)
+        let title = tab.getTabTrayTitle()
+        titleText.text = title
+        accessibilityLabel = getA11yTitleLabel(title: title)
         showsLargeContentViewer = true
-        largeContentTitle = tab.getTabTrayTitle()
-        isAccessibilityElement = true
+        largeContentTitle = title
 
         closeButton.accessibilityLabel = String(format: .TopSitesRemoveButtonAccessibilityLabel,
                                                 self.titleText.text ?? "")
         closeButton.showsLargeContentViewer = true
         closeButton.largeContentTitle = .TopSitesRemoveButtonLargeContentTitle
-
-        let isToolbarRefactorEnabled = featureFlags.isFeatureEnabled(.toolbarRefactor, checking: .buildOnly)
-        if isToolbarRefactorEnabled {
-            closeButton.configuration?.image = UIImage.templateImageNamed(StandardImageIdentifiers.Medium.cross)
-            closeButton.configuration?.contentInsets = NSDirectionalEdgeInsets(top: UX.verticalPadding,
-                                                                               leading: UX.tabTitlePaddingVersion,
-                                                                               bottom: UX.verticalPadding,
-                                                                               trailing: UX.tabTitlePaddingVersion)
-        } else {
-            closeButton.configuration?.image = UIImage.templateImageNamed(StandardImageIdentifiers.Large.cross)
-        }
-
+        closeButton.configuration?.image = UIImage.templateImageNamed(StandardImageIdentifiers.Medium.cross)
+        closeButton.configuration?.contentInsets = NSDirectionalEdgeInsets(top: UX.verticalPadding,
+                                                                           leading: UX.tabTitlePaddingVersion,
+                                                                           bottom: UX.verticalPadding,
+                                                                           trailing: UX.tabTitlePaddingVersion)
         closeButton.scalesLargeContentImage = true
 
         let hideCloseButton = frame.width < UX.closeButtonThreshold && !selected
         closeButton.isHidden = hideCloseButton
 
-        favicon.manuallySetImage(
-            UIImage(named: StandardImageIdentifiers.Large.globe)?.withRenderingMode(.alwaysTemplate) ?? UIImage())
         favicon.backgroundColor = .clear
 
+        // Setting the placeholder here would clear `currentURLString` and defeat the de-duplication
+        // in `setFavicon`, blanking the image on every reload.
         if let siteURL = tab.url?.absoluteString, !tab.isFxHomeTab {
             favicon.setFavicon(FaviconImageViewModel(siteURLString: siteURL,
                                                      faviconCornerRadius: UX.faviconCornerRadius))
+        } else {
+            favicon.manuallySetImage(UIImage(named: ImageIdentifiers.firefoxFavicon) ?? UIImage())
         }
     }
 
@@ -137,8 +130,7 @@ class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell, FeatureFl
         titleText.textColor = colors.textPrimary
         closeButton.tintColor = colors.textPrimary
 
-        let isToolbarRefactorEnabled = featureFlags.isFeatureEnabled(.toolbarRefactor, checking: .buildOnly)
-        let backgroundColor = isToolbarRefactorEnabled ? colors.actionTabActive : colors.layer2
+        let backgroundColor = colors.actionTabActive
         cellBackground.backgroundColor = backgroundColor
         cellBackground.layer.shadowColor = colors.shadowDefault.cgColor
         cellBackground.isHidden = false
@@ -150,18 +142,9 @@ class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell, FeatureFl
         titleText.textColor = colors.textPrimary
         closeButton.tintColor = colors.textPrimary
 
-        let isToolbarRefactorEnabled = featureFlags.isFeatureEnabled(.toolbarRefactor, checking: .buildOnly)
-
-        if isToolbarRefactorEnabled,
-           let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID),
-           toolbarState.isTranslucent {
-            cellBackground.backgroundColor = toolbarState.isTranslucent ? .clear : colors.actionTabInactive
-        } else {
-            cellBackground.backgroundColor = isToolbarRefactorEnabled ? colors.actionTabInactive : .clear
-        }
-
+        cellBackground.backgroundColor = .clear
         cellBackground.layer.shadowColor = UIColor.clear.cgColor
-        cellBackground.isHidden = isToolbarRefactorEnabled ? false : true
+        cellBackground.isHidden = false
     }
 
     func applyTheme(theme: Theme) {
@@ -185,7 +168,7 @@ class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell, FeatureFl
                 cellBackground.centerXAnchor.constraint(equalTo: centerXAnchor),
                 cellBackground.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-                favicon.centerYAnchor.constraint(equalTo: centerYAnchor, constant: UX.tabNudge),
+                favicon.centerYAnchor.constraint(equalTo: centerYAnchor),
                 favicon.widthAnchor.constraint(equalToConstant: UX.faviconSize),
                 favicon.heightAnchor.constraint(equalToConstant: UX.faviconSize),
                 favicon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.tabTitlePadding),
@@ -201,9 +184,9 @@ class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell, FeatureFl
                     constant: UX.tabTitlePadding
                 ),
 
-                closeButton.centerYAnchor.constraint(equalTo: centerYAnchor, constant: UX.tabNudge),
+                closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
                 closeButton.widthAnchor.constraint(equalTo: heightAnchor, constant: -UX.tabTitlePadding),
-                closeButton.heightAnchor.constraint(equalTo: heightAnchor),
+                closeButton.heightAnchor.constraint(equalTo: heightAnchor, constant: -UX.tabTitlePadding),
                 closeButton.trailingAnchor.constraint(equalTo: trailingAnchor),
             ]
         )
@@ -211,10 +194,8 @@ class TopTabCell: UICollectionViewCell, ThemeApplicable, ReusableCell, FeatureFl
         clipsToBounds = false
     }
 
-    func getA11yTitleLabel(tab: Tab) -> String? {
-        let baseName = tab.getTabTrayTitle()
-
-        if isSelectedTab, !tab.getTabTrayTitle().isEmpty {
+    private func getA11yTitleLabel(title baseName: String) -> String? {
+        if isSelectedTab, !baseName.isEmpty {
             return baseName + ". " + String.TabsTray.TabTrayCurrentlySelectedTabAccessibilityLabel
         } else if isSelectedTab {
             return String.TabsTray.TabTrayCurrentlySelectedTabAccessibilityLabel

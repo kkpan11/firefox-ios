@@ -6,10 +6,12 @@ import Common
 import Foundation
 
 protocol StatusBarScrollDelegate: AnyObject {
+    @MainActor
     func scrollViewDidScroll(_ scrollView: UIScrollView, statusBarFrame: CGRect?, theme: Theme)
 }
 
 protocol BrowserStatusBarScrollDelegate: AnyObject {
+    @MainActor
     func homepageScrollViewDidScroll(scrollOffset: CGFloat)
 }
 
@@ -18,22 +20,22 @@ protocol BrowserStatusBarScrollDelegate: AnyObject {
 /// - On homepage with bottom URL bar, the status bar overlay alpha changes when the user scrolls.
 /// - In all other cases apart from this one, the status bar should be opaque
 /// - With top tabs, the status bar overlay has a different color than without it
-class StatusBarOverlay: UIView,
+final class StatusBarOverlay: UIView,
                         ThemeApplicable,
                         StatusBarScrollDelegate,
                         SearchBarLocationProvider,
                         Notifiable {
+    private enum UX {
+        static let overlayAppearanceAnimationDuration: TimeInterval = 0.2
+    }
+
     private var savedBackgroundColor: UIColor?
     private var savedIsHomepage: Bool?
     private var wallpaperManager: WallpaperManagerInterface = WallpaperManager()
     private var toolbarHelper: ToolbarHelperInterface = ToolbarHelper()
-    var scrollDelegate: BrowserStatusBarScrollDelegate?
+    weak var scrollDelegate: BrowserStatusBarScrollDelegate?
     var notificationCenter: NotificationProtocol = NotificationCenter.default
     var hasTopTabs = false
-
-    private var isToolbarRefactorEnabled: Bool {
-        toolbarHelper.isToolbarRefactorEnabled
-    }
 
     /// Returns a value between 0 and 1 which indicates how far the user has scrolled.
     /// This is used as the alpha of the status bar background.
@@ -54,64 +56,98 @@ class StatusBarOverlay: UIView,
         self.wallpaperManager = wallpaperManager
         self.scrollDelegate = scrollDelegate
         self.toolbarHelper = toolbarHelper
-        setupNotifications(forObserver: self,
-                           observing: [.WallpaperDidChange,
-                                       .SearchBarPositionDidChange])
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [.WallpaperDidChange,
+                        .SearchBarPositionDidChange]
+        )
     }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setupNotifications(forObserver: self,
-                           observing: [.WallpaperDidChange,
-                                       .SearchBarPositionDidChange])
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [.WallpaperDidChange,
+                        .SearchBarPositionDidChange]
+        )
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
-        notificationCenter.removeObserver(self)
-    }
-
     func resetState(isHomepage: Bool) {
         savedIsHomepage = isHomepage
-
-        // We only need no status bar for one edge case
-        var needsNoStatusBar = isHomepage && isBottomSearchBar
-        if !isToolbarRefactorEnabled {
-            needsNoStatusBar = needsNoStatusBar && wallpaperManager.currentWallpaper.hasImage
-        }
+        let needsNoStatusBar = needsNoStatusBar(isHomepage: isHomepage)
         scrollOffset = needsNoStatusBar ? 0 : 1
+        updateStatusBarAlpha(isHomepage: isHomepage, needsNoStatusBar: needsNoStatusBar)
+    }
 
-        let translucencyBackgroundAlpha = toolbarHelper.backgroundAlpha()
-        let alpha = scrollOffset > translucencyBackgroundAlpha ? translucencyBackgroundAlpha : scrollOffset
-        backgroundColor = savedBackgroundColor?.withAlphaComponent(alpha)
+    func showOverlay(animated: Bool) {
+        let backgroundAlpha = toolbarHelper.novaToolbarGlassEffectAlpha
+
+        guard animated else {
+            scrollDelegate?.homepageScrollViewDidScroll(scrollOffset: 1.0)
+            backgroundColor = savedBackgroundColor?.withAlphaComponent(backgroundAlpha)
+            return
+        }
+        UIView.animate(
+            withDuration: UX.overlayAppearanceAnimationDuration,
+            delay: 0,
+            options: .curveEaseIn
+        ) {
+            self.scrollDelegate?.homepageScrollViewDidScroll(scrollOffset: 1.0)
+            self.backgroundColor = self.savedBackgroundColor?.withAlphaComponent(backgroundAlpha)
+        }
+    }
+
+    func restoreOverlay(animated: Bool, isHomepage: Bool) {
+        guard animated else {
+            scrollDelegate?.homepageScrollViewDidScroll(scrollOffset: scrollOffset)
+            resetState(isHomepage: isHomepage)
+            return
+        }
+        UIView.animate(
+            withDuration: UX.overlayAppearanceAnimationDuration,
+            delay: 0,
+            options: .curveEaseIn
+        ) {
+            self.scrollDelegate?.homepageScrollViewDidScroll(scrollOffset: self.scrollOffset)
+            self.resetState(isHomepage: isHomepage)
+        }
+    }
+
+    // MARK: - Helper
+
+    private func needsNoStatusBar(isHomepage: Bool) -> Bool {
+        let isWallpaperedHomepage = isHomepage && wallpaperManager.currentWallpaper.hasImage
+
+        if toolbarHelper.shouldBlur() {
+            return isHomepage && isBottomSearchBar
+        } else {
+            return isWallpaperedHomepage && isBottomSearchBar
+        }
+    }
+
+    private func updateStatusBarAlpha(isHomepage: Bool, needsNoStatusBar: Bool) {
+        let backgroundAlpha = toolbarHelper.novaToolbarGlassEffectAlpha
+        if needsNoStatusBar {
+            let alpha = scrollOffset > backgroundAlpha ? backgroundAlpha : scrollOffset
+            backgroundColor = savedBackgroundColor?.withAlphaComponent(alpha)
+        } else {
+            backgroundColor = savedBackgroundColor?.withAlphaComponent(backgroundAlpha)
+        }
     }
 
     // MARK: - ThemeApplicable
 
     func applyTheme(theme: Theme) {
-        savedBackgroundColor = (hasTopTabs || isToolbarRefactorEnabled) ? theme.colors.layer3 : theme.colors.layer1
-        let translucencyBackgroundAlpha = toolbarHelper.backgroundAlpha()
-
-        // We only need no status bar for one edge case
-        let isHomepage = savedIsHomepage ?? false
-        let isWallpaperedHomepage = isHomepage && wallpaperManager.currentWallpaper.hasImage
-        var needsNoStatusBar: Bool
-
-        if isToolbarRefactorEnabled {
-            needsNoStatusBar = isHomepage && isBottomSearchBar
-        } else {
-            needsNoStatusBar = isWallpaperedHomepage && isBottomSearchBar
-        }
-
-        if needsNoStatusBar {
-            let alpha = scrollOffset > translucencyBackgroundAlpha ? translucencyBackgroundAlpha : scrollOffset
-            backgroundColor = savedBackgroundColor?.withAlphaComponent(alpha)
-        } else {
-            backgroundColor = savedBackgroundColor?.withAlphaComponent(translucencyBackgroundAlpha)
-        }
+        savedBackgroundColor = theme.colors.layerSurfaceLow
+        let isHomepage: Bool = savedIsHomepage ?? false
+        let needsNoStatusBar = needsNoStatusBar(isHomepage: isHomepage)
+        updateStatusBarAlpha(isHomepage: isHomepage, needsNoStatusBar: needsNoStatusBar)
     }
 
     // MARK: - StatusBarScrollDelegate

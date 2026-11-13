@@ -5,20 +5,23 @@
 import XCTest
 
 @testable import Client
+
+@MainActor
 class TabCellTests: XCTestCase {
     var cellDelegate: MockTabCellDelegate!
     var profile: MockProfile!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         cellDelegate = MockTabCellDelegate()
-        profile = MockProfile()
+        profile = makeProfile()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         cellDelegate = nil
         profile = nil
+
+        try await super.tearDown()
     }
 
     func testTabCellDeinit() {
@@ -29,14 +32,14 @@ class TabCellTests: XCTestCase {
     func testConfigureTabAXLabel() {
         let cell = TabCell(frame: .zero)
         let state = createDefaultState()
-        cell.configure(with: state, theme: nil, delegate: cellDelegate, a11yId: "")
+        cell.configure(with: state, theme: nil, delegate: cellDelegate, a11yId: "", newTabTitle: nil)
         XCTAssert(cell.accessibilityLabel!.contains(state.tabTitle))
     }
 
     func testConfigureTabAXHint() {
         let cell = TabCell(frame: .zero)
         let state = createDefaultState()
-        cell.configure(with: state, theme: nil, delegate: cellDelegate, a11yId: "")
+        cell.configure(with: state, theme: nil, delegate: cellDelegate, a11yId: "", newTabTitle: nil)
         XCTAssertEqual(cell.accessibilityHint!,
                        .TabsTray.TabTraySwipeToCloseAccessibilityHint)
     }
@@ -44,7 +47,7 @@ class TabCellTests: XCTestCase {
     func testConfigureTabSelectedState() {
         let cell = TabCell(frame: .zero)
         let state = createDefaultState()
-        cell.configure(with: state, theme: nil, delegate: cellDelegate, a11yId: "")
+        cell.configure(with: state, theme: nil, delegate: cellDelegate, a11yId: "", newTabTitle: nil)
         XCTAssertEqual(cell.isSelectedTab,
                        state.isSelected)
     }
@@ -58,7 +61,8 @@ class TabCellTests: XCTestCase {
                         tabTitle: "Firefox Browser",
                         url: URL(string: "https://www.mozilla.org/en-US/firefox/")!,
                         screenshot: nil,
-                        hasHomeScreenshot: false)
+                        hasHomeScreenshot: false,
+                        hasScreenshotOnDisk: false)
     }
 }
 

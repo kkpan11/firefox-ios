@@ -5,9 +5,10 @@
 import Foundation
 import Glean
 
-protocol GleanWrapper {
+protocol GleanWrapper: Sendable {
     func handleDeeplinkUrl(url: URL)
     func setUpload(isEnabled: Bool)
+    func enableTestingMode()
 
     // MARK: Glean Metrics
 
@@ -16,14 +17,16 @@ protocol GleanWrapper {
     func recordEvent<NoExtras>(for metric: EventMetricType<NoExtras>) where NoExtras: EventExtras
     func incrementCounter(for metric: CounterMetricType)
     func recordString(for metric: StringMetricType, value: String)
-    func recordLabel(for metric: LabeledMetricType<CounterMetricType>, label: String)
+    func recordText(for metric: TextMetricType, value: String)
+    func recordStringList(for metric: StringListMetricType, value: [String])
+    func incrementLabeledCounter(for metric: LabeledMetricType<CounterMetricType>, label: String)
     func setBoolean(for metric: BooleanMetricType, value: Bool)
     func recordQuantity(for metric: QuantityMetricType, value: Int64)
-    func recordLabeledQuantity(for metric: LabeledMetricType<QuantityMetricType>, label: String, value: Int64)
-    func recordUrl(for metric: UrlMetricType, value: String)
-
-    func incrementNumerator(for metric: RateMetricType, amount: Int32)
-    func incrementDenominator(for metric: RateMetricType, amount: Int32)
+    func recordUrl(for metric: UrlMetricType, value: URL)
+    func recordDatetime(for metric: DatetimeMetricType, value: Date)
+    func recordUUID(for metric: UuidMetricType, value: UUID)
+    func recordObject<ObjectValue>(for metric: ObjectMetricType<ObjectValue>,
+                                   value: ObjectValue) where ObjectValue: ObjectSerialize
 
     // MARK: Timing Metrics
     /// You should nullify any references to the timer after stopping it
@@ -54,10 +57,16 @@ struct DefaultGleanWrapper: GleanWrapper {
         glean.setCollectionEnabled(isEnabled)
     }
 
+    func enableTestingMode() {
+        glean.enableTestingMode()
+    }
+
     // MARK: Glean Metrics
 
-    func recordEvent<ExtraObject>(for metric: EventMetricType<ExtraObject>,
-                                  extras: EventExtras) where ExtraObject: EventExtras {
+    func recordEvent<ExtraObject>(
+        for metric: EventMetricType<ExtraObject>,
+        extras: EventExtras
+    ) where ExtraObject: EventExtras {
         if let castedExtras = extras as? ExtraObject {
             metric.record(castedExtras)
         } else {
@@ -77,7 +86,15 @@ struct DefaultGleanWrapper: GleanWrapper {
         metric.set(value)
     }
 
-    func recordLabel(for metric: LabeledMetricType<CounterMetricType>, label: String) {
+    func recordText(for metric: TextMetricType, value: String) {
+        metric.set(value)
+    }
+
+    func recordStringList(for metric: StringListMetricType, value: [String]) {
+        metric.set(value)
+    }
+
+    func incrementLabeledCounter(for metric: LabeledMetricType<CounterMetricType>, label: String) {
         metric[label].add()
     }
 
@@ -89,22 +106,23 @@ struct DefaultGleanWrapper: GleanWrapper {
         metric.set(value)
     }
 
-    func recordLabeledQuantity(for metric: LabeledMetricType<QuantityMetricType>, label: String, value: Int64) {
-        metric[label].set(value)
+    func recordUrl(for metric: UrlMetricType, value: URL) {
+        metric.set(url: value)
     }
 
-    func recordUrl(for metric: UrlMetricType, value: String) {
+    func recordDatetime(for metric: DatetimeMetricType, value: Date) {
         metric.set(value)
     }
 
-    // MARK: RateMetricType
-
-    func incrementNumerator(for metric: RateMetricType, amount: Int32) {
-        metric.addToNumerator(amount)
+    func recordUUID(for metric: UuidMetricType, value: UUID) {
+        metric.set(value)
     }
 
-    func incrementDenominator(for metric: RateMetricType, amount: Int32) {
-        metric.addToDenominator(amount)
+    func recordObject<ObjectValue>(
+        for metric: ObjectMetricType<ObjectValue>,
+        value: ObjectValue
+    ) where ObjectValue: ObjectSerialize {
+        metric.set(value)
     }
 
     // MARK: MeasurementTelemetry

@@ -12,13 +12,14 @@ import CryptoKit
 import X509
 import SwiftASN1
 
+@MainActor
 class TrackingProtectionModel {
     // MARK: - Constants
+    private let userDefaults: UserDefaultsInterface?
     let contentBlockerStatus: BlockerStatus
     var contentBlockerStats: TPPageStats?
     var certificates = [Certificate]()
     let url: URL
-    let displayTitle: String
     var connectionSecure: Bool
     let globalETPIsEnabled: Bool
     var selectedTab: Tab?
@@ -34,26 +35,57 @@ class TrackingProtectionModel {
     let clearCookiesAlertCancelButton: String = .Menu.EnhancedTrackingProtection.clearDataAlertCancelButton
 
     // MARK: Accessibility Identifiers
-    let foxImageA11yId: String = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.foxImage
-    let shieldImageA11yId: String = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.shieldImage
-    let lockImageA11yId: String = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.lockImage
-    let arrowImageA11yId: String = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.arrowImage
+    typealias A11y = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen
+    let connectionDetailsContentViewA11yId: String = A11y.connectionDetailsContentView
+    let foxImageA11yId: String = A11y.foxImage
+    let connectionDetailsLabelsContainerA11yId: String = A11y.connectionDetailsLabelsContainer
+    let connectionDetailsTitleLabelA11yId: String = A11y.connectionDetailsTitleLabel
+    let connectionDetailsStatusLabelA11yId: String = A11y.connectionDetailsStatusLabel
+    let shieldImageA11yId: String = A11y.shieldImage
+    let lockImageA11yId: String = A11y.lockImage
+    let arrowImageA11yId: String = A11y.arrowImage
 
-    let settingsA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.trackingProtectionSettingsButton
-    let domainLabelA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.domainLabel
-    let domainHeaderLabelA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.domainHeaderLabel
-    let statusTitleLabelA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.statusTitleLabel
-    let statusBodyLabelA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.statusBodyLabel
-    let trackersBlockedButtonA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.trackersBlockedButton
-    let securityStatusButtonA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.securityStatusButton
-    let toggleViewContainerA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.toggleViewLabelsContainer
-    let toggleViewBodyLabelA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.toggleViewBodyLabel
-    let closeButtonA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.closeButton
+    let scrollViewA11yId = A11y.scrollView
+    let baseViewA11yId = A11y.baseView
+    let settingsA11yId = A11y.trackingProtectionSettingsButton
+    let domainLabelA11yId = A11y.domainLabel
+    let domainHeaderLabelA11yId = A11y.domainHeaderLabel
+    let statusTitleLabelA11yId = A11y.statusTitleLabel
+    let statusBodyLabelA11yId = A11y.statusBodyLabel
+    let trackersBlockedButtonA11yId = A11y.trackersBlockedButton
+    let securityStatusButtonA11yId = A11y.securityStatusButton
+    let toggleViewContainerA11yId = A11y.toggleViewLabelsContainer
+    let toggleLabelA11yId = A11y.toggleLabel
+    let toggleSwitchA11yId = A11y.toggleSwitch
+    let toggleStatusLabelA11yId = A11y.toggleStatusLabel
+    let toggleViewBodyLabelA11yId = A11y.toggleViewBodyLabel
+    let closeButtonA11yId = A11y.closeButton
     let closeButtonA11yLabel = String.Menu.EnhancedTrackingProtection.closeButtonAccessibilityLabel
-    let faviconImageA11yId = AccessibilityIdentifiers.EnhancedTrackingProtection.MainScreen.faviconImage
+    let faviconImageA11yId = A11y.faviconImage
+    let trackersLabelA11yId = A11y.trackersLabel
+    let trackersHorizontalLineA11yId = A11y.trackersHorizontalLine
+    let trackersConnectionContainerA11yId = A11y.trackersConnectionContainer
+    let connectionStatusImageA11yId = A11y.connectionStatusImage
+    let connectionStatusLabelA11yId = A11y.connectionStatusLabel
+    let connectionHorizontalLineA11yId = A11y.connectionHorizontalLine
+    let faviconA11yId = A11y.favicon
+    let titleLabelA11yId = A11y.titleLabel
+    let subtitleLabelA11yId = A11y.subtitleLabel
+
+    var displayTitle: String {
+        if InternalURL(url)?.isErrorPage == true {
+            return url.siteURL.shortDisplayString
+        } else {
+            return selectedTab?.displayTitle ?? ""
+        }
+    }
+
+    var originalURL: URL {
+        return url.siteURL
+    }
 
     var websiteTitle: String {
-        return url.baseDomain ?? ""
+        return originalURL.baseDomain ?? ""
     }
 
     let secureStatusString = String.Menu.EnhancedTrackingProtection.connectionSecureLabel
@@ -102,15 +134,15 @@ class TrackingProtectionModel {
 
     // MARK: - Initializers
 
-    init(url: URL,
-         displayTitle: String,
+    init(userDefaults: UserDefaultsInterface?,
+         url: URL,
          connectionSecure: Bool,
          globalETPIsEnabled: Bool,
          contentBlockerStatus: BlockerStatus,
          contentBlockerStats: TPPageStats?,
          selectedTab: Tab?) {
+        self.userDefaults = userDefaults
         self.url = url
-        self.displayTitle = displayTitle
         self.connectionSecure = connectionSecure
         self.globalETPIsEnabled = globalETPIsEnabled
         self.contentBlockerStatus = contentBlockerStatus
@@ -124,7 +156,7 @@ class TrackingProtectionModel {
             return theme.colors.layerAccentPrivateNonOpaque
         }
         if !connectionSecure {
-            return theme.colors.layerRatingFSubdued
+            return theme.colors.layerCriticalSubdued
         }
         return theme.colors.layerAccentPrivateNonOpaque
     }
@@ -132,7 +164,7 @@ class TrackingProtectionModel {
     func getDetailsModel() -> TrackingProtectionDetailsModel {
         return TrackingProtectionDetailsModel(topLevelDomain: websiteTitle,
                                               title: displayTitle,
-                                              URL: url.absoluteDisplayString,
+                                              URL: originalURL.absoluteDisplayString,
                                               getLockIcon: getConnectionStatusImage(themeType:),
                                               connectionStatusMessage: connectionStatusString,
                                               connectionSecure: connectionSecure,
@@ -141,9 +173,10 @@ class TrackingProtectionModel {
 
     func getBlockedTrackersModel() -> BlockedTrackersTableModel {
         return BlockedTrackersTableModel(
+            userDefaults: userDefaults,
             topLevelDomain: websiteTitle,
             title: displayTitle,
-            URL: url.absoluteDisplayString,
+            URL: originalURL.absoluteDisplayString,
             contentBlockerStats: contentBlockerStats,
             connectionSecure: connectionSecure
         )
@@ -157,16 +190,16 @@ class TrackingProtectionModel {
 
     func toggleSiteSafelistStatus() {
         TelemetryWrapper.recordEvent(category: .action, method: .add, object: .trackingProtectionSafelist)
-        ContentBlocker.shared.safelist(enable: contentBlockerStatus != .safelisted, url: url) {
+        ContentBlocker.shared.safelist(enable: !isURLSafelisted(), url: originalURL) {
         }
     }
 
     func isURLSafelisted() -> Bool {
-        return ContentBlocker.shared.isSafelisted(url: url)
+        return ContentBlocker.shared.isSafelisted(url: originalURL)
     }
 
     func onTapClearCookiesAndSiteData(controller: UIViewController) {
-        let alertMessage = String(format: clearCookiesAlertText, url.baseDomain ?? url.shortDisplayString)
+        let alertMessage = String(format: clearCookiesAlertText, originalURL.baseDomain ?? originalURL.shortDisplayString)
         let alert = UIAlertController(
             title: clearCookiesAlertTitle,
             message: alertMessage,
@@ -202,7 +235,10 @@ class TrackingProtectionModel {
     }
 
     func clearCookiesAndSiteData() {
-        _ = CookiesClearable().clear()
-        _ = SiteDataClearable().clear()
+        guard let domain = originalURL.baseDomain else { return }
+        Task {
+            await CookiesClearable().clear(forDomain: domain)
+            await SiteDataClearable().clear(forDomain: domain)
+        }
     }
 }

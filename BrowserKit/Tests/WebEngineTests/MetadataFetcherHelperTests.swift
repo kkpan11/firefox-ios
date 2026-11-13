@@ -5,18 +5,19 @@
 import XCTest
 @testable import WebEngine
 
+@MainActor
 @available(iOS 16.0, *)
 final class MetadataFetcherHelperTests: XCTestCase {
     var metadataDelegate: MockMetadataFetcherDelegate!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         metadataDelegate = MockMetadataFetcherDelegate()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         metadataDelegate = nil
+        try await super.tearDown()
     }
 
     func testFetchFromSessionGivenNotWebpageURLThenPageMetadataNil() async {
@@ -63,7 +64,7 @@ final class MetadataFetcherHelperTests: XCTestCase {
 
         subject.fetch(fromSession: session, url: url)
 
-        let savedJavaScript = await session.webviewProvider.webView.savedJavaScript
+        let savedJavaScript = session.webviewProvider.webView.savedJavaScript
         XCTAssertEqual(savedJavaScript, expectedJavascript)
         XCTAssertEqual(metadataDelegate.didLoadPageMetadataCalled, 0)
     }

@@ -5,67 +5,62 @@
 import XCTest
 
 class DisplaySettingTests: BaseTestCase {
-    // https://mozilla.testrail.io/index.php?/cases/view/2337485
-    func testCheckDisplaySettingsDefault() {
-        navigator.nowAt(NewTabScreen)
-        navigator.goto(DisplaySettings)
-        waitForElementsToExist(
-            [
-                app.navigationBars["Theme"],
-                app.tables["DisplayTheme.Setting.Options"]
-            ]
-        )
-        let switchValue = app.switches["SystemThemeSwitchValue"].value!
-        XCTAssertEqual(switchValue as? String, "1")
+    private var settingScreen: SettingScreen!
+
+    override func setUp() async throws {
+        // Fresh install the app
+        // removeApp() does not work on iOS 15 and 16 intermittently
+        if name.contains("testCheckDisplaySettingsDefault") {
+            if #available(iOS 17, *) {
+                removeApp()
+            }
+        }
+        // The app is correctly installed
+        try await super.setUp()
+        settingScreen = SettingScreen(app: app)
     }
 
-    // https://mozilla.testrail.io/index.php?/cases/view/2337487
+    /// Both tests start in Settings and launch the app themselves through a Settings deeplink.
+    override func setUpApp() {
+        setUpAppWithoutLaunching()
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/2337485
+    func testCheckDisplaySettingsDefault() {
+        launchIntoSettings()
+        settingScreen.navigateToDisplaySettings()
+        waitForElementsToExist(
+            [
+                app.navigationBars["Appearance"],
+                app.buttons[AccessibilityIdentifiers.Settings.Appearance.automaticThemeView]
+            ]
+        )
+        if #available(iOS 17, *) {
+            waitForElementsToExist([app.switches[AccessibilityIdentifiers.Settings.Appearance.darkModeToggle]])
+        } else {
+            waitForElementsToExist([app.buttons[AccessibilityIdentifiers.Settings.Appearance.darkModeToggle]])
+        }
+
+        settingScreen.assertAutomaticThemeSelected()
+        settingScreen.assertLightThemeSelected(false)
+        settingScreen.assertDarkThemeSelected(false)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3298823
     func testCheckSystemThemeChanges() {
-        navigator.nowAt(NewTabScreen)
-        navigator.goto(DisplaySettings)
-        mozWaitForElementToExist(app.switches["SystemThemeSwitchValue"])
-        navigator.performAction(Action.SystemThemeSwitch)
-        waitForElementsToExist(
-            [
-                app.tables["DisplayTheme.Setting.Options"].otherElements.staticTexts["SWITCH MODE"],
-                app.tables["DisplayTheme.Setting.Options"].otherElements.staticTexts["THEME PICKER"]
-            ]
-        )
+        launchIntoSettings()
+        settingScreen.navigateToDisplaySettings()
 
-        // Going back to Settings and Display settings keeps the value
-        navigator.goto(SettingsScreen)
-        navigator.goto(DisplaySettings)
-        mozWaitForElementToExist(app.switches["SystemThemeSwitchValue"])
-        let switchValue = app.switches["SystemThemeSwitchValue"].value!
-        XCTAssertEqual(switchValue as? String, "0")
-        waitForElementsToExist(
-            [
-                app.cells.staticTexts["Light"],
-                app.cells.staticTexts["Dark"]
-            ]
-        )
+        // Select Light mode
+        settingScreen.selectLightTheme()
+        settingScreen.assertLightThemeSelected()
 
-        // Select the Automatic mode
-        navigator.performAction(Action.SelectAutomatically)
-        mozWaitForElementToExist(app.tables.otherElements["THRESHOLD"])
-        mozWaitForElementToNotExist(app.cells.staticTexts["Light"])
-        mozWaitForElementToNotExist(app.cells.staticTexts["Dark"])
+        // Select Dark mode
+        settingScreen.selectDarkTheme()
+        settingScreen.assertDarkThemeSelected()
 
-        // Now select the Manual mode
-        navigator.performAction(Action.SelectManually)
-        mozWaitForElementToNotExist(app.tables.otherElements["THRESHOLD"])
-        waitForElementsToExist(
-            [
-                app.cells.staticTexts["Light"],
-                app.cells.staticTexts["Dark"]
-            ]
-        )
-
-        // Enable back system theme
-        navigator.performAction(Action.SystemThemeSwitch)
-        let switchValueAfter = app.switches["SystemThemeSwitchValue"].value!
-        XCTAssertEqual(switchValueAfter as? String, "1")
-        mozWaitForElementToNotExist(app.tables["DisplayTheme.Setting.Options"].otherElements.staticTexts["SWITCH MODE"])
-        mozWaitForElementToNotExist(app.tables["DisplayTheme.Setting.Options"].otherElements.staticTexts["THEME PICKER"])
+        // Select Automatic mode
+        settingScreen.selectAutomaticTheme()
+        settingScreen.assertAutomaticThemeSelected()
     }
 }

@@ -9,17 +9,29 @@ import Storage
 struct ZoomSiteListView: View {
     let theme: Theme
     @Binding var domainZoomLevels: [DomainZoomLevel]
-    let onDelete: (IndexSet) -> Void
-    let resetDomain: () -> Void
+    @State private var measuredListHeight: CGFloat = 0
+    private let onDelete: (IndexSet) -> Void
+    private let resetDomain: () -> Void
 
-    private struct UX {
-        static var sectionPadding: CGFloat = 16
-        static var footerBottomPadding: CGFloat = 32
-        static var footerTopPadding: CGFloat = 8
-        static var cellHeight: CGFloat = 48
-        static var listPadding: CGFloat = 5
-        static var dividerHeight: CGFloat = 0.5
+    private enum UX {
+        static let sectionPadding: CGFloat = 16
+        static let footerBottomPadding: CGFloat = 32
+        static let footerTopPadding: CGFloat = 8
+        static let cellHeight: CGFloat = 48
+        static let listPadding: CGFloat = 5
+        static let cornerRadius: CGFloat = 24
     }
+
+    private struct ListHeightPreferenceKey: PreferenceKey {
+        static let defaultValue: CGFloat = 0
+
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value += nextValue()
+        }
+    }
+
+    @ScaledMetric(relativeTo: .body)
+    private var fallbackRowHeight: CGFloat = UX.cellHeight + UX.listPadding
 
     var cellBackground: Color {
         return theme.colors.layer5.color
@@ -29,13 +41,20 @@ struct ZoomSiteListView: View {
         return theme.colors.layer1.color
     }
 
-    // Calculate list height to avoid scroll in inner list view
-    // Base height calculation with cell height and extra padding
-    var listViewHeight: CGFloat {
-        let baseHeight = CGFloat(domainZoomLevels.count) * UX.cellHeight
-        let extraPadding = CGFloat(domainZoomLevels.count) * UX.listPadding
+    var footerTopPadding: CGFloat {
+        if #available(iOS 26.0, *) {
+            return 0
+        } else {
+            return UX.footerTopPadding
+        }
+    }
 
-        return baseHeight + extraPadding
+    var listViewHeight: CGFloat {
+        if measuredListHeight > 0 {
+            return measuredListHeight
+        }
+
+        return CGFloat(domainZoomLevels.count) * fallbackRowHeight
     }
 
     init(theme: Theme,
@@ -50,38 +69,31 @@ struct ZoomSiteListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            GenericSectionHeaderView(title: .Settings.Appearance.PageZoom.SpecificSiteSectionHeader.uppercased(),
-                                     sectionTitleColor: theme.colors.textSecondary.color)
-                .padding([.leading, .trailing, .top], UX.sectionPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(sectionBackground)
-
-            // Top divider for the list
-            Divider()
-                .frame(height: UX.dividerHeight)
-                .background(theme.colors.borderPrimary.color)
-
-            List {
-                ForEach(domainZoomLevels, id: \.host) { zoomItem in
-                    ZoomLevelCellView(domainZoomLevel: zoomItem,
-                                      textColor: theme.colors.textPrimary.color)
-                        .background(theme.colors.layer5.color)
-                        .listRowBackground(cellBackground)
-                        .listRowInsets(EdgeInsets())
+            if #available(iOS 26.0, *) {
+                GenericSectionView(
+                    theme: theme,
+                    title: .Settings.Appearance.PageZoom.SpecificSiteSectionHeader,
+                    identifier: AccessibilityIdentifiers.Settings.Appearance.specificSiteSettings
+                ) {
+                    zoomSitesListView
                 }
-                .onDelete(perform: onDelete)
+            } else {
+                // Header
+                GenericSectionHeaderView(title: .Settings.Appearance.PageZoom.SpecificSiteSectionHeader.uppercased(),
+                                         sectionTitleColor: theme.colors.textSecondary.color)
+                    .padding([.leading, .trailing, .top], UX.sectionPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(sectionBackground)
+
+                zoomSitesListView
             }
-            .frame(height: listViewHeight)
-            .listStyle(.plain)
-            .background(cellBackground)
 
             // Footer
             Text(String.Settings.Appearance.PageZoom.SpecificSiteFooterTitle)
-                .font(.caption)
+                .font(FXFontStyles.Regular.caption1.scaledSwiftUIFont())
                 .foregroundColor(theme.colors.textSecondary.color)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(EdgeInsets(top: UX.footerTopPadding,
+                .padding(EdgeInsets(top: footerTopPadding,
                                     leading: UX.sectionPadding,
                                     bottom: UX.footerBottomPadding,
                                     trailing: UX.sectionPadding))
@@ -91,7 +103,90 @@ struct ZoomSiteListView: View {
             GenericButtonCellView(theme: theme,
                                   title: String.Settings.Appearance.PageZoom.ResetButtonTitle,
                                   onTap: resetDomain)
-                .background(theme.colors.layer5.color)
+                .modifier(ResetButtonStyle(theme: theme))
+        }
+    }
+
+    private var zoomSitesListView: some View {
+        List {
+            ForEach(domainZoomLevels, id: \.host) { zoomItem in
+                ZoomLevelCellView(domainZoomLevel: zoomItem,
+                                  textColor: theme.colors.textPrimary.color)
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear
+                            .preference(
+                                key: ListHeightPreferenceKey.self,
+                                value: geometry.size.height
+                            )
+                    }
+                }
+                .listRowBackground(cellBackground)
+                .listRowInsets(EdgeInsets())
+                .modifier(CellStyle(theme: theme))
+            }
+            .onDelete(perform: onDelete)
+        }
+        .frame(height: listViewHeight)
+        .listStyle(.plain)
+        .modifier(ListStyle(theme: theme, cellBackground: cellBackground))
+        .onPreferenceChange(ListHeightPreferenceKey.self) { height in
+            guard height > 0 else { return }
+
+            measuredListHeight = height
+        }
+    }
+
+    private struct CellStyle: ViewModifier {
+        let theme: Theme?
+
+        func body(content: Content) -> some View {
+            if #available(iOS 26.0, *) {
+                content
+            } else {
+                content
+                    .background(theme?.colors.layer5.color)
+            }
+        }
+    }
+
+    private struct ListStyle: ViewModifier {
+        let theme: Theme?
+        let cellBackground: Color
+
+        func body(content: Content) -> some View {
+            if #available(iOS 26.0, *) {
+                content
+                    .modifier(
+                        SectionStyle(
+                            theme: theme,
+                            cornerRadius: UX.cornerRadius
+                        )
+                    )
+            } else {
+                content
+                    .background(cellBackground)
+            }
+        }
+    }
+
+    private struct ResetButtonStyle: ViewModifier {
+        let theme: Theme?
+
+        func body(content: Content) -> some View {
+            if #available(iOS 26.0, *) {
+                content
+                    .frame(maxWidth: .infinity)
+                    .modifier(
+                        SectionStyle(
+                            theme: theme,
+                            cornerRadius: UX.cornerRadius
+                        )
+                    )
+            } else {
+                content
+                    .background(theme?.colors.layer5.color)
+            }
         }
     }
 }

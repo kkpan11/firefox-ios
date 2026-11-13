@@ -7,7 +7,8 @@ import Foundation
 import MozillaAppServices
 import Shared
 
-class EditFolderViewModel {
+// FIXME: FXIOS-14160 Make EditFolderViewModel actually Sendable
+class EditFolderViewModel: @unchecked Sendable {
     private let profile: Profile
     private let logger: Logger
     private let parentFolder: FxBookmarkNode
@@ -50,14 +51,11 @@ class EditFolderViewModel {
         selectedFolder = folder
     }
 
-    private func title(for folder: BookmarkFolderData) -> String {
-        return LocalizedRootBookmarkFolderStrings[folder.guid] ?? folder.title
-    }
-
     func shouldShowDisclosureIndicator(isFolderSelected: Bool) -> Bool {
         return isFolderSelected && !isFolderCollapsed
     }
 
+    @MainActor
     func selectFolder(_ folder: Folder) {
         isFolderCollapsed.toggle()
         if isFolderCollapsed {
@@ -116,18 +114,5 @@ class EditFolderViewModel {
 
             onBookmarkSaved?()
         }
-    }
-}
-
-extension BookmarkFolderData {
-    func copy(withTitle title: String) -> BookmarkFolderData {
-        return BookmarkFolderData(guid: guid,
-                                  dateAdded: dateAdded,
-                                  lastModified: lastModified,
-                                  parentGUID: parentGUID,
-                                  position: position,
-                                  title: title,
-                                  childGUIDs: childGUIDs,
-                                  children: children)
     }
 }

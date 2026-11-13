@@ -4,16 +4,23 @@
 
 import Common
 import Foundation
+import UIKit
 
 import enum MozillaAppServices.VisitType
 
 protocol LibraryCoordinatorDelegate: AnyObject, LibraryPanelDelegate, RecentlyClosedPanelDelegate {
+    @MainActor
     func didFinishLibrary(from coordinator: Coordinator)
 }
 
 protocol LibraryNavigationHandler: AnyObject {
+    @MainActor
     func start(panelType: LibraryPanelType, navigationController: UINavigationController)
+
+    @MainActor
     func shareLibraryItem(url: URL, sourceView: UIView)
+
+    @MainActor
     func setNavigationBarHidden(_ value: Bool)
 }
 
@@ -21,13 +28,17 @@ class LibraryCoordinator: BaseCoordinator,
                           LibraryPanelDelegate,
                           LibraryNavigationHandler,
                           ParentCoordinatorDelegate,
-                          BookmarksRefactorFeatureFlagProvider {
+                          ShareSheetCoordinatorDelegate {
     private let profile: Profile
     private let tabManager: TabManager
     private var libraryViewController: LibraryViewController?
     weak var parentCoordinator: LibraryCoordinatorDelegate?
-    override var isDismissable: Bool { false }
+    override var isDismissible: Bool { false }
     private var windowUUID: WindowUUID { return tabManager.windowUUID }
+
+    var libraryPanelWindowUUID: WindowUUID {
+        return windowUUID
+    }
 
     init(
         router: Router,
@@ -56,23 +67,17 @@ class LibraryCoordinator: BaseCoordinator,
 
     private func makeChildPanels() -> [UINavigationController] {
         let bookmarksPanel: UIViewController
-        if isBookmarkRefactorEnabled {
-            bookmarksPanel = BookmarksViewController(viewModel: BookmarksPanelViewModel(profile: profile,
-                                                                                        bookmarksHandler: profile.places),
-                                                     windowUUID: windowUUID)
-        } else {
-            bookmarksPanel = LegacyBookmarksPanel(viewModel: BookmarksPanelViewModel(profile: profile,
-                                                                                     bookmarksHandler: profile.places),
-                                                  windowUUID: windowUUID)
-        }
+        bookmarksPanel = BookmarksViewController(viewModel: BookmarksPanelViewModel(profile: profile,
+                                                                                    bookmarksHandler: profile.places),
+                                                 windowUUID: windowUUID)
         let historyPanel = HistoryPanel(profile: profile, windowUUID: windowUUID)
         let downloadsPanel = DownloadsPanel(windowUUID: windowUUID)
         let readingListPanel = ReadingListPanel(profile: profile, windowUUID: windowUUID)
         return [
-            ThemedNavigationController(rootViewController: bookmarksPanel, windowUUID: windowUUID),
-            ThemedNavigationController(rootViewController: historyPanel, windowUUID: windowUUID),
-            ThemedNavigationController(rootViewController: downloadsPanel, windowUUID: windowUUID),
-            ThemedNavigationController(rootViewController: readingListPanel, windowUUID: windowUUID)
+            LibraryNavigationController(rootViewController: bookmarksPanel, windowUUID: windowUUID),
+            LibraryNavigationController(rootViewController: historyPanel, windowUUID: windowUUID),
+            LibraryNavigationController(rootViewController: downloadsPanel, windowUUID: windowUUID),
+            LibraryNavigationController(rootViewController: readingListPanel, windowUUID: windowUUID)
         ]
     }
 
@@ -95,27 +100,31 @@ class LibraryCoordinator: BaseCoordinator,
         if let coordinator = childCoordinators.first(where: { $0 is ShareSheetCoordinator }) as? ShareSheetCoordinator {
             // The share sheet extension coordinator wasn't correctly removed in the last share session. Attempt to recover.
             logger.log(
-                "ShareSheetCoordinator already exists when it shouldn't. Removing and recreating it to access share sheet",
+                "ShareSheetCoordinator already exists when it shouldn't. Removing and recreating it to access share sheet."
+                + " Existing coordinator UUID: \(coordinator.windowUUID), LibraryCoordinator UUID: \(windowUUID)",
                 level: .info,
-                category: .shareSheet,
-                extra: ["existing ShareSheetCoordinator UUID": "\(coordinator.windowUUID)",
-                        "LibraryCoordinator windowUUID": "\(windowUUID)"]
+                category: .shareSheet
             )
 
             coordinator.dismiss()
         }
 
         let coordinator = ShareSheetCoordinator(
-            alertContainer: libraryViewController?.view ?? UIView(),
             router: router,
             profile: profile,
+            tabManager: tabManager,
             parentCoordinator: self,
-            tabManager: tabManager
+            delegate: self,
+            shouldUsePrivateOverride: true
         )
         add(child: coordinator)
 
         // Note: Called from History, Bookmarks, and Reading List long presses > Share from the context menu
-        coordinator.start(shareType: .site(url: url), shareMessage: nil, sourceView: sourceView)
+        let arrowDirection: UIPopoverArrowDirection = UIDevice.current.userInterfaceIdiom == .pad ? .any : .up
+        coordinator.start(shareType: .site(url: url),
+                          shareMessage: nil,
+                          sourceView: sourceView,
+                          popoverArrowDirection: arrowDirection)
     }
 
     private func makeBookmarksCoordinator(navigationController: UINavigationController) {
@@ -126,17 +135,11 @@ class LibraryCoordinator: BaseCoordinator,
             profile: profile,
             windowUUID: windowUUID,
             libraryCoordinator: parentCoordinator,
-            libraryNavigationHandler: self,
-            isBookmarkRefactorEnabled: isBookmarkRefactorEnabled
+            libraryNavigationHandler: self
         )
         add(child: bookmarksCoordinator)
-        if isBookmarkRefactorEnabled {
-            (navigationController.topViewController as? BookmarksViewController)?
-                .bookmarkCoordinatorDelegate = bookmarksCoordinator
-        } else {
-            (navigationController.topViewController as? LegacyBookmarksPanel)?
-                .bookmarkCoordinatorDelegate = bookmarksCoordinator
-        }
+        (navigationController.topViewController as? BookmarksViewController)?
+            .bookmarkCoordinatorDelegate = bookmarksCoordinator
     }
 
     private func makeHistoryCoordinator(navigationController: UINavigationController) {
@@ -202,7 +205,23 @@ class LibraryCoordinator: BaseCoordinator,
         parentCoordinator?.didFinishLibrary(from: self)
     }
 
-    var libraryPanelWindowUUID: WindowUUID {
-        return windowUUID
+    func showToast(message: String) {
+        guard let viewController = libraryViewController else { return }
+
+        let themeManager: ThemeManager = AppContainer.shared.resolve()
+        let viewModel = PlainToastViewModel(labelText: message)
+        let theme = themeManager.resolveTheme(for: windowUUID, privateOverride: false)
+        let toast = PlainToast(viewModel: viewModel, theme: theme)
+        toast.showToast(viewController: viewController,
+                        delay: Toast.UX.toastDelayBefore,
+                        duration: Toast.UX.toastDismissAfter) { toast in
+            [
+                toast.leadingAnchor.constraint(equalTo: viewController.view.safeAreaLayoutGuide.leadingAnchor,
+                                               constant: Toast.UX.toastSidePadding),
+                toast.trailingAnchor.constraint(equalTo: viewController.view.safeAreaLayoutGuide.trailingAnchor,
+                                                constant: -Toast.UX.toastSidePadding),
+                toast.bottomAnchor.constraint(equalTo: viewController.view.safeAreaLayoutGuide.bottomAnchor)
+            ]
+        }
     }
 }

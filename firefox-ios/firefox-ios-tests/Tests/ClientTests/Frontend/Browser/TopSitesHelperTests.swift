@@ -12,25 +12,19 @@ import SiteImageView
 
 class TopSitesHelperTests: XCTestCase {
     private let faviconResource: SiteResource = .remoteURL(url: URL(string: "https://mozilla.org/favicon.ico")!)
+    private static let defaultSuggestedSitesCount = 4
     private var profile: MockProfile!
 
-    private func deleteDatabases() {
-        do {
-            try profile.files.remove("TopSitesHelperTests.db")
-        } catch {}
+    override func setUp() async throws {
+        try await super.setUp()
+        profile = makeProfile()
+        await DependencyHelperMock().bootstrapDependencies(injectedProfile: profile)
     }
 
-    override func tearDown() {
-        self.deleteDatabases()
-        self.profile = nil
-        super.tearDown()
-    }
-
-    override func setUp() {
-        super.setUp()
-        self.profile = MockProfile(databasePrefix: "TopSitesHelperTests")
-        // Just in case tearDown didn't run or succeed last time!
-        self.deleteDatabases()
+    override func tearDown() async throws {
+        DependencyHelperMock().reset()
+        profile = nil
+        try await super.tearDown()
     }
 
     func createSubject(
@@ -57,6 +51,7 @@ class TopSitesHelperTests: XCTestCase {
         return subject
     }
 
+    @MainActor
     func testGetTopSites_withError_completesWithZeroSites() {
         let expectation = expectation(description: "Expect top sites to be fetched")
         let subject = createSubject(mockPinnedSites: false)
@@ -66,13 +61,14 @@ class TopSitesHelperTests: XCTestCase {
                 XCTFail("Has no sites")
                 return
             }
-            XCTAssertEqual(sites.count, 5, "Contains 5 default sites")
+            XCTAssertEqual(sites.count, Self.defaultSuggestedSitesCount, "Contains default sites")
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 1, handler: nil)
     }
 
+    @MainActor
     func testGetTopSites_withFrecencyError_completesWithPinnedSites() {
         let expectation = expectation(description: "Expect top sites to be fetched")
         let subject = createSubject(mockPinnedSites: true, pinnedSites: defaultPinnedSites)
@@ -82,13 +78,18 @@ class TopSitesHelperTests: XCTestCase {
                 XCTFail("Has no sites")
                 return
             }
-            XCTAssertEqual(sites.count, 7, "Contains 5 default sites and two pinned sites")
+            XCTAssertEqual(
+                sites.count,
+                Self.defaultSuggestedSitesCount + 2,
+                "Contains default sites and two pinned sites"
+            )
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 1, handler: nil)
     }
 
+    @MainActor
     func testGetTopSites_withPinnedSitesError_completesWithFrecencySites() {
         let expectation = expectation(description: "Expect top sites to be fetched")
         let subject = createSubject(
@@ -101,13 +102,18 @@ class TopSitesHelperTests: XCTestCase {
                 XCTFail("Has no sites")
                 return
             }
-            XCTAssertEqual(sites.count, 7, "Contains 5 default sites and 2 frecency sites")
+            XCTAssertEqual(
+                sites.count,
+                Self.defaultSuggestedSitesCount + 2,
+                "Contains default sites and 2 frecency sites"
+            )
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 1, handler: nil)
     }
 
+    @MainActor
     func testGetTopSites_filterHideSearchParam() {
         let expectation = expectation(description: "Expect top sites to be fetched")
         let sites = defaultFrecencySites + [
@@ -121,13 +127,18 @@ class TopSitesHelperTests: XCTestCase {
                 XCTFail("Has no sites")
                 return
             }
-            XCTAssertEqual(sites.count, 7, "Contains 5 default sites and 2 frecency sites, no sponsored urls")
+            XCTAssertEqual(
+                sites.count,
+                Self.defaultSuggestedSitesCount + 2,
+                "Contains default sites and 2 frecency sites, no sponsored urls"
+            )
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 1, handler: nil)
     }
 
+    @MainActor
     func testGetTopSites_removesDuplicates() {
         let expectation = expectation(description: "Expect top sites to be fetched")
         let sites = defaultFrecencySites + defaultFrecencySites
@@ -139,13 +150,18 @@ class TopSitesHelperTests: XCTestCase {
                 XCTFail("Has no sites")
                 return
             }
-            XCTAssertEqual(sites.count, 7, "Contains 5 default sites and 2 frecency sites, no frecency duplicates")
+            XCTAssertEqual(
+                sites.count,
+                Self.defaultSuggestedSitesCount + 2,
+                "Contains default sites and 2 frecency sites, no frecency duplicates"
+            )
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 1, handler: nil)
     }
 
+    @MainActor
     func testGetTopSites_defaultSitesHavePrecedenceOverFrecency() {
         let expectation = expectation(description: "Expect top sites to be fetched")
         let sites = [Site.createBasicSite(url: "https://facebook.com", title: "Facebook")]
@@ -156,13 +172,18 @@ class TopSitesHelperTests: XCTestCase {
                 XCTFail("Has no sites")
                 return
             }
-            XCTAssertEqual(sites.count, 5, "Contains only 5 default sites, no duplicates of defaults sites")
+            XCTAssertEqual(
+                sites.count,
+                Self.defaultSuggestedSitesCount,
+                "Contains only default sites, no duplicates of defaults sites"
+            )
             expectation.fulfill()
         }
 
         waitForExpectations(timeout: 1, handler: nil)
     }
 
+    @MainActor
     func testGetTopSites_pinnedSitesHasPrecedenceOverDefaultTopSites() {
         let expectation = expectation(description: "Expect top sites to be fetched")
         let subject = createSubject(
@@ -177,8 +198,11 @@ class TopSitesHelperTests: XCTestCase {
                 XCTFail("Has no sites")
                 return
             }
-            XCTAssertEqual(sites.count, 5, "Contains only 4 default sites, and "
-                           + "one pinned site that replaced the default site")
+            XCTAssertEqual(
+                sites.count,
+                Self.defaultSuggestedSitesCount,
+                "Contains default sites, and one pinned site that replaced the default site"
+            )
             expectation.fulfill()
         }
 
@@ -223,8 +247,9 @@ extension TopSitesHelperTests {
     }
 }
 
+// TODO: FXIOS-13300 - Refactor Cursor and it's subclasses to be concurrency safe
 // MARK: - SiteCursorMock
-private class SiteCursorMock: Cursor<Site> {
+private class SiteCursorMock: Cursor<Site>, @unchecked Sendable {
     var sites = [Site]()
     override func asArray() -> [Site] {
         return sites
@@ -232,9 +257,9 @@ private class SiteCursorMock: Cursor<Site> {
 }
 
 // MARK: - MockablePinnedSites
-private class PinnedSitesMock: MockablePinnedSites {
-    class Error: MaybeErrorType {
-        var description = "Error"
+private class PinnedSitesMock: MockablePinnedSites, @unchecked Sendable {
+    struct Error: MaybeErrorType {
+        let description = "Error"
     }
 
     var pinnedResponse: Maybe<Cursor<Site>> = Maybe(failure: Error())

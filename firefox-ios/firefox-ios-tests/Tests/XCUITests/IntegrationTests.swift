@@ -14,48 +14,64 @@ private let loginEntry = "https://accounts.google.com"
 private let tabOpenInDesktop = "https://example.com/"
 
 class IntegrationTests: BaseTestCase {
-    let testWithDB = ["testFxASyncHistory"]
+    var browserScreen: BrowserScreen!
+
+    let testWithDB = ["testFxASyncHistory", "testFxAFirefoxSuggest"]
     let testFxAChinaServer = ["testFxASyncPageUsingChinaFxA"]
+    let testModernKitOnboarding = ["testModernKitOnboardingStartSyncingUseEmailInstead"]
 
     // This DB contains 1 entry example.com
     let historyDB = "exampleURLHistoryBookmark-places.db"
 
-    override func setUp() {
-     // Test name looks like: "[Class testFunc]", parse out the function name
-     let parts = name.replacingOccurrences(of: "]", with: "").split(separator: " ")
-     let key = String(parts[1])
-     if testWithDB.contains(key) {
-     // for the current test name, add the db fixture used
-     launchArguments = [LaunchArguments.SkipIntro,
-                        LaunchArguments.StageServer,
-                        LaunchArguments.SkipWhatsNew,
-                        LaunchArguments.SkipETPCoverSheet,
-                        LaunchArguments.LoadDatabasePrefix + historyDB,
-                        LaunchArguments.SkipContextualHints]
-     } else if testFxAChinaServer.contains(key) {
-        launchArguments = [LaunchArguments.SkipIntro,
-                           LaunchArguments.FxAChinaServer,
-                           LaunchArguments.SkipWhatsNew,
-                           LaunchArguments.SkipETPCoverSheet,
-                           LaunchArguments.SkipContextualHints]
-     }
-    launchArguments.append(LaunchArguments.DisableAnimations)
-     super.setUp()
-     }
+    override func setUp() async throws {
+        // Test name looks like: "[Class testFunc]", parse out the function name
+        let parts = name.replacingOccurrences(of: "]", with: "").split(separator: " ")
+        let key = String(parts[1])
+        if testWithDB.contains(key) {
+            // for the current test name, add the db fixture used
+            launchArguments = [LaunchArguments.SkipIntro,
+                               LaunchArguments.StageServer,
+                               LaunchArguments.SkipWhatsNew,
+                               LaunchArguments.SkipETPCoverSheet,
+                               LaunchArguments.LoadDatabasePrefix + historyDB,
+                               LaunchArguments.SkipContextualHints]
+        } else if testFxAChinaServer.contains(key) {
+            launchArguments = [LaunchArguments.SkipIntro,
+                               LaunchArguments.FxAChinaServer,
+                               LaunchArguments.SkipWhatsNew,
+                               LaunchArguments.SkipETPCoverSheet,
+                               LaunchArguments.SkipContextualHints]
+        } else if testModernKitOnboarding.contains(key) {
+            launchArguments = [LaunchArguments.ClearProfile,
+                               LaunchArguments.StageServer,
+                               "\(LaunchArguments.LoadExperiment)modernKitOnboardingOn",
+                               "\(LaunchArguments.ExperimentFeatureName)onboarding-framework-feature"]
+        } else {
+            launchArguments.append(LaunchArguments.StageServer)
+        }
+        launchArguments.append(LaunchArguments.DisableAnimations)
+        launchArguments.append("\(LaunchArguments.ServerPort)\(serverPort)")
+        try await super.setUp()
+        browserScreen = BrowserScreen(app: app)
+    }
 
-    func allowNotifications () {
+    func allowNotifications() {
         addUIInterruptionMonitor(withDescription: "notifications") { (alert) -> Bool in
             alert.buttons["Allow"].waitAndTap()
             return true
         }
-        app.swipeDown()
+        sleep(5)
     }
 
     private func signInFxAccounts() {
         navigator.goto(BrowserTabMenu)
         navigator.goto(Intro_FxASignin)
         navigator.performAction(Action.OpenEmailToSignIn)
-        sleep(5)
+        completeFxASignIn()
+    }
+
+    /// Completes an FxA sign-in on the email login screen.
+    private func completeFxASignIn() {
         mozWaitForElementToExist(
             app.navigationBars[AccessibilityIdentifiers.Settings.FirefoxAccount.fxaNavigationBar],
             timeout: TIMEOUT_LONG
@@ -70,7 +86,6 @@ class IntegrationTests: BaseTestCase {
         navigator.performAction(Action.FxATypePasswordExistingAccount)
         navigator.performAction(Action.FxATapOnSignInButton)
         mozWaitForElementToNotExist(app.staticTexts["Enter your password"], timeout: TIMEOUT_LONG)
-        waitForTabsButton()
         allowNotifications()
     }
 
@@ -92,7 +107,47 @@ class IntegrationTests: BaseTestCase {
         mozWaitForElementToExist(app.tables.staticTexts["Sync Now"], timeout: TIMEOUT_LONG)
     }
 
-    func testFxASyncHistory () {
+    // https://mozilla.testrail.io/index.php?/cases/view/4036952
+    // Regression
+    func testModernKitOnboardingStartSyncingUseEmailInstead() throws {
+        let onboardingScreen = OnboardingScreen(app: app, flowType: .modernKit)
+        let firefoxHomePageScreen = FirefoxHomePageScreen(app: app)
+
+        onboardingScreen.handleTermsOfService()
+
+        // Step 1 - Screen 1: Default Browser - Skip (secondary button)
+        onboardingScreen.assertTitle()
+        onboardingScreen.goToNextScreenViaSecondary()
+
+        // Screen 2 (iPhone only): Choose address bar - Continue (primary button)
+        onboardingScreen.handleAddressBarScreenIfNeeded()
+
+        // Step 1 - Screen 3: Choose theme - Continue (primary button)
+        onboardingScreen.assertTitle()
+        onboardingScreen.selectThemeButtons()
+        onboardingScreen.goToNextScreenViaPrimary()
+
+        // Step 2: Tap the "Start Syncing" button.
+        onboardingScreen.assertSyncScreen()
+        onboardingScreen.tapSignIn()
+        onboardingScreen.assertSignInScreen()
+
+        // Step 3: Tap "Use Email Instead"
+        navigator.nowAt(Intro_FxASignin)
+        navigator.performAction(Action.OpenEmailToSignIn)
+
+        // Step 4: Input valid email and valid password
+        completeFxASignIn()
+
+        // User is redirected to homepage
+        firefoxHomePageScreen.assertTopSitesItemCellExist()
+
+        // Go to Settings page and see sync is happening
+        waitForInitialSyncComplete()
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/2306819
+    func testFxASyncHistory() {
         // History is generated using the DB so go directly to Sign in
         // Sign into Mozilla Account
         navigator.goto(BrowserTabMenu)
@@ -102,7 +157,8 @@ class IntegrationTests: BaseTestCase {
         waitForInitialSyncComplete()
     }
 
-    func testFxASyncPageUsingChinaFxA () {
+    // https://mozilla.testrail.io/index.php?/cases/view/3895156
+    func testFxASyncPageUsingChinaFxA() {
         // History is generated using the DB so go directly to Sign in
         // Sign into Mozilla Account
         navigator.goto(BrowserTabMenu)
@@ -115,35 +171,40 @@ class IntegrationTests: BaseTestCase {
         )
     }
 
-    func testFxASyncBookmark () {
+    // https://mozilla.testrail.io/index.php?/cases/view/2306819
+    func testFxASyncBookmark() {
+        waitForTabsButton()
+        navigator.nowAt(HomePanelsScreen)
         // Bookmark is added by the DB
         // Sign into Mozilla Account
         navigator.openURL(testingURL)
         mozWaitForElementToExist(app.buttons[AccessibilityIdentifiers.Browser.AddressToolbar.lockIcon])
+        navigator.nowAt(BrowserTab)
         navigator.goto(BrowserTabMenu)
         navigator.performAction(Action.Bookmark)
-        navigator.nowAt(BrowserTab)
         signInFxAccounts()
 
         // Wait for initial sync to complete
         waitForInitialSyncComplete()
     }
 
-    func testFxASyncBookmarkDesktop () {
+    // https://mozilla.testrail.io/index.php?/cases/view/2306819
+    func testFxASyncBookmarkDesktop() {
         // Sign into Mozilla Account
         signInFxAccounts()
 
         // Wait for initial sync to complete
         waitForInitialSyncComplete()
         navigator.goto(LibraryPanel_Bookmarks)
-        mozWaitForElementToExist(app.tables["Bookmarks List"].cells.staticTexts["Example Domain"])
+        mozWaitForElementToExist(app.tables["Bookmarks List"].cells.staticTexts[TestLabels.exampleDomain])
     }
 
-    func testFxASyncTabs () {
+    // https://mozilla.testrail.io/index.php?/cases/view/2306819
+    func testFxASyncTabs() {
         signInFxAccounts()
 
         // We only sync tabs if the user is signed in
-        navigator.nowAt(BrowserTab)
+        navigator.nowAt(HomePanelsScreen)
         waitForTabsButton()
         navigator.openURL(testingURL)
         waitUntilPageLoad()
@@ -156,7 +217,7 @@ class IntegrationTests: BaseTestCase {
         mozWaitForElementToExist(app.cells["DeviceNameSetting"].textFields["DeviceNameSettingTextField"])
         XCTAssertEqual(
             app.cells["DeviceNameSetting"].textFields["DeviceNameSettingTextField"].value! as? String,
-            "Fennec (administrator) on iOS"
+            "\(app.label) on iOS"
         )
 
         // Sync again just to make sure to sync after new name is shown
@@ -166,7 +227,34 @@ class IntegrationTests: BaseTestCase {
         waitForInitialSyncComplete()
     }
 
-    func testFxASyncLogins () {
+    // https://mozilla.testrail.io/index.php?/cases/view/2307042
+    // Smoketest
+    // (Steps 1-8 in testAddTabFromTabTray from TabsTests)
+    func testAddTabFromTabTray() {
+        let browserScreen = BrowserScreen(app: app)
+        let syncScreen = SyncScreen(app: app)
+        navigator.nowAt(NewTabScreen)
+        navigator.goto(TabTray)
+
+        // Step 9: Tap on the tab counter and switch to Synced Tabs
+        navigator.performAction(Action.ToggleExperimentSyncMode)
+        syncScreen.assertSignInPromptExists()
+        syncScreen.tapSyncAndSaveData()
+        navigator.nowAt(Intro_FxASignin)
+        navigator.performAction(Action.OpenEmailToSignIn)
+        completeFxASignIn()
+        mozWaitForElementToExist(app.staticTexts["Example Domain"])
+
+        // Step 10: Tap on a tab from the Synced Tabs section
+        app.staticTexts["Example Domain"].waitAndTap()
+        waitUntilPageLoad()
+        browserScreen.addressToolbarContainValue(value: "example.com")
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/2306819
+    func testFxASyncLogins() {
+        waitForTabsButton()
+        navigator.nowAt(HomePanelsScreen)
         navigator.openURL("gmail.com")
         waitUntilPageLoad()
 
@@ -186,7 +274,8 @@ class IntegrationTests: BaseTestCase {
         waitForInitialSyncComplete()
     }
 
-    func testFxASyncHistoryDesktop () {
+    // https://mozilla.testrail.io/index.php?/cases/view/2306819
+    func testFxASyncHistoryDesktop() {
         // Sign into Mozilla Account
         signInFxAccounts()
 
@@ -198,7 +287,8 @@ class IntegrationTests: BaseTestCase {
         mozWaitForElementToExist(app.tables.cells.staticTexts[historyItemSavedOnDesktop])
     }
 
-    func testFxASyncPasswordDesktop () {
+    // https://mozilla.testrail.io/index.php?/cases/view/2306819
+    func testFxASyncPasswordDesktop() {
         // Sign into Mozilla Account
         signInFxAccounts()
 
@@ -220,7 +310,8 @@ class IntegrationTests: BaseTestCase {
         XCTAssertTrue(app.tables.cells.staticTexts[loginEntry].exists, "The login saved on desktop is not synced")
     }
 
-    func testFxASyncTabsDesktop () {
+    // https://mozilla.testrail.io/index.php?/cases/view/2306819
+    func testFxASyncTabsDesktop() {
         // Sign into Mozilla Account
         signInFxAccounts()
 
@@ -231,7 +322,7 @@ class IntegrationTests: BaseTestCase {
         app.buttons["Done"].waitAndTap()
         navigator.nowAt(HomePanelsScreen)
         navigator.goto(TabTray)
-        navigator.performAction(Action.ToggleSyncMode)
+        navigator.performAction(Action.ToggleExperimentSyncMode)
 
         // Need to swipe to get the data on the screen on focus
         app.swipeDown()
@@ -239,6 +330,108 @@ class IntegrationTests: BaseTestCase {
         XCTAssertTrue(app.tables.staticTexts[tabOpenInDesktop].exists, "The tab is not synced")
     }
 
+    // https://mozilla.testrail.io/index.php?/cases/view/2576803
+    // [Config] orientation:portrait, orientation:landscape 
+    // Smoketest
+    func testFxATabsFirefoxSuggest() {
+        // Workaround: "Ingest New Suggestions Now" from the
+        // secret settings may force the suggestions to be
+        // loaded.
+        navigator.goto(SettingsScreen)
+        navigator.performAction(Action.OpenSecretSettings)
+        navigator.performAction(Action.IngestNewSuggestionsNow)
+        navigator.goto(HomePanelsScreen)
+
+        // Precondition: Sign into Mozilla Account
+        signInFxAccounts()
+        waitForInitialSyncComplete()
+        navigator.nowAt(SettingsScreen)
+
+        // Create an open Tab
+        navigator.goto(TabTray)
+        navigator.performAction(Action.OpenNewTabFromTabTray)
+        waitForTabsButton()
+        navigator.openURL("localhost:\(serverPort)/test-fixture/\(TestPages.mozillaOrg)")
+        waitUntilPageLoad()
+        navigator.goto(TabTray)
+        navigator.performAction(Action.OpenNewTabFromTabTray)
+
+        // Create some history
+        navigator.openNewURL(urlString: "https://www.iana.org/")
+        waitUntilPageLoad()
+        navigator.performAction(Action.CloseTab)
+
+        // Create a bookmark
+        navigator.openNewURL(urlString: "localhost:\(serverPort)/test-fixture/\(TestPages.mozillaBook)")
+        waitUntilPageLoad()
+        navigator.performAction(Action.Bookmark)
+        navigator.performAction(Action.CloseTab)
+        navigator.performAction(Action.OpenNewTabFromTabTray)
+
+        // Firefox Suggest and Google Search
+        // Synced tab: example.com/
+        let siteTable = app.tables["SiteTable"]
+        for orientation in [UIDeviceOrientation.portrait, UIDeviceOrientation.landscapeLeft] {
+            XCUIDevice.shared.orientation = orientation
+            waitForRotation(to: orientation)
+            waitForTabsButtonHittable()
+
+            // Firefox Suggest should show up for sponsored suggestion, open tab, history
+            // and bookmark.
+            let firefoxSuggestTerms = [
+                // Known bug: Sponsored suggestion not showing up when logged in to
+                // Mozilla Account.
+                // https://github.com/mozilla-mobile/firefox-ios/issues/35171
+                // "amazon": "Amazon.com - Official Site", // Sponsored suggestion
+                "internet": "Internet for people, not profit — Mozilla", // Open tab
+                "iana": "www.iana.org/", // History
+                "book": "The Book of Mozilla", // Bookmark
+                "exam": "Example Domain" // synced tab
+            ]
+            for (term, expectedTitle) in firefoxSuggestTerms {
+                browserScreen.tapOnAddressBar()
+                browserScreen.tapClearButtonIfExists()
+                browserScreen.typeOnSearchBar(text: term)
+                mozWaitForElementToExist(app.scrollViews.buttons["Search Settings"])
+                mozWaitForElementToExist(siteTable.staticTexts[expectedTitle])
+                let searchEngines = [
+                    "Bing search", "DuckDuckGo search", "Perplexity search", "Wikipedia (en) search", "eBay search"
+                ]
+                for searchEngine in searchEngines {
+                    mozWaitForElementToExist(app.scrollViews.buttons[searchEngine])
+                }
+                // Search engine suggestions
+                mozWaitForElementToExist(siteTable.otherElements["Google Search"])
+                mozWaitForElementToExist(siteTable.staticTexts[term])
+
+                // Firefox Suggest is displayed
+                if XCUIDevice.shared.orientation == UIDeviceOrientation.landscapeLeft {
+                    siteTable.cells.firstMatch.swipeUp()
+                }
+                mozWaitForElementToExist(siteTable.otherElements["Firefox Suggest"])
+                mozWaitForElementToExist(siteTable.staticTexts[expectedTitle])
+            }
+
+            // Non Firefox Suggest result: A random term
+            let term = "heeeeeeellllllllllloooooooo"
+            browserScreen.tapOnAddressBar()
+            browserScreen.tapClearButtonIfExists()
+            browserScreen.typeOnSearchBar(text: term)
+            mozWaitForElementToExist(app.scrollViews.buttons["Search Settings"])
+            let searchEngines = [
+                "Bing search", "DuckDuckGo search", "Perplexity search", "Wikipedia (en) search", "eBay search"
+            ]
+            for searchEngine in searchEngines {
+                mozWaitForElementToExist(app.scrollViews.buttons[searchEngine])
+            }
+            // Search engine suggestions
+            mozWaitForElementToExist(siteTable.otherElements["Google Search"])
+            mozWaitForElementToExist(siteTable.staticTexts[term])
+            mozWaitForElementToNotExist(siteTable.otherElements["Firefox Suggest"])
+        }
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/2306822
     func testFxADisconnectConnect() {
         // Sign into Mozilla Account
         signInFxAccounts()
@@ -248,12 +441,8 @@ class IntegrationTests: BaseTestCase {
         navigator.nowAt(SettingsScreen)
         // Check Bookmarks
         navigator.goto(LibraryPanel_Bookmarks)
-        waitForElementsToExist(
-            [
-                app.tables["Bookmarks List"],
-                app.tables["Bookmarks List"].cells.staticTexts["Example Domain"]
-            ]
-        )
+        mozWaitForElementToExist(app.tables["Bookmarks List"])
+        mozWaitForElementToExist(app.tables["Bookmarks List"].cells.staticTexts[TestLabels.exampleDomain])
 
         // Check Login
         navigator.performAction(Action.CloseBookmarkPanel)
@@ -296,13 +485,14 @@ class IntegrationTests: BaseTestCase {
         mozWaitForElementToNotExist(app.staticTexts["Enter your password"], timeout: TIMEOUT_LONG)
 
         navigator.nowAt(SettingsScreen)
+        app.swipeDown()
         mozWaitForElementToExist(app.staticTexts["GENERAL"])
         mozWaitForElementToExist(app.staticTexts["ACCOUNT"])
         mozWaitForElementToExist(app.tables.staticTexts["Sync Now"], timeout: TIMEOUT_LONG)
 
         // Check Bookmarks
         navigator.goto(LibraryPanel_Bookmarks)
-        mozWaitForElementToExist(app.tables["Bookmarks List"].cells.staticTexts["Example Domain"])
+        mozWaitForElementToExist(app.tables["Bookmarks List"].cells.staticTexts[TestLabels.exampleDomain])
 
         // Check Logins
         navigator.performAction(Action.CloseBookmarkPanel)

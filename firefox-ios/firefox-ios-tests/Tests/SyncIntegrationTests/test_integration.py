@@ -1,3 +1,5 @@
+import pytest
+
 
 def test_sync_bookmark_from_device(tps, xcodebuild):
     xcodebuild.test('XCUITests/IntegrationTests/testFxASyncBookmark')
@@ -27,9 +29,13 @@ def test_sync_logins_from_desktop(tps, xcodebuild):
     tps.run('test_password_desktop.js')
     xcodebuild.test('XCUITests/IntegrationTests/testFxASyncPasswordDesktop')
 
-def test_sync_tabs_from_desktop(tps, xcodebuild):
+def test_sync_tabs_from_desktop_tabTrayExperimentOn(tps, xcodebuild):
     tps.run('test_tabs_desktop.js')
-    xcodebuild.test('XCUITests/IntegrationTests/testFxASyncTabsDesktop')
+    xcodebuild.test('XCUITests/IntegrationTests/testFxASyncTabsDesktop_tabTrayExperimentOn')
+
+def test_sync_tabs_from_desktop_tabTrayExperimentOff(tps, xcodebuild):
+    tps.run('test_tabs_desktop.js')
+    xcodebuild.test('XCUITests/IntegrationTests/testFxASyncTabsDesktop_tabTrayExperimentOff')
 
 def test_sync_disconnect_connect_fxa(tps, xcodebuild):
     tps.run('test_bookmark_login.js')
@@ -37,3 +43,17 @@ def test_sync_disconnect_connect_fxa(tps, xcodebuild):
 
 def test_sync_china_fxa_server(xcodebuild):
     xcodebuild.test('XCUITests/IntegrationTests/testFxASyncPageUsingChinaFxA')
+
+@pytest.mark.smoketest
+def test_sync_tabs_firefox_suggest(tps, xcodebuild):
+    tps.run('test_tabs_desktop.js')
+    xcodebuild.test('XCUITests/IntegrationTests/testFxATabsFirefoxSuggest')
+
+@pytest.mark.regression
+def test_modern_kit_onboarding_start_syncing_use_email_instead(xcodebuild):
+    xcodebuild.test('XCUITests/IntegrationTests/testModernKitOnboardingStartSyncingUseEmailInstead')
+
+@pytest.mark.smoketest
+def test_add_tab_from_tab_tray(tps, xcodebuild):
+    tps.run('test_tabs_desktop.js')
+    xcodebuild.test('XCUITests/IntegrationTests/testAddTabFromTabTray')

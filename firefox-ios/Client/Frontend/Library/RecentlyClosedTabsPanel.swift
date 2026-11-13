@@ -10,27 +10,32 @@ import Common
 
 import enum MozillaAppServices.VisitType
 
-private struct RecentlyClosedPanelUX {
+private enum RecentlyClosedPanelUX {
     static let IconSize = CGSize(width: 23, height: 23)
     static let IconBorderWidth: CGFloat = 0.5
 }
 
 protocol RecentlyClosedPanelDelegate: AnyObject {
+    @MainActor
     func openRecentlyClosedSiteInNewTab(_ url: URL, isPrivate: Bool)
 }
 
 class RecentlyClosedTabsPanel: UIViewController, LibraryPanel, Themeable {
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol
 
     weak var libraryPanelDelegate: LibraryPanelDelegate?
     var state: LibraryPanelMainState = .history(state: .inFolder)
+    var isTransitioning = false
     weak var recentlyClosedTabsDelegate: RecentlyClosedPanelDelegate?
     let profile: Profile
     var bottomToolbarItems = [UIBarButtonItem]()
     private let windowUUID: WindowUUID
     var currentWindowUUID: UUID? { return windowUUID }
+
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
 
     fileprivate lazy var tableViewController =
     RecentlyClosedTabsPanelSiteTableViewController(profile: profile, windowUUID: windowUUID)
@@ -71,12 +76,15 @@ class RecentlyClosedTabsPanel: UIViewController, LibraryPanel, Themeable {
             tableViewController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
         title = .RecentlyClosedTabsPanelTitle
-        listenForThemeChange(view)
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
     }
 
     func applyTheme() {
-        view.backgroundColor = themeManager.getCurrentTheme(for: windowUUID).colors.layer1
+        view.backgroundColor = themeManager.resolveTheme(for: windowUUID,
+                                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme).colors.layer1
     }
 }
 
@@ -85,6 +93,8 @@ class RecentlyClosedTabsPanelSiteTableViewController: SiteTableViewController {
     weak var recentlyClosedTabsDelegate: RecentlyClosedPanelDelegate?
     var recentlyClosedTabs: [ClosedTab] = []
     weak var recentlyClosedTabsPanel: RecentlyClosedTabsPanel?
+    override var shouldUsePrivateOverride: Bool { return true }
+    override var tableViewStyle: UITableView.Style { return .libraryPanel }
 
     fileprivate lazy var longPressRecognizer: UILongPressGestureRecognizer = {
         return UILongPressGestureRecognizer(
@@ -121,7 +131,9 @@ class RecentlyClosedTabsPanelSiteTableViewController: SiteTableViewController {
         twoLineCell.descriptionLabel.text = displayURL.absoluteDisplayString
         twoLineCell.leftImageView.layer.borderWidth = RecentlyClosedPanelUX.IconBorderWidth
         twoLineCell.leftImageView.setFavicon(FaviconImageViewModel(siteURLString: displayURL.absoluteString))
-        twoLineCell.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+        let theme = currentTheme()
+        twoLineCell.applyTheme(theme: theme)
+        twoLineCell.applyGroupedBackground(theme: theme, in: tableView)
         return twoLineCell
     }
 

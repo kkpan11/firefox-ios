@@ -8,21 +8,44 @@ import Common
 import enum MozillaAppServices.VisitType
 
 protocol LibraryPanelDelegate: AnyObject {
+    @MainActor
     func libraryPanelDidRequestToOpenInNewTab(_ url: URL, isPrivate: Bool)
+
+    @MainActor
     func libraryPanel(didSelectURL url: URL, visitType: VisitType)
+
+    @MainActor
     var libraryPanelWindowUUID: WindowUUID { get }
+
+    @MainActor
+    func showToast(message: String)
 }
 
 protocol LibraryPanel: UIViewController {
+    @MainActor
     var libraryPanelDelegate: LibraryPanelDelegate? { get set }
+
+    @MainActor
     var state: LibraryPanelMainState { get set }
+
+    /// Used to indicate when the panel is animating after the top nav `<` back button has been tapped
+    @MainActor
+    var isTransitioning: Bool { get }
+
+    @MainActor
     var bottomToolbarItems: [UIBarButtonItem] { get }
 
+    @MainActor
     func handleLeftTopButton()
+
+    @MainActor
     func handleRightTopButton()
+
+    @MainActor
     func shouldDismissOnDone() -> Bool
 }
 
+@MainActor
 extension LibraryPanel {
     var flexibleSpace: UIBarButtonItem {
         return UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
@@ -36,14 +59,17 @@ extension LibraryPanel {
         return true
     }
 
-    func handleLeftTopButton() {
-        // no implementation needed
-    }
+    // no implementation needed
+    func handleLeftTopButton() { }
 
-    func handleRightTopButton() {
-        // no implementation needed
-    }
+    // no implementation needed
+    func handleRightTopButton() { }
 }
+
+extension LibraryPanelDelegate {
+    // no implementation needed
+    func showToast(message: String) { }
+  }
 
 enum LibraryPanelType: Int, CaseIterable {
     case bookmarks = 0
@@ -81,6 +107,7 @@ class LibraryPanelHelper {
         self.profile = profile
     }
 
+    @MainActor
     lazy var enabledPanels: [LibraryPanelDescriptor] = {
         let bookmarksViewModel = BookmarksPanelViewModel(profile: profile, bookmarksHandler: profile.places)
 
@@ -106,4 +133,37 @@ class LibraryPanelHelper {
                 panelType: .readingList)
         ]
     }()
+}
+
+extension UITableView.Style {
+    @MainActor
+    static var libraryPanel: UITableView.Style {
+        let isNovaDesignEnabled = (AppContainer.shared.resolve() as FeatureFlagProviding).isEnabled(.novaDesign)
+        if #available(iOS 26.0, *), isNovaDesignEnabled {
+            return .insetGrouped
+        }
+        return .plain
+    }
+}
+
+extension UITableViewCell {
+    func applyGroupedBackground(theme: Theme, in tableView: UITableView) {
+        guard tableView.style == .insetGrouped else { return }
+
+        backgroundColor = .clear
+        selectedBackgroundView = nil
+        configurationUpdateHandler = { cell, state in
+            var background: UIBackgroundConfiguration
+            if #available(iOS 16.0, *) {
+                background = cell.defaultBackgroundConfiguration().updated(for: state)
+            } else {
+                background = UIBackgroundConfiguration.listGroupedCell().updated(for: state)
+            }
+            background.backgroundColor = state.isSelected || state.isHighlighted
+                ? theme.colors.layer5Hover
+                : theme.colors.layer5
+            cell.backgroundConfiguration = background
+        }
+        setNeedsUpdateConfiguration()
+    }
 }

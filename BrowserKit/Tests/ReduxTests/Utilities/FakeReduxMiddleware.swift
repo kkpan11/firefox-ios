@@ -6,17 +6,58 @@ import Foundation
 
 @testable import Redux
 
+@MainActor
 class FakeReduxMiddleware {
-    lazy var fakeProvider: Middleware<FakeReduxState> = { state, action in
-        switch action.actionType {
-        case FakeReduxActionType.requestInitialValue:
-            let initialValue = self.generateInitialValue()
+    var generateInitialCountValue: (() -> Int)?
+
+    lazy var fakeProvider: Middleware<FakeReduxState> = (legacyFakeProvider, modernFakeProvider)
+
+    lazy var modernFakeProvider: MiddlewareClosure<FakeReduxState> = { [self] state, action, windowUUID in
+        // Handles one type of action
+        guard let action = action as? FakeReduxModernAction else { return }
+
+        switch action {
+        case .requestInitialValue:
+            let initialValue = self.generateInitialCountValue?() ?? 0
+            store.dispatch(
+                FakeReduxModernAction.initialValueLoaded(initialValue: initialValue),
+                forWindowUUID: windowUUID
+            )
+
+        case .increaseCounter:
+            let existingValue = state.counter
+            let newValue = self.increaseCounter(currentValue: existingValue)
+            store.dispatch(
+                FakeReduxModernAction.counterIncreased(counterValue: newValue),
+                forWindowUUID: windowUUID
+            )
+
+        case .decreaseCounter:
+            let existingValue = state.counter
+            let newValue = self.decreaseCounter(currentValue: existingValue)
+            store.dispatch(
+                FakeReduxModernAction.counterDecreased(counterValue: newValue),
+                forWindowUUID: windowUUID
+            )
+
+        default:
+            break
+        }
+    }
+
+    lazy var legacyFakeProvider: LegacyMiddlewareClosure<FakeReduxState> = { [self] state, action in
+        // Handles one type of action
+        guard let actionType = action.actionType as? FakeReduxActionType else { return }
+
+        switch actionType {
+        case .requestInitialValue:
+            let initialValue = self.generateInitialCountValue?() ?? 0
             let action = FakeReduxAction(counterValue: initialValue,
                                          windowUUID: windowUUID,
                                          actionType: FakeReduxActionType.initialValueLoaded)
             store.dispatch(action)
 
-        case FakeReduxActionType.increaseCounter:
+        case .increaseCounter:
             let existingValue = state.counter
             let newValue = self.increaseCounter(currentValue: existingValue)
             let action = FakeReduxAction(counterValue: newValue,
@@ -24,7 +65,7 @@ class FakeReduxMiddleware {
                                          actionType: FakeReduxActionType.counterIncreased)
             store.dispatch(action)
 
-        case FakeReduxActionType.decreaseCounter:
+        case .decreaseCounter:
             let existingValue = state.counter
             let newValue = self.decreaseCounter(currentValue: existingValue)
             let action = FakeReduxAction(counterValue: newValue,
@@ -43,9 +84,5 @@ class FakeReduxMiddleware {
 
     private func decreaseCounter(currentValue: Int) -> Int {
         return currentValue - 1
-    }
-
-    private func generateInitialValue() -> Int {
-        return Int.random(in: 1...9)
     }
 }

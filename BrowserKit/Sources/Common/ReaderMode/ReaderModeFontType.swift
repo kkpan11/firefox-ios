@@ -5,7 +5,7 @@
 import Foundation
 import UIKit
 
-public enum ReaderModeFontType: String {
+public enum ReaderModeFontType: String, Sendable {
     case serif = "serif"
     case serifBold = "serif-bold"
     case sansSerif = "sans-serif"
@@ -29,6 +29,7 @@ public enum ReaderModeFontType: String {
         }
     }
 
+    @MainActor
     public init(type: String) {
         let font = ReaderModeFontType(rawValue: type)
         let isBoldFontEnabled = UIAccessibility.isBoldTextEnabled
@@ -50,7 +51,7 @@ public enum ReaderModeFontType: String {
     }
 }
 
-private struct FontFamily {
+private enum FontFamily {
     static let serifFamily = [ReaderModeFontType.serif, ReaderModeFontType.serifBold]
     static let sansFamily = [ReaderModeFontType.sansSerif, ReaderModeFontType.sansSerifBold]
     static let families = [serifFamily, sansFamily]

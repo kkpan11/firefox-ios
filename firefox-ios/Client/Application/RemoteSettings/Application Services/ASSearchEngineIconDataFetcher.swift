@@ -6,7 +6,15 @@ import MozillaAppServices
 import Common
 import SwiftDraw
 
-protocol ASSearchEngineIconDataFetcherProtocol {
+/// Search engine definitions that can be matched to their icon records by identifier.
+protocol SearchEngineIdentifiable {
+    var identifier: String { get }
+}
+
+extension SearchEngineDefinition: SearchEngineIdentifiable {}
+extension SearchEngineDefinitionV3: SearchEngineIdentifiable {}
+
+protocol ASSearchEngineIconDataFetcherProtocol: Sendable {
     /// Accepts a list of Search Engines models and populates them with the correct
     /// icon data based on the Remote Settings `search-config-icon` records.
     /// - Parameters:
@@ -14,6 +22,10 @@ protocol ASSearchEngineIconDataFetcherProtocol {
     ///   - completion: a list of paired engines and their associated icons.
     func populateEngineIconData(_ engines: [SearchEngineDefinition],
                                 completion: @escaping ([(SearchEngineDefinition, UIImage)]) -> Void)
+
+    /// Same as `populateEngineIconData`, for search-config-v3 engines.
+    func populateEngineIconDataV3(_ engines: [SearchEngineDefinitionV3],
+                                  completion: @escaping ([(SearchEngineDefinitionV3, UIImage)]) -> Void)
 }
 
 /// Utility class for fetching search engine icon records from Remote Settings.
@@ -21,14 +33,11 @@ final class ASSearchEngineIconDataFetcher: ASSearchEngineIconDataFetcherProtocol
     let service: RemoteSettingsService
     let client: RemoteSettingsClient?
     let logger: Logger
+    private let fallbackEngineIcon: UIImage? = UIImage(named: StandardImageIdentifiers.Large.search)
 
     init?(logger: Logger = DefaultLogger.shared) {
         let profile: Profile = AppContainer.shared.resolve()
-        guard let service = profile.remoteSettingsService else {
-            logger.log("Remote Settings service unavailable.", level: .warning, category: .remoteSettings)
-            return nil
-        }
-        self.service = service
+        self.service = profile.remoteSettingsService
         self.client = ASRemoteSettingsCollection.searchEngineIcons.makeClient()
         self.logger = logger
     }
@@ -37,18 +46,32 @@ final class ASSearchEngineIconDataFetcher: ASSearchEngineIconDataFetcherProtocol
 
     func populateEngineIconData(_ engines: [SearchEngineDefinition],
                                 completion: @escaping ([(SearchEngineDefinition, UIImage)]) -> Void) {
+        populateIconData(engines, completion: completion)
+    }
+
+    func populateEngineIconDataV3(_ engines: [SearchEngineDefinitionV3],
+                                  completion: @escaping ([(SearchEngineDefinitionV3, UIImage)]) -> Void) {
+        populateIconData(engines, completion: completion)
+    }
+
+    // MARK: - Private Utilities
+
+    private func populateIconData<Engine: SearchEngineIdentifiable>(
+        _ engines: [Engine],
+        completion: @escaping ([(Engine, UIImage)]) -> Void
+    ) {
         // Reminder: client creation must happen before sync() or the sync won't pull data for that client's collection
         guard let client, let records = client.getRecords() else {
             // If we can't fetch icons, return the input engines list with blank icons
             // This should never happen, but we need to make sure we handle it regardless
-            logger.log("Search engine icon fetch failed. Nil client or getRecords() was empty.",
+            logger.log("[SEC] Search engine icon fetch failed. Nil client or getRecords() was empty.",
                        level: .warning,
                        category: .remoteSettings)
             completion(engines.map { ($0, UIImage()) })
             return
         }
 
-        logger.log("Fetched \(records.count) search icon records", level: .info, category: .remoteSettings)
+        logger.log("[SEC] Fetched \(records.count) search icon records", level: .info, category: .remoteSettings)
         let iconRecords = records.map { ASSearchEngineIconRecord(record: $0) }
 
         // This is an O(nm) loop but should generally be an extremely small collection
@@ -82,7 +105,7 @@ final class ASSearchEngineIconDataFetcher: ASSearchEngineIconDataFetcherProtocol
 
             let iconImage = {
                 guard let maybeIconImage else {
-                    logger.log("No icon available for search engine '\(engineIdentifier)'.",
+                    logger.log("[SEC] No icon available for search engine '\(engineIdentifier)'.",
                                level: .warning,
                                category: .remoteSettings)
                     return UIImage()
@@ -96,23 +119,38 @@ final class ASSearchEngineIconDataFetcher: ASSearchEngineIconDataFetcherProtocol
         completion(mapped)
     }
 
-    // MARK: - Private Utilities
-
     private func fetchIcon(for iconRecord: ASSearchEngineIconRecord) -> UIImage? {
-        guard let client else { return nil }
+        guard let client else { return fallbackEngineIcon }
         do {
+            var fetchedIcon: UIImage?
             let data = try client.getAttachment(record: iconRecord.backingRecord)
             let mimeType = iconRecord.mimeType ?? ""
             if mimeType.hasPrefix("image/svg") {
-                return SVG(data: data)?.rasterize()
+                fetchedIcon = SVG(data: data)?.rasterize()
+                if fetchedIcon == nil {
+                    logger.log("[SEC] Icon error: could not instantiate SVG from data.",
+                               level: .warning,
+                               category: .remoteSettings)
+                }
             } else if mimeType.hasPrefix("application/pdf") {
-                return UIImage.imageFromPDF(data: data, minimumSize: CGSize(width: 64.0, height: 64.0))
+                fetchedIcon = UIImage.imageFromPDF(data: data, minimumSize: CGSize(width: 64.0, height: 64.0))
+                if fetchedIcon == nil {
+                    logger.log("[SEC] Icon error: could not render PDF from data.",
+                               level: .warning,
+                               category: .remoteSettings)
+                }
             } else {
-                return UIImage(data: data)
+                fetchedIcon = UIImage(data: data)
+                logger.log("[SEC] Creating icon image for MIME type: \(mimeType)",
+                           level: .info,
+                           category: .remoteSettings)
             }
+            return fetchedIcon ?? fallbackEngineIcon
         } catch {
-            logger.log("Error fetching engine icon attachment (\(iconRecord.id)).", level: .warning, category: .remoteSettings)
+            logger.log("[SEC] Error fetching engine icon attachment (\(iconRecord.id)). (Error: \(error))",
+                       level: .warning,
+                       category: .remoteSettings)
+            return fallbackEngineIcon
         }
-        return nil
     }
 }

@@ -23,7 +23,7 @@ class StringExtensionsTests: XCTestCase {
     }
 
     func testPercentEscaping() {
-        func roundtripTest(_ input: String, _ expected: String, file: StaticString = #file, line: UInt = #line) {
+        func roundtripTest(_ input: String, _ expected: String, file: StaticString = #filePath, line: UInt = #line) {
             let observed = input.escape()!
             XCTAssertEqual(observed, expected, "input is \(input)", file: file, line: line)
             let roundtrip = observed.unescape()
@@ -39,26 +39,24 @@ class StringExtensionsTests: XCTestCase {
         let file = "foo-\u{200F}cod.jpg" // Unicode RTL-switch code, becomes "foo-gpj.doc"
         let nounicode = "foo-cod.jpg"
         XCTAssert(file != nounicode)
-        let strip = HTTPDownload.stripUnicode(fromFilename: file)
+        let strip = Download.stripUnicode(fromFilename: file)
         XCTAssert(strip == nounicode)
     }
 
     func testBoldString() {
-        let font = UIFont.preferredFont(forTextStyle: .body)
+        let font = FXFontStyles.Regular.body.scaledFont()
+        let boldFont = FXFontStyles.Bold.body.scaledFont()
         let text = "abcdefbcde"
         // The source string contains the substring twice;
-        // `attributedText(boldString:font:)` should only bold the first
+        // `attributedText(boldString:font:boldFont:)` should only bold the first
         // occurrence.
-        let attributedText = text.attributedText(boldString: "bcde", font: font)
+        let attributedText = text.attributedText(boldString: "bcde", font: font, boldFont: boldFont)
         var effectiveRange = NSRange()
 
         XCTAssertEqual(attributedText.attribute(.font, at: 0, effectiveRange: &effectiveRange) as? UIFont, font)
         XCTAssertEqual(effectiveRange, NSRange(location: 0, length: 1))
 
-        XCTAssertEqual(
-            attributedText.attribute(.font, at: 1, effectiveRange: &effectiveRange) as? UIFont,
-            DefaultDynamicFontHelper.preferredBoldFont(withTextStyle: .body, size: font.pointSize)
-        )
+        XCTAssertEqual(attributedText.attribute(.font, at: 1, effectiveRange: &effectiveRange) as? UIFont, boldFont)
         XCTAssertEqual(effectiveRange, NSRange(location: 1, length: 4))
 
         XCTAssertEqual(attributedText.attribute(.font, at: 5, effectiveRange: &effectiveRange) as? UIFont, font)
@@ -66,21 +64,20 @@ class StringExtensionsTests: XCTestCase {
     }
 
     func testBoldInRange() {
-        let font = UIFont.preferredFont(forTextStyle: .body)
+        let font = FXFontStyles.Regular.body.scaledFont()
+        let boldFont = FXFontStyles.Bold.body.scaledFont()
         let text = "abcdefbcde"
         let attributedText = text.attributedText(
             boldIn: text.index(text.endIndex, offsetBy: -4)..<text.endIndex,
-            font: font
+            font: font,
+            boldFont: boldFont
         )
         var effectiveRange = NSRange()
 
         XCTAssertEqual(attributedText.attribute(.font, at: 0, effectiveRange: &effectiveRange) as? UIFont, font)
         XCTAssertEqual(effectiveRange, NSRange(location: 0, length: 6))
 
-        XCTAssertEqual(
-            attributedText.attribute(.font, at: 6, effectiveRange: &effectiveRange) as? UIFont,
-            DefaultDynamicFontHelper.preferredBoldFont(withTextStyle: .body, size: font.pointSize)
-        )
+        XCTAssertEqual(attributedText.attribute(.font, at: 6, effectiveRange: &effectiveRange) as? UIFont, boldFont)
         XCTAssertEqual(effectiveRange, NSRange(location: 6, length: 4))
     }
 
@@ -89,7 +86,7 @@ class StringExtensionsTests: XCTestCase {
     // Helper method
     func getResultFrom(inputString: String,
                        andRegex pattern: String,
-                       file: StaticString = #file,
+                       file: StaticString = #filePath,
                        line: UInt = #line) throws -> String {
         try XCTUnwrap(inputString.match(pattern), "Failed to extract the matching group.")
     }

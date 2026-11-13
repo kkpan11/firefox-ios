@@ -13,6 +13,7 @@ class HeadersViewViewController: UIViewController, Themeable {
     let errorHeaderSubtitle = "Website Error"
 
     var themeManager: ThemeManager
+    var themeListenerCancellable: Any?
     var themeObserver: NSObjectProtocol?
     var notificationCenter: NotificationProtocol = NotificationCenter.default
 
@@ -33,7 +34,7 @@ class HeadersViewViewController: UIViewController, Themeable {
         super.viewDidLoad()
         setupView()
 
-        listenForThemeChange(view)
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
         applyTheme()
 
         navigationHeaderView.setViews(with: headerTitle, and: backButtonTitle)
@@ -52,12 +53,18 @@ class HeadersViewViewController: UIViewController, Themeable {
         errorHeaderView.setupDetails(subtitle: errorHeaderSubtitle,
                                      title: headerTitle,
                                      icon: UIImage(named: StandardImageIdentifiers.Large.logoFirefox),
-                                     warningIcon: StandardImageIdentifiers.Large.criticalFill,
+                                     warningIcon: StandardImageIdentifiers.Large.information,
                                      theme: themeManager.currentTheme)
 
-        headerView.setupAccessibility(closeButtonA11yLabel: "CloseA11yLabel",
+        headerView.setupAccessibility(faviconA11yId: "FaviconA11yId",
+                                      titleLabelA11yId: "TitleLabelA11yId",
+                                      subtitleLabelA11yId: "SubtitleLabelA11yId",
+                                      closeButtonA11yLabel: "CloseA11yLabel",
                                       closeButtonA11yId: "CloseA11yId")
-        errorHeaderView.setupAccessibility(closeButtonA11yLabel: "ErrorCloseA11yLabel",
+        errorHeaderView.setupAccessibility(faviconA11yId: "ErrorFaviconA11yId",
+                                           titleLabelA11yId: "ErrorTitleLabelA11yId",
+                                           subtitleLabelA11yId: "ErrorSubtitleLabelA11yId",
+                                           closeButtonA11yLabel: "ErrorCloseA11yLabel",
                                            closeButtonA11yId: "ErrorCloseA11yId")
     }
 

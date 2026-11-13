@@ -15,46 +15,52 @@ protocol BackgroundTabLoader {
     func loadBackgroundTabs()
 }
 
-final class DefaultBackgroundTabLoader: BackgroundTabLoader {
-    private var tabQueue: TabQueue
-    private var backgroundQueue: DispatchQueueInterface
-    private var applicationHelper: ApplicationHelper
+final class DefaultBackgroundTabLoader: BackgroundTabLoader, Sendable {
+    private let tabQueue: TabQueue
+    private let applicationHelper: ApplicationHelper
+    private let logger: Logger
 
     init(tabQueue: TabQueue,
          applicationHelper: ApplicationHelper = DefaultApplicationHelper(),
-         backgroundQueue: DispatchQueueInterface = DispatchQueue.global()) {
+         logger: Logger = DefaultLogger.shared) {
         self.tabQueue = tabQueue
         self.applicationHelper = applicationHelper
-        self.backgroundQueue = backgroundQueue
+        self.logger = logger
     }
 
     func loadBackgroundTabs() {
-        // Make sure we load queued tabs on a background thread
-        backgroundQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.dequeueQueuedTabs()
-        }
+        Task { await dequeueQueuedTabs() }
     }
 
-    private func dequeueQueuedTabs() {
-        tabQueue.getQueuedTabs { [weak self] urls in
-            guard let self = self else { return }
-            // This assumes that the DB returns rows in a sane order.
-            guard !urls.isEmpty else { return }
-
-            // Open queued urls
-            let queuedURLs = urls.compactMap { $0.url.asURL }
-            if !queuedURLs.isEmpty {
-                self.open(urls: queuedURLs)
-            }
-
-            // Clear after making an attempt to open. We're making a bet that
-            // it's better to run the risk of perhaps opening twice on a crash,
-            // rather than losing data.
-            self.tabQueue.clearQueuedTabs()
+    private func dequeueQueuedTabs() async {
+        let queuedTabs: [ShareItem]
+        do {
+            // `Deferred.upon` delivers on a global queue, so the read no longer
+            // needs an explicit hop off the main thread.
+            queuedTabs = try await tabQueue.getQueuedTabs()
+        } catch {
+            logger.log("Failed to read the background tab queue: \(error)",
+                       level: .warning,
+                       category: .tabs)
+            return
         }
+
+        // This assumes that the DB returns rows in a sane order.
+        guard !queuedTabs.isEmpty else { return }
+
+        // Open queued urls
+        let queuedURLs = queuedTabs.compactMap { $0.url.asURL }
+        if !queuedURLs.isEmpty {
+            await open(urls: queuedURLs)
+        }
+
+        // Clear after making an attempt to open. We're making a bet that
+        // it's better to run the risk of perhaps opening twice on a crash,
+        // rather than losing data.
+        tabQueue.clearQueuedTabs()
     }
 
+    @MainActor
     private func open(urls: [URL]) {
         for urlToOpen in urls {
             let urlString = URL.mozInternalScheme + "://open-url?url=\(urlToOpen)"

@@ -5,9 +5,7 @@
 import Common
 import Shared
 
-import class MozillaAppServices.MZKeychainWrapper
 import enum MozillaAppServices.AutofillApiError
-import enum MozillaAppServices.MZKeychainItemAccessibility
 import func MozillaAppServices.checkCanary
 import func MozillaAppServices.createCanary
 import func MozillaAppServices.createKey
@@ -18,38 +16,68 @@ public enum LoginEncryptionKeyError: Error {
     case dbRecordCountVerificationError(String)
 }
 
+public extension AutofillApiError {
+    var descriptionValue: String {
+        switch self {
+        case .SqlError: return "SqlError"
+        case .CryptoError: return "CryptoError"
+        case .NoSuchRecord: return "NoSuchRecord"
+        case .UnexpectedAutofillApiError: return "UnexpectedAutofillApiError"
+        case .InterruptedError: return "InterruptedError"
+        }
+    }
+}
+
 /// Running tests on Bitrise code that reads/writes to keychain silently fails.
 /// SecItemAdd status: -34018 - A required entitlement isn't present.
 /// This should be removed if we ever have keychain support on our CI.
-public class KeychainManager {
-    public static var shared = {
-        AppConstants.isRunningTest
+public enum KeychainManager {
+    public static let shared = {
+        AppConstants.isRunningUnitTest
             ? MockRustKeychain.shared
             : RustKeychain.sharedClientAppContainerKeychain
     }()
-
-    public static var legacyShared = {
-        AppConstants.isRunningTest
-            ? MockMZKeychainWrapper.shared
-            : MZKeychainWrapper.sharedClientAppContainerKeychain
-    }()
 }
 
-open class RustKeychain {
-    public private(set) var serviceName: String
-    public private(set) var accessGroup: String?
+public protocol KeychainProtocol: Sendable {
+    var creditCardCanaryPhrase: String { get }
+    var loginsCanaryPhrase: String { get }
+    var loginsKeyIdentifier: String { get }
+    var creditCardKeyIdentifier: String { get }
+    func removeObject(key: String)
+    func removeLoginsKeysForDebugMenuItem()
+    func removeAutofillKeysForDebugMenuItem()
+    func removeAllKeys()
+    func setLoginsKeyData(keyValue: String, canaryValue: String)
+    func setCreditCardsKeyData(keyValue: String, canaryValue: String)
+    func getLoginsKeyData() -> (String?, String?)
+    func getCreditCardKeyData() -> (String?, String?)
+    static func wipeKeychain()
+    func createLoginsKeyData() throws -> String
+    func queryKeychainForKey(key: String) -> Result<String?, Error>
+    func createAndStoreKey(canaryPhrase: String, canaryIdentifier: String, keyIdentifier: String) throws -> String
+    func checkCanary(canary: String,
+                     text: String,
+                     key: String) throws -> Bool
+    func createCreditCardsKeyData() throws -> String
+}
+
+public final class RustKeychain: KeychainProtocol {
+    public let serviceName: String
+    public let accessGroup: String?
 
     private let logger: Logger
+    private let keychain: any KeychainClient
 
     public let loginsKeyIdentifier = "appservices.key.logins.perfield"
     public let loginsCanaryKeyIdentifier = "canaryPhrase"
-    let loginsCanaryPhrase = "a string for checking validity of the key"
+    public let loginsCanaryPhrase = "a string for checking validity of the key"
 
     public let creditCardKeyIdentifier = "appservices.key.creditcard.perfield"
     public let creditCardCanaryKeyIdentifier = "creditCardCanaryPhrase"
-    let creditCardCanaryPhrase = "a string for checking validity of the key"
+    public let creditCardCanaryPhrase = "a string for checking validity of the key"
 
-    public static var sharedClientAppContainerKeychain: RustKeychain {
+    public static var sharedClientAppContainerKeychain: KeychainProtocol {
         let baseBundleIdentifier = AppInfo.baseBundleIdentifier
 
         guard let accessGroupPrefix = Bundle.main.object(forInfoDictionaryKey: "MozDevelopmentTeam") as? String else {
@@ -61,10 +89,12 @@ open class RustKeychain {
 
     public init(serviceName: String,
                 accessGroup: String? = nil,
-                logger: Logger = DefaultLogger.shared) {
+                logger: Logger = DefaultLogger.shared,
+                keychain: any KeychainClient = DefaultKeychainClient()) {
         self.serviceName = serviceName
         self.accessGroup = accessGroup
         self.logger = logger
+        self.keychain = keychain
     }
 
     struct KeychainError: Error {
@@ -82,6 +112,11 @@ open class RustKeychain {
         removeObject(key: loginsCanaryKeyIdentifier)
     }
 
+    public func removeAutofillKeysForDebugMenuItem() {
+        removeObject(key: creditCardKeyIdentifier)
+        removeObject(key: creditCardCanaryKeyIdentifier)
+    }
+
     public func removeAllKeys() {
         var keychainQueryDictionary: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                                       kSecAttrService as String: serviceName]
@@ -90,7 +125,11 @@ open class RustKeychain {
             keychainQueryDictionary[kSecAttrAccessGroup as String] = accessGroup
         }
 
-        let status = SecItemDelete(keychainQueryDictionary as CFDictionary)
+        let status = deleteKeychainSecClass(
+            kSecClassGenericPassword,
+            matching: keychainQueryDictionary,
+            keychain: keychain
+        )
         logErrorFromStatus(status, errMsg: "Failed to remove all keys")
     }
 
@@ -114,11 +153,15 @@ open class RustKeychain {
     }
 
     public class func wipeKeychain() {
-        deleteKeychainSecClass(kSecClassGenericPassword) // Generic password items
-        deleteKeychainSecClass(kSecClassInternetPassword) // Internet password items
-        deleteKeychainSecClass(kSecClassCertificate) // Certificate items
-        deleteKeychainSecClass(kSecClassKey) // Cryptographic key items
-        deleteKeychainSecClass(kSecClassIdentity) // Identity items
+        wipeKeychain(keychain: DefaultKeychainClient())
+    }
+
+    class func wipeKeychain(keychain: any KeychainClient) {
+        deleteKeychainSecClass(kSecClassGenericPassword, keychain: keychain) // Generic password items
+        deleteKeychainSecClass(kSecClassInternetPassword, keychain: keychain) // Internet password items
+        deleteKeychainSecClass(kSecClassCertificate, keychain: keychain) // Certificate items
+        deleteKeychainSecClass(kSecClassKey, keychain: keychain) // Cryptographic key items
+        deleteKeychainSecClass(kSecClassIdentity, keychain: keychain) // Identity items
     }
 
     func logAutofillStoreError(err: AutofillApiError, errorDomain: String? = nil, errorMessage: String) {
@@ -144,7 +187,7 @@ open class RustKeychain {
                    description: description)
     }
 
-    func createCreditCardsKeyData() throws -> String {
+    public func createCreditCardsKeyData() throws -> String {
         do {
             return try createAndStoreKey(canaryPhrase: creditCardCanaryPhrase,
                                          canaryIdentifier: creditCardCanaryKeyIdentifier,
@@ -161,7 +204,7 @@ open class RustKeychain {
         throw LoginEncryptionKeyError.noKeyCreated
     }
 
-    func createLoginsKeyData() throws -> String {
+    public func createLoginsKeyData() throws -> String {
         do {
             return try createAndStoreKey(canaryPhrase: loginsCanaryPhrase,
                                          canaryIdentifier: loginsCanaryKeyIdentifier,
@@ -181,7 +224,7 @@ open class RustKeychain {
         throw LoginEncryptionKeyError.noKeyCreated
     }
 
-    func queryKeychainForKey(key: String) -> Result<String?, Error> {
+    public func queryKeychainForKey(key: String) -> Result<String?, Error> {
         var keychainQueryDictionary = getBaseKeychainQuery(key: key)
         keychainQueryDictionary[kSecMatchLimit as String] = kSecMatchLimitOne
         keychainQueryDictionary[kSecReturnData as String] = kCFBooleanTrue
@@ -201,7 +244,7 @@ open class RustKeychain {
         return .success(String(data: data, encoding: .utf8))
     }
 
-    func createAndStoreKey(canaryPhrase: String, canaryIdentifier: String, keyIdentifier: String) throws -> String {
+    public func createAndStoreKey(canaryPhrase: String, canaryIdentifier: String, keyIdentifier: String) throws -> String {
          let keyValue = try createKey()
          let canaryValue = try createCanary(text: canaryPhrase, encryptionKey: keyValue)
 
@@ -212,9 +255,12 @@ open class RustKeychain {
          return keyValue
     }
 
-    private class func deleteKeychainSecClass(_ secClass: AnyObject) {
-        let query = [kSecClass as String: secClass]
-        SecItemDelete(query as CFDictionary)
+    public func checkCanary(
+        canary: String,
+        text: String,
+        key: String
+    ) throws -> Bool {
+        return try MozillaAppServices.checkCanary(canary: canary, text: text, encryptionKey: key)
     }
 
     private func addOrUpdateKeychainKey(_ value: String, key: String) {
@@ -259,9 +305,7 @@ open class RustKeychain {
             // data or querying for key data that hasn't been created yet in the case
             // of a first-time sync sign in for instance.
 
-            logger.log("Failed to get keychain data: \(err)",
-                       level: .debug,
-                       category: .storage)
+            logger.log("Failed to get keychain data: \(err)", level: .warning, category: .storage)
             return nil
         }
     }
@@ -269,8 +313,8 @@ open class RustKeychain {
     private func getBaseKeychainQuery(key: String) -> [String: Any] {
         let encodedIdentifier: Data? = key.data(using: String.Encoding.utf8)
         var keychainQueryDictionary: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                                       kSecAttrService as String: self.serviceName,
-                                                       kSecAttrSynchronizable as String: false]
+                                                      kSecAttrService as String: self.serviceName,
+                                                      kSecAttrSynchronizable as String: false]
         keychainQueryDictionary[kSecAttrGeneric as String] = encodedIdentifier
         keychainQueryDictionary[kSecAttrAccount as String] = encodedIdentifier
 
@@ -303,7 +347,6 @@ open class RustKeychain {
             case .InvalidRecord(let message),
                     .NoSuchRecord(let message),
                     .Interrupted(let message),
-                    .SyncAuthInvalid(let message),
                     .UnexpectedLoginsApiError(let message):
                 return message
             case .InvalidKey:
@@ -330,4 +373,50 @@ open class RustKeychain {
                    category: .storage,
                    description: "\(errorDomain) - \(err.descriptionValue): \(message)")
     }
+}
+
+@discardableResult
+func deleteKeychainSecClass(_ secClass: CFString,
+                            matching attributes: [String: Any] = [:],
+                            keychain: any KeychainClient) -> OSStatus {
+    var query = attributes
+    query[kSecClass as String] = secClass
+    let service = query[kSecAttrService as String] as? String
+    let protectedItems = KeychainProtectedItem.allCases.filter {
+        $0.itemClass == secClass && (service == nil || $0.service == service)
+    }
+    if protectedItems.isEmpty {
+        return keychain.delete(query: query)
+    }
+
+    // List matching Keychain items, skip protected items, and delete the rest individually.
+    query[kSecMatchLimit as String] = kSecMatchLimitAll
+    query[kSecReturnAttributes as String] = true
+    query[kSecReturnPersistentRef as String] = true
+    let (status, result) = keychain.load(query: query)
+    guard status == errSecSuccess else {
+        if status != errSecItemNotFound {
+            DefaultLogger.shared.log("Failed to enumerate Keychain items: \(status)",
+                                     level: .fatal,
+                                     category: .storage)
+        }
+        return status
+    }
+    guard let items = result as? [[String: Any]] else { return errSecDecode }
+
+    var deletionStatus = errSecSuccess
+    for item in items where !protectedItems.contains(where: { $0.matches(attributes: item) }) {
+        guard let reference = item[kSecValuePersistentRef as String] as? Data else {
+            if deletionStatus == errSecSuccess { deletionStatus = errSecDecode }
+            continue
+        }
+        let status = keychain.delete(query: [
+            kSecClass as String: secClass,
+            kSecValuePersistentRef as String: reference
+        ])
+        if deletionStatus == errSecSuccess && status != errSecItemNotFound {
+            deletionStatus = status
+        }
+    }
+    return deletionStatus
 }

@@ -4,7 +4,6 @@
 
 import UIKit
 import Common
-import WebEngine
 
 // The list of permanent URI schemes has been taken from http://www.iana.org/assignments/uri-schemes/uri-schemes.xhtml
 private let permanentURISchemes = [
@@ -204,12 +203,16 @@ extension URL {
     public var isFxHomeUrl: Bool {
         return absoluteString.hasPrefix("internal://local/about/home")
     }
+
+    public var siteURL: URL {
+        InternalURL(self)?.originalURLFromErrorPage ?? self
+    }
 }
 
 // MARK: - Exported URL Schemes
 
 extension URL {
-    public static var mozPublicScheme: String = {
+    public static let mozPublicScheme: String = {
         guard let string = Bundle.main.object(
             forInfoDictionaryKey: "MozPublicURLScheme"
         ) as? String, !string.isEmpty else {
@@ -219,7 +222,7 @@ extension URL {
         return string
     }()
 
-    public static var mozInternalScheme: String = {
+    public static let mozInternalScheme: String = {
         guard let string = Bundle.main.object(
             forInfoDictionaryKey: "MozInternalURLScheme"
         ) as? String, !string.isEmpty else {

@@ -6,11 +6,12 @@ import Common
 import Foundation
 import Shared
 import Kingfisher
+import WebKit
 
 import class MozillaAppServices.HardcodedNimbusFeatures
 
 class UITestAppDelegate: AppDelegate {
-    lazy var dirForTestProfile = { return "\(self.appRootDir())/profile.testProfile" }()
+    nonisolated static let dirForTestProfile = "\(UITestAppDelegate.appRootDir())/profile.testProfile"
 
     private var internalProfile: Profile?
 
@@ -71,7 +72,7 @@ class UITestAppDelegate: AppDelegate {
         }
 
         if launchArguments.contains(LaunchArguments.SkipSponsoredShortcuts) {
-            profile.prefs.setBool(false, forKey: PrefsKeys.UserFeatureFlagPrefs.SponsoredShortcuts)
+            profile.prefs.setBool(false, forKey: PrefsKeys.FeatureFlags.SponsoredShortcuts)
         }
 
         // Don't show the What's New page.
@@ -83,6 +84,10 @@ class UITestAppDelegate: AppDelegate {
             profile.prefs.setBool(true, forKey: PrefsKeys.KeyDidShowDefaultBrowserOnboarding)
         }
 
+        if launchArguments.contains(LaunchArguments.SkipTermsOfUse) {
+            profile.prefs.setBool(true, forKey: PrefsKeys.TermsOfUseAccepted)
+        }
+
         // Skip the intro when requested by for example tests or automation
         if launchArguments.contains(LaunchArguments.SkipIntro) {
             IntroScreenManager(prefs: profile.prefs).didSeeIntroScreen()
@@ -92,16 +97,21 @@ class UITestAppDelegate: AppDelegate {
             profile.prefs.setInt(1, forKey: PrefsKeys.UseStageServer)
         }
 
+        // Point the FxA account manager at a custom content server (e.g. a local
+        // FxA stack) so pairing/sign-in can run against it. Set before the
+        // account manager initializes. Used by the pairing E2E test.
+        if let customFxA = ProcessInfo.processInfo.environment["CUSTOM_FXA_SERVER"],
+           !customFxA.isEmpty {
+            profile.prefs.setBool(true, forKey: PrefsKeys.KeyUseCustomFxAContentServer)
+            profile.prefs.setString(customFxA, forKey: PrefsKeys.KeyCustomFxAContentServer)
+        }
+
         if launchArguments.contains(LaunchArguments.FxAChinaServer) {
             profile.prefs.setInt(1, forKey: PrefsKeys.KeyEnableChinaSyncService)
         }
 
         if launchArguments.contains(LaunchArguments.DisableAnimations) {
             UIView.setAnimationsEnabled(false)
-        }
-
-        if launchArguments.contains(LaunchArguments.SkipSplashScreenExperiment) {
-            profile.prefs.setBool(true, forKey: PrefsKeys.splashScreenShownKey)
         }
 
         if launchArguments.contains(LaunchArguments.ResetMicrosurveyExpirationCount) {
@@ -139,13 +149,13 @@ class UITestAppDelegate: AppDelegate {
             )!
         )
         try? FileManager.default.createDirectory(
-            atPath: dirForTestProfile,
+            atPath: UITestAppDelegate.dirForTestProfile,
             withIntermediateDirectories: false,
             attributes: nil
         )
-        let output = URL(fileURLWithPath: "\(dirForTestProfile)/places.db")
+        let output = URL(fileURLWithPath: "\(UITestAppDelegate.dirForTestProfile)/places.db")
 
-        let enumerator = FileManager.default.enumerator(atPath: dirForTestProfile)
+        let enumerator = FileManager.default.enumerator(atPath: UITestAppDelegate.dirForTestProfile)
         guard let filePaths = enumerator?.allObjects as? [String] else {
             logger.log("Failed to retrieve file paths during database configuration in UITestAppDelegate class",
                        level: .info,
@@ -154,7 +164,7 @@ class UITestAppDelegate: AppDelegate {
         }
         filePaths.filter { $0.contains(".db") }.forEach { item in
             try? FileManager.default.removeItem(
-                at: URL(fileURLWithPath: "\(dirForTestProfile)/\(item)")
+                at: URL(fileURLWithPath: "\(UITestAppDelegate.dirForTestProfile)/\(item)")
             )
         }
 
@@ -164,12 +174,12 @@ class UITestAppDelegate: AppDelegate {
             fatalError("Could not copy items from \(input) to \(output): \(error)")
         }
 
-        // Tests currently load a browserdb history, we make sure we migrate it everytime
+        // Tests currently load a browserdb history, we make sure we migrate it every time
         UserDefaults.standard.setValue(false, forKey: PrefsKeys.PlacesHistoryMigrationSucceeded)
     }
 
     private func configureTabs(_ arg: String, launchArguments: [String]) {
-        let tabDirectory = "\(self.appRootDir())/profile.profile"
+        let tabDirectory = "\(UITestAppDelegate.appRootDir())/profile.profile"
         if launchArguments.contains(LaunchArguments.ClearProfile) {
             fatalError("Clearing profile and loading tabs, not a supported combination.")
         }
@@ -225,6 +235,21 @@ class UITestAppDelegate: AppDelegate {
             resetApplication()
         }
 
+        // ClearProfile does not reset UserDefaults.standard, so the default-browser flag leaks across
+        // tests on a shared simulator. Force it false here so the default-browser onboarding card renders.
+        if ProcessInfo.processInfo.arguments.contains(LaunchArguments.ResetDefaultBrowserStatus) {
+            UserDefaults.standard.set(false, forKey: DefaultBrowserUtility.UserDefaultsKey.isBrowserDefault)
+        }
+
+        // Opt-in: WKWebView cookies/site data live in WKWebsiteDataStore, which ClearProfile does not
+        // clear. Only cleared when this argument is present so it doesn't reset web state for every test.
+        if ProcessInfo.processInfo.arguments.contains(LaunchArguments.ClearWebData) {
+            WKWebsiteDataStore.default().removeData(
+                ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+                modifiedSince: .distantPast
+            ) {}
+        }
+
         Tab.ChangeUserAgent.clear()
 
         return super.application(application, willFinishLaunchingWithOptions: launchOptions)
@@ -237,7 +262,9 @@ class UITestAppDelegate: AppDelegate {
         KingfisherManager.shared.cache.clearDiskCache()
 
         // Clear the cookie/url cache
-        URLCache.shared.removeAllCachedResponses()
+        // removeAllCachedResponses() crashes on iOS 17 simulators from Xcode 26
+        // https://github.com/mozilla-mobile/firefox-ios/issues/30947
+        // URLCache.shared.removeAllCachedResponses()
         let storage = HTTPCookieStorage.shared
         if let cookies = storage.cookies {
             for cookie in cookies {
@@ -246,7 +273,7 @@ class UITestAppDelegate: AppDelegate {
         }
 
         // Clear the documents directory
-        let rootPath = appRootDir()
+        let rootPath = UITestAppDelegate.appRootDir()
         let manager = FileManager.default
         let documents = URL(fileURLWithPath: rootPath)
         do {
@@ -275,7 +302,7 @@ class UITestAppDelegate: AppDelegate {
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 
-    func appRootDir() -> String {
+    nonisolated static func appRootDir() -> String {
         var rootPath = ""
         let sharedContainerIdentifier = AppInfo.sharedContainerIdentifier
         if let url = FileManager.default.containerURL(
@@ -290,28 +317,36 @@ class UITestAppDelegate: AppDelegate {
 
     // MARK: - Private
     private func loadExperiment() {
-        let argumentExperimentFile = ProcessInfo.processInfo.arguments.first { string in
+        let argumentExperimentFile = ProcessInfo.processInfo.arguments.filter { string in
             string.starts(with: LaunchArguments.LoadExperiment)
         }
 
-        let argumentFeatureName = ProcessInfo.processInfo.arguments.first { string in
+        let argumentFeatureName = ProcessInfo.processInfo.arguments.filter { string in
             string.starts(with: LaunchArguments.ExperimentFeatureName)
         }
 
-        guard let argumentExperimentFile, let argumentFeatureName else { return }
+        guard !argumentExperimentFile.isEmpty, !argumentFeatureName.isEmpty else { return }
 
-        let experimentFeatureName = argumentFeatureName.replacingOccurrences(of: LaunchArguments.ExperimentFeatureName,
-                                                                             with: "")
-        let experimentFileName = argumentExperimentFile.replacingOccurrences(of: LaunchArguments.LoadExperiment,
-                                                                             with: "")
-        let fileURL = Bundle.main.url(forResource: experimentFileName, withExtension: "json")
-        if let fileURL {
-            do {
-                let fileContent = try String(contentsOf: fileURL)
-                let features = HardcodedNimbusFeatures(with: [experimentFeatureName: fileContent])
-                features.connect(with: FxNimbus.shared)
-            } catch {
+        let experimentsName = argumentFeatureName.map { string in
+            string.replacingOccurrences(of: LaunchArguments.ExperimentFeatureName, with: "")
+        }
+        let experimentFileName = argumentExperimentFile.map { string in
+            string.replacingOccurrences(of: LaunchArguments.LoadExperiment, with: "")
+        }
+
+        var injectingFeature = [String: String]()
+
+        for index in 0..<experimentsName.count {
+            let fileURL = Bundle.main.url(forResource: experimentFileName[index], withExtension: "json")
+            if let fileURL {
+                do {
+                    let fileContent = try String(contentsOf: fileURL)
+                    injectingFeature[experimentsName[index]] = fileContent
+                } catch {
+                }
             }
         }
+        let features = HardcodedNimbusFeatures(with: injectingFeature)
+        features.connect(with: FxNimbus.shared)
     }
 }

@@ -9,15 +9,15 @@ import XCTest
 
 final class AddressToolbarContainerModelTests: XCTestCase {
     private var mockProfile: MockProfile!
-    private var searchEnginesManager: SearchEnginesManagerProvider!
+    private var searchEnginesManager: SearchEnginesManager!
     private let windowUUID: WindowUUID = .XCTestDefaultUUID
 
-    override func setUp() {
-        super.setUp()
-        DependencyHelperMock().bootstrapDependencies()
+    override func setUp() async throws {
+        try await super.setUp()
+        await DependencyHelperMock().bootstrapDependencies(injectedFeatureFlagProvider: MockNimbusFeatureFlags())
 
-        mockProfile = MockProfile()
-        searchEnginesManager = SearchEnginesManager(
+        mockProfile = makeProfile()
+        searchEnginesManager = await SearchEnginesManager(
             prefs: mockProfile.prefs,
             files: mockProfile.files,
             engineProvider: MockSearchEngineProvider()
@@ -31,28 +31,32 @@ final class AddressToolbarContainerModelTests: XCTestCase {
         super.tearDown()
     }
 
+    @MainActor
     func testSearchWordFromURLWhenUrlIsNilThenSearchWordIsNil() {
-        let viewModel = createSubject(withState: createBasicToolbarState())
+        let viewModel = createSubject(withState: createToolbarState())
         XCTAssertNil(viewModel.searchTermFromURL(nil))
     }
 
+    @MainActor
     func testSearchWordFromURLWhenUsingGoogleSearchThenSearchWordIsCorrect() {
-        let viewModel = createSubject(withState: createBasicToolbarState())
+        let viewModel = createSubject(withState: createToolbarState())
         let searchTerm = "test"
         let url = URL(string: "http://firefox.com/find?q=\(searchTerm)")
         let result = viewModel.searchTermFromURL(url)
         XCTAssertEqual(searchTerm, result)
     }
 
+    @MainActor
     func testSearchWordFromURLWhenUsingInternalUrlThenSearchWordIsNil() {
-        let viewModel = createSubject(withState: createBasicToolbarState())
+        let viewModel = createSubject(withState: createToolbarState())
         let searchTerm = "test"
         let url = URL(string: "internal://local?q=\(searchTerm)")
         XCTAssertNil(viewModel.searchTermFromURL(url))
     }
 
+    @MainActor
     func testUsesDefaultSearchEngine_WhenNoSearchEngineSelected() {
-        let viewModel = createSubject(withState: createBasicToolbarState())
+        let viewModel = createSubject(withState: createToolbarState())
 
         guard let defaultEngine = searchEnginesManager.defaultEngine else {
             XCTFail("No default search engine")
@@ -63,6 +67,7 @@ final class AddressToolbarContainerModelTests: XCTestCase {
         XCTAssertEqual(viewModel.searchEngineImage, defaultEngine.image)
     }
 
+    @MainActor
     func testUsesAlternativeSearchEngine_WhenSearchEngineSelected() {
         let searchEngineImage = UIImage()
         let selectedSearchEngine = OpenSearchEngineTests.generateOpenSearchEngine(
@@ -77,102 +82,481 @@ final class AddressToolbarContainerModelTests: XCTestCase {
         XCTAssertEqual(viewModel.searchEngineImage, selectedSearchEngine.image)
     }
 
+    @MainActor
     func testConfigureSkeletonAddressBar_withNilParameters() {
-        let model = createSubject(withState: createBasicToolbarState())
-        let config = model.configureSkeletonAddressBar(with: nil, isReaderModeAvailableOrActive: nil)
+        let model = createSubject(withState: createToolbarState())
+        let config = model.getSkeletonAddressBarConfiguration(for: nil)
 
         XCTAssertTrue(config.leadingPageActions.isEmpty)
         XCTAssertTrue(config.trailingPageActions.isEmpty)
         XCTAssertNil(config.locationViewConfiguration.url)
     }
 
-    func testConfigureSkeletonAddressBar_withNilURL_andReaderModeAvailable() {
-        let model = createSubject(withState: createBasicToolbarState())
-        let config = model.configureSkeletonAddressBar(with: nil, isReaderModeAvailableOrActive: true)
-
-        XCTAssertTrue(config.leadingPageActions.isEmpty)
-        XCTAssertTrue(config.trailingPageActions.isEmpty)
-        XCTAssertNil(config.locationViewConfiguration.url)
-    }
-
-    func testConfigureSkeletonAddressBar_withURL_andReaderModeAvailable() {
-        let model = createSubject(withState: createBasicToolbarState())
-        let testURL = URL(string: "https://example.com")
-        let config = model.configureSkeletonAddressBar(with: testURL, isReaderModeAvailableOrActive: true)
-
-        XCTAssertEqual(config.leadingPageActions.count, 1)
-        XCTAssertEqual(config.trailingPageActions.count, 2)
-        XCTAssertEqual(config.locationViewConfiguration.url, testURL)
-    }
-
-    func testConfigureSkeletonAddressBar_withURL_andReaderModeNotAvailable() {
-        let model = createSubject(withState: createBasicToolbarState())
-        let testURL = URL(string: "https://example.com")
-        let config = model.configureSkeletonAddressBar(with: testURL, isReaderModeAvailableOrActive: false)
+    @MainActor
+    func testConfigureSkeletonAddressBar_withURL() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = createTab(url: URL(string: "https://example.com"))
+        let config = model.getSkeletonAddressBarConfiguration(for: tab)
 
         XCTAssertEqual(config.leadingPageActions.count, 1)
         XCTAssertEqual(config.trailingPageActions.count, 1)
-        XCTAssertEqual(config.locationViewConfiguration.url, testURL)
+        XCTAssertEqual(config.locationViewConfiguration.url, tab.url)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_withSecureHTTPS_showsSecureLockIcon() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = createTab(
+            url: URL(string: "https://secure-example.com"),
+            hasOnlySecureContent: true
+        )
+        let config = model.getSkeletonAddressBarConfiguration(for: tab)
+
+        XCTAssertEqual(config.locationViewConfiguration.lockIconImageName,
+                       StandardImageIdentifiers.Small.shieldCheckmarkFill)
+        XCTAssertTrue(config.locationViewConfiguration.lockIconNeedsTheming)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_withInsecureHTTP_showsInsecureLockIcon() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = createTab(url: URL(string: "http://insecure-example.com"))
+        let config = model.getSkeletonAddressBarConfiguration(for: tab)
+
+        XCTAssertEqual(config.locationViewConfiguration.lockIconImageName,
+                       StandardImageIdentifiers.Small.shieldSlashFillMulticolor)
+        XCTAssertFalse(config.locationViewConfiguration.lockIconNeedsTheming)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_inReaderMode_hidesLockIcon() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = createTab(url: URL(string: "http://localhost/reader-mode/page?url=https://example.com"))
+        let config = model.getSkeletonAddressBarConfiguration(for: tab)
+
+        XCTAssertNil(config.locationViewConfiguration.lockIconImageName)
+        XCTAssertTrue(config.locationViewConfiguration.lockIconNeedsTheming)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_containsCorrectActions() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = createTab(url: URL(string: "https://example.com"))
+        let config = model.getSkeletonAddressBarConfiguration(for: tab)
+
+        // Verify share and reload actions are present.
+        XCTAssertEqual(config.leadingPageActions.count, 1)
+        XCTAssertEqual(config.trailingPageActions.count, 1)
+
+        // Verify leading action (share).
+        let leadingAction = config.leadingPageActions.first
+        XCTAssertNotNil(leadingAction)
+        XCTAssertEqual(leadingAction?.iconName, StandardImageIdentifiers.Medium.shareApple)
+        XCTAssertTrue(leadingAction?.isEnabled ?? false)
+
+        // Verify trailing action (reload).
+        let trailingAction = config.trailingPageActions.first
+        XCTAssertNotNil(trailingAction)
+        XCTAssertEqual(trailingAction?.iconName, StandardImageIdentifiers.Medium.arrowClockwise)
+        XCTAssertTrue(trailingAction?.isEnabled ?? false)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_locationViewConfiguration() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = createTab(url: URL(string: "https://example.com"))
+        let config = model.getSkeletonAddressBarConfiguration(for: tab)
+        let locationConfig = config.locationViewConfiguration
+
+        // Verify essential location view properties.
+        XCTAssertEqual(locationConfig.url, tab.url)
+        XCTAssertEqual(locationConfig.urlTextFieldPlaceholder, .AddressToolbar.LocationPlaceholder)
+        XCTAssertFalse(locationConfig.isEditing)
+        XCTAssertFalse(locationConfig.didStartTyping)
+        XCTAssertFalse(locationConfig.shouldShowKeyboard)
+        XCTAssertFalse(locationConfig.shouldSelectSearchTerm)
+        XCTAssertNil(locationConfig.searchEngineImage)
+        XCTAssertNil(locationConfig.searchTerm)
+        XCTAssertNil(locationConfig.droppableUrl)
+    }
+
+    @MainActor
+    func testAddressToolbarConfig_withGoogleLensFeatureEnabled_configuresEditingAccessoryButton() {
+        let state = createToolbarState(isGoogleLensEnabled: true)
+        let model = createSubject(withState: state)
+        let expectedMenuElements = [
+            ToolbarMenuElement(
+                title: .AddressToolbar.GoogleLens.ContextMenu.TakePhotoActionTitle,
+                imageName: StandardImageIdentifiers.Large.screenshot,
+                a11yIdentifier: AccessibilityIdentifiers.Browser.AddressToolbar.googleLensTakePhotoAction,
+                onSelected: { _ in }
+            ),
+            ToolbarMenuElement(
+                title: .AddressToolbar.GoogleLens.ContextMenu.PhotoLibraryActionTitle,
+                imageName: StandardImageIdentifiers.Large.image,
+                a11yIdentifier: AccessibilityIdentifiers.Browser.AddressToolbar.googleLensPhotoLibraryAction,
+                onSelected: { _ in }
+            )
+        ]
+
+        XCTAssertEqual(state.addressToolbar.editingAccessoryAction?.actionType, .googleLens)
+        let accessoryAction = model.addressToolbarConfig.locationViewConfiguration.editingAccessoryAction
+        XCTAssertEqual(accessoryAction?.iconName, StandardImageIdentifiers.Medium.logoGoogleLens)
+        XCTAssertEqual(accessoryAction?.contextualHintType, TipKitHintType.googleLens.rawValue)
+        XCTAssertEqual(accessoryAction?.a11yLabel, .AddressToolbar.GoogleLens.A11yLabel)
+        XCTAssertEqual(accessoryAction?.menuElements, expectedMenuElements)
+    }
+
+    @MainActor
+    func testAddressToolbarConfig_withGoogleLensFeatureDisabled_doesNotConfigureEditingAccessoryButton() {
+        let state = createToolbarState()
+        let model = createSubject(withState: state)
+
+        XCTAssertNil(state.addressToolbar.editingAccessoryAction)
+        XCTAssertNil(model.addressToolbarConfig.locationViewConfiguration.editingAccessoryAction)
+    }
+
+    // MARK: - Search term in address bar
+
+    @MainActor
+    func testAddressToolbarConfig_whenFlagEnabled_andMultiWordSearchURL_displaysDecodedSearchTerm() {
+        let url = URL(string: "http://firefox.com/find?q=hello+world")
+        let model = createSubject(withState: createToolbarState(url: url), isSearchTermInAddressBarEnabled: true)
+        let locationConfig = model.addressToolbarConfig.locationViewConfiguration
+
+        XCTAssertEqual(locationConfig.searchTerm, "hello world")
+        XCTAssertTrue(locationConfig.shouldDisplaySearchTerm)
+    }
+
+    @MainActor
+    func testAddressToolbarConfig_whenFlagEnabled_andEmptySearchQuery_doesNotDisplaySearchTerm() {
+        let url = URL(string: "http://firefox.com/find?q=")
+        let model = createSubject(withState: createToolbarState(url: url), isSearchTermInAddressBarEnabled: true)
+        let locationConfig = model.addressToolbarConfig.locationViewConfiguration
+
+        XCTAssertFalse(locationConfig.shouldDisplaySearchTerm)
+    }
+
+    @MainActor
+    func testAddressToolbarConfig_whenFlagEnabled_andNonDefaultEngineSearchURL_displaysSearchTerm() {
+        let nonDefaultEngine = OpenSearchEngine(engineID: "other",
+                                                shortName: "Other",
+                                                telemetrySuffix: nil,
+                                                image: UIImage(),
+                                                searchTemplate: "http://example.com/search?q={searchTerms}",
+                                                suggestTemplate: nil,
+                                                trendingTemplate: nil,
+                                                isCustomEngine: true)
+        searchEnginesManager.orderedEngines.append(nonDefaultEngine)
+        let url = URL(string: "http://example.com/search?q=test")
+        let model = createSubject(withState: createToolbarState(url: url), isSearchTermInAddressBarEnabled: true)
+        let locationConfig = model.addressToolbarConfig.locationViewConfiguration
+
+        XCTAssertEqual(locationConfig.searchTerm, "test")
+        XCTAssertTrue(locationConfig.shouldDisplaySearchTerm)
+    }
+
+    @MainActor
+    func testAddressToolbarConfig_whenFlagEnabled_andDefaultEngineSearchURL_displaysSearchTerm() {
+        let url = URL(string: "http://firefox.com/find?q=test")
+        let model = createSubject(withState: createToolbarState(url: url), isSearchTermInAddressBarEnabled: true)
+        let locationConfig = model.addressToolbarConfig.locationViewConfiguration
+
+        XCTAssertEqual(locationConfig.url, url)
+        XCTAssertEqual(locationConfig.searchTerm, "test")
+        XCTAssertTrue(locationConfig.shouldDisplaySearchTerm)
+    }
+
+    @MainActor
+    func testAddressToolbarConfig_whenFlagDisabled_andDefaultEngineSearchURL_doesNotDisplaySearchTerm() {
+        let url = URL(string: "http://firefox.com/find?q=test")
+        let model = createSubject(withState: createToolbarState(url: url))
+        let locationConfig = model.addressToolbarConfig.locationViewConfiguration
+
+        XCTAssertEqual(locationConfig.url, url)
+        XCTAssertEqual(locationConfig.searchTerm, "test")
+        XCTAssertFalse(locationConfig.shouldDisplaySearchTerm)
+    }
+
+    @MainActor
+    func testAddressToolbarConfig_whenFlagEnabled_andNonSearchURL_doesNotDisplaySearchTerm() {
+        let url = URL(string: "https://mozilla.org")
+        let model = createSubject(withState: createToolbarState(url: url), isSearchTermInAddressBarEnabled: true)
+        let locationConfig = model.addressToolbarConfig.locationViewConfiguration
+
+        XCTAssertEqual(locationConfig.url, url)
+        XCTAssertNil(locationConfig.searchTerm)
+        XCTAssertFalse(locationConfig.shouldDisplaySearchTerm)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_whenFlagEnabled_andDefaultEngineSearchURL_displaysSearchTerm() {
+        let model = createSubject(withState: createToolbarState(), isSearchTermInAddressBarEnabled: true)
+        let tab = createTab(url: URL(string: "http://firefox.com/find?q=test"))
+        let locationConfig = model.getSkeletonAddressBarConfiguration(for: tab).locationViewConfiguration
+
+        XCTAssertEqual(locationConfig.searchTerm, "test")
+        XCTAssertTrue(locationConfig.shouldDisplaySearchTerm)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_whenFlagDisabled_andDefaultEngineSearchURL_doesNotDisplaySearchTerm() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = createTab(url: URL(string: "http://firefox.com/find?q=test"))
+        let locationConfig = model.getSkeletonAddressBarConfiguration(for: tab).locationViewConfiguration
+
+        XCTAssertEqual(locationConfig.searchTerm, "test")
+        XCTAssertFalse(locationConfig.shouldDisplaySearchTerm)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_uxConfiguration() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = MockTab(profile: mockProfile, windowUUID: .XCTestDefaultUUID)
+        let config = model.getSkeletonAddressBarConfiguration(for: tab)
+
+        XCTAssertNotNil(config.uxConfiguration)
+        XCTAssertFalse(config.shouldAnimate)
+    }
+
+    @MainActor
+    func testConfigureSkeletonAddressBar_emptyNavigationAndBrowserActions() {
+        let model = createSubject(withState: createToolbarState())
+        let tab = createTab(url: URL(string: "https://example.com"))
+        let config = model.getSkeletonAddressBarConfiguration(for: tab)
+
+        XCTAssertTrue(config.navigationActions.isEmpty)
+        XCTAssertTrue(config.browserActions.isEmpty)
+    }
+
+    @MainActor
+    func testToolbarColor_withTopToolbar_andNavigationToolbar_andNoTopTabs_hasAlternativeColor() {
+        let viewModel = createSubject(withState: createToolbarState(isShowingTopTabs: false))
+        XCTAssertTrue(viewModel.hasAlternativeLocationColor)
+    }
+
+    @MainActor
+    func testToolbarColor_withTopToolbar_andNavigationToolbar_andTopTabs_hasNormalColor() {
+        let viewModel = createSubject(withState: createToolbarState())
+        XCTAssertFalse(viewModel.hasAlternativeLocationColor)
+    }
+
+    @MainActor
+    func testToolbarColor_withTopToolbar_andNoNavigationToolbar_andTopTabs_hasNormalColor() {
+        let viewModel = createSubject(withState: createToolbarState(isShowingNavigationToolbar: false))
+        XCTAssertFalse(viewModel.hasAlternativeLocationColor)
+    }
+
+    @MainActor
+    func testToolbarColor_withTopToolbar_andNoNavigationToolbar_andNoTopTabs_hasNormalColor() {
+        let viewModel = createSubject(withState: createToolbarState(isShowingNavigationToolbar: false,
+                                                                    isShowingTopTabs: false))
+        XCTAssertFalse(viewModel.hasAlternativeLocationColor)
+    }
+
+    @MainActor
+    func testToolbarColor_withBottomToolbar_andNavigationToolbar_andTopTabs_hasNormalColor() {
+        let viewModel = createSubject(withState: createToolbarState(toolbarPosition: .bottom))
+        XCTAssertFalse(viewModel.hasAlternativeLocationColor)
+    }
+
+    @MainActor
+    func testToolbarColor_withBottomToolbar_andNoNavigationToolbar_andTopTabs_hasNormalColor() {
+        let viewModel = createSubject(withState: createToolbarState(toolbarPosition: .bottom,
+                                                                    isShowingNavigationToolbar: false))
+        XCTAssertFalse(viewModel.hasAlternativeLocationColor)
+    }
+
+    @MainActor
+    func testToolbarColor_withBottomToolbar_andNoNavigationToolbar_andNoTopTabs_hasNormalColor() {
+        let viewModel = createSubject(withState: createToolbarState(toolbarPosition: .bottom,
+                                                                    isShowingNavigationToolbar: false,
+                                                                    isShowingTopTabs: false))
+        XCTAssertFalse(viewModel.hasAlternativeLocationColor)
+    }
+
+    @MainActor
+    func testToolbarColor_withBottomToolbar_andNavigationToolbar_andNoTopTabs_hasNormalColor() {
+        let viewModel = createSubject(withState: createToolbarState(toolbarPosition: .bottom,
+                                                                    isShowingTopTabs: false))
+        XCTAssertFalse(viewModel.hasAlternativeLocationColor)
+    }
+
+    @MainActor
+    func testTabsLongPress_inAddressToolbar_providesMenuWithAndWithoutTopTabs() throws {
+        for isShowingTopTabs in [true, false] {
+            let menu = UIMenu(children: [UIAction(title: "New Tab") { _ in }])
+            var requestedAction: ToolbarActionConfiguration.ActionType?
+            let model = createSubject(
+                withState: createToolbarState(isShowingNavigationToolbar: false,
+                                              isShowingTopTabs: isShowingTopTabs),
+                longPressMenuProvider: { actionType in
+                    requestedAction = actionType
+                    return menu
+                }
+            )
+            let tabs = try XCTUnwrap(model.browserActions.first {
+                $0.a11yId == AccessibilityIdentifiers.Toolbar.tabsButton
+            })
+
+            guard case let .menu(provider) = tabs.longPressBehavior else {
+                return XCTFail("Expected a tabs long-press menu, isShowingTopTabs: \(isShowingTopTabs)")
+            }
+            XCTAssertTrue(provider() === menu)
+            XCTAssertEqual(requestedAction, .tabs)
+        }
+    }
+
+    @MainActor
+    func testTabsLongPress_inNavigationToolbar_providesMenuWithAndWithoutTopTabs() throws {
+        for isShowingTopTabs in [true, false] {
+            let state = createToolbarState(isShowingTopTabs: isShowingTopTabs)
+            let appState = AppState(presentedComponents: PresentedComponentsState(components: [.toolbar(state)]))
+            let lens = AddressToolbarContainerLens(appState: appState, uuid: windowUUID)
+
+            let menu = UIMenu(children: [UIAction(title: "New Tab") { _ in }])
+            var requestedAction: ToolbarActionConfiguration.ActionType?
+            let model = NavigationToolbarContainerModel(
+                lens: lens,
+                longPressMenuProvider: { actionType in
+                    requestedAction = actionType
+                    return menu
+                },
+                windowUUID: windowUUID
+            )
+            let tabs = try XCTUnwrap(model.actions.first {
+                $0.a11yId == AccessibilityIdentifiers.Toolbar.tabsButton
+            })
+
+            guard case let .menu(provider) = tabs.longPressBehavior else {
+                return XCTFail("Expected a tabs long-press menu, isShowingTopTabs: \(isShowingTopTabs)")
+            }
+            XCTAssertTrue(provider() === menu)
+            XCTAssertEqual(requestedAction, .tabs)
+        }
     }
 
     // MARK: - Private helpers
 
-    private func createSubject(withState state: ToolbarState) -> AddressToolbarContainerModel {
+    @MainActor
+    private func createSubject(
+        withState state: ToolbarState,
+        isSearchTermInAddressBarEnabled: Bool = false,
+        longPressMenuProvider: @escaping AddressToolbarContainerModel.LongPressMenuProvider = { _ in nil }
+    ) -> AddressToolbarContainerModel {
+        let appState = AppState(presentedComponents: PresentedComponentsState(components: [.toolbar(state)]))
+        let lens = AddressToolbarContainerLens(appState: appState, uuid: windowUUID)
+        let featureFlagsProvider = MockNimbusFeatureFlags()
+        if isSearchTermInAddressBarEnabled {
+            featureFlagsProvider.enabledFlags = [.searchTermInAddressBar]
+        }
         return AddressToolbarContainerModel(state: state,
+                                            addressToolbarContainerLens: lens,
                                             profile: mockProfile,
+                                            searchEnginesManager: searchEnginesManager,
+                                            featureFlagsProvider: featureFlagsProvider,
+                                            longPressMenuProvider: longPressMenuProvider,
                                             windowUUID: windowUUID)
     }
 
-    private func createAddressBarState(withSearchEngine: SearchEngineModel?) -> AddressBarState {
+    private func createAddressBarState(
+        withSearchEngine: SearchEngineModel?,
+        isGoogleLensEnabled: Bool = false,
+        url: URL? = nil
+    ) -> AddressBarState {
         return AddressBarState(windowUUID: windowUUID,
-                               navigationActions: [],
-                               leadingPageActions: [],
-                               trailingPageActions: [],
-                               browserActions: [],
+                               editingAccessoryAction: makeEditingAccessoryAction(
+                                   isGoogleLensEnabled: isGoogleLensEnabled
+                               ),
                                borderPosition: nil,
-                               url: nil,
+                               url: url,
                                searchTerm: nil,
-                               lockIconImageName: nil,
-                               lockIconNeedsTheming: true,
+                               hasOnlySecureContent: nil,
+                               isWebsiteMode: false,
                                safeListedURLImageName: nil,
                                isEditing: false,
                                shouldShowKeyboard: true,
                                shouldSelectSearchTerm: true,
                                isLoading: false,
                                readerModeState: nil,
+                               canSummarize: false,
+                               translationConfiguration: nil,
                                didStartTyping: false,
-                               isEmptySearch: true,
-                               alternativeSearchEngine: withSearchEngine)
+                               isEmptySearch: url == nil,
+                               alternativeSearchEngine: withSearchEngine,
+                               isNovaDesignEnabled: false)
+    }
+
+    private func makeEditingAccessoryAction(isGoogleLensEnabled: Bool) -> ToolbarActionConfiguration? {
+        guard isGoogleLensEnabled else { return nil }
+
+        return ToolbarActionConfiguration(
+            actionType: .googleLens,
+            iconName: StandardImageIdentifiers.Medium.logoGoogleLens,
+            isEnabled: true,
+            contextualHintType: TipKitHintType.googleLens.rawValue,
+            a11yLabel: .AddressToolbar.GoogleLens.A11yLabel,
+            a11yId: AccessibilityIdentifiers.Browser.AddressToolbar.googleLensButton,
+            menuElements: [
+                ToolbarMenuElementConfiguration(
+                    actionType: .googleLensTakePhoto,
+                    title: .AddressToolbar.GoogleLens.ContextMenu.TakePhotoActionTitle,
+                    imageName: StandardImageIdentifiers.Large.screenshot,
+                    a11yIdentifier: AccessibilityIdentifiers.Browser.AddressToolbar.googleLensTakePhotoAction
+                ),
+                ToolbarMenuElementConfiguration(
+                    actionType: .googleLensPhotoLibrary,
+                    title: .AddressToolbar.GoogleLens.ContextMenu.PhotoLibraryActionTitle,
+                    imageName: StandardImageIdentifiers.Large.image,
+                    a11yIdentifier: AccessibilityIdentifiers.Browser.AddressToolbar.googleLensPhotoLibraryAction
+                )
+            ])
     }
 
     private func createBasicNavigationBarState() -> NavigationBarState {
-        return NavigationBarState(windowUUID: windowUUID, actions: [], displayBorder: false)
+        return NavigationBarState(windowUUID: windowUUID,
+                                  displayBorder: false,
+                                  middleButton: .newTab,
+                                  isNovaDesignEnabled: false)
     }
 
-    private func createBasicToolbarState() -> ToolbarState {
+    private func createToolbarState(toolbarPosition: AddressToolbarPosition = .top,
+                                    isShowingNavigationToolbar: Bool = true,
+                                    isShowingTopTabs: Bool = true,
+                                    isGoogleLensEnabled: Bool = false,
+                                    url: URL? = nil) -> ToolbarState {
         return ToolbarState(windowUUID: windowUUID,
-                            toolbarPosition: .top,
+                            toolbarPosition: toolbarPosition,
                             toolbarLayout: .version1,
+                            tabTrayButtonStyle: .number,
                             isPrivateMode: false,
-                            addressToolbar: createAddressBarState(withSearchEngine: nil),
+                            addressToolbar: createAddressBarState(
+                                withSearchEngine: nil,
+                                isGoogleLensEnabled: isGoogleLensEnabled,
+                                url: url
+                            ),
                             navigationToolbar: createBasicNavigationBarState(),
-                            isShowingNavigationToolbar: true,
-                            isShowingTopTabs: true,
+                            isShowingNavigationToolbar: isShowingNavigationToolbar,
+                            isShowingTopTabs: isShowingTopTabs,
                             canGoBack: true,
                             canGoForward: true,
                             numberOfTabs: 1,
                             showMenuWarningBadge: false,
-                            isNewTabFeatureEnabled: false,
-                            canShowDataClearanceAction: false,
                             canShowNavigationHint: false,
                             shouldAnimate: false,
-                            isTranslucent: false)
+                            isTranslucent: false,
+                            isTranslationsEnabled: true,
+                            previousTabScreenshot: nil,
+                            nextTabScreenshot: nil,
+                            isAddressBarMinimized: false,
+                            isAccessoryViewVisible: false)
     }
 
     private func createToolbarStateWithAlternativeSearchEngine(searchEngine: SearchEngineModel) -> ToolbarState {
         return ToolbarState(windowUUID: windowUUID,
                             toolbarPosition: .top,
                             toolbarLayout: .version1,
+                            tabTrayButtonStyle: .number,
                             isPrivateMode: false,
                             addressToolbar: createAddressBarState(withSearchEngine: searchEngine),
                             navigationToolbar: createBasicNavigationBarState(),
@@ -182,10 +566,24 @@ final class AddressToolbarContainerModelTests: XCTestCase {
                             canGoForward: true,
                             numberOfTabs: 1,
                             showMenuWarningBadge: false,
-                            isNewTabFeatureEnabled: false,
-                            canShowDataClearanceAction: false,
                             canShowNavigationHint: false,
                             shouldAnimate: false,
-                            isTranslucent: false)
+                            isTranslucent: false,
+                            isTranslationsEnabled: true,
+                            previousTabScreenshot: nil,
+                            nextTabScreenshot: nil,
+                            isAddressBarMinimized: false,
+                            isAccessoryViewVisible: false)
+    }
+
+    @MainActor
+    private func createTab(url: URL?, hasOnlySecureContent: Bool = false) -> Tab {
+        let tab = MockTab(profile: mockProfile, windowUUID: .XCTestDefaultUUID)
+        tab.url = url
+        let mockWebView = MockTabWebView(tab: tab)
+        mockWebView.mockHasOnlySecureContent = hasOnlySecureContent
+        tab.webView = mockWebView
+
+        return tab
     }
 }

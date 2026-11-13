@@ -5,7 +5,9 @@
 import Common
 import Foundation
 import Glean
+import Shared
 
+import class MozillaAppServices.NimbusGleanPings
 import func MozillaAppServices.getCalculatedAttributes
 import func MozillaAppServices.getLocaleTag
 import struct MozillaAppServices.JsonObject
@@ -26,7 +28,8 @@ extension Int32? {
     }
 }
 
-class RecordedNimbusContext: RecordedContext {
+/// TODO(FXIOS-12942): Implement proper thread-safety
+final class RecordedNimbusContext: RecordedContext, @unchecked Sendable {
     /**
      * The following constants are string constants of the keys that appear in the [EVENT_QUERIES] map.
      */
@@ -44,12 +47,17 @@ class RecordedNimbusContext: RecordedContext {
     var isDefaultBrowser: Bool
     var isBottomToolbarUser: Bool
     var hasEnabledTipsNotifications: Bool
+    var hasAcceptedTermsOfUse: Bool
+    var userDisabledAi: Bool
+    var isAppleIntelligenceAvailable: Bool
+    var cannotUseAppleIntelligence: Bool
     var appVersion: String?
     var region: String?
     var language: String?
     var locale: String
     var daysSinceInstall: Int32?
     var daysSinceUpdate: Int32?
+    var touExperiencePoints: Int32?
 
     private var eventQueries: [String: String]
     private var eventQueryValues: [String: Double] = [:]
@@ -60,8 +68,12 @@ class RecordedNimbusContext: RecordedContext {
          isDefaultBrowser: Bool,
          isBottomToolbarUser: Bool,
          hasEnabledTipsNotifications: Bool,
+         hasAcceptedTermsOfUse: Bool,
+         userDisabledAi: Bool,
+         isAppleIntelligenceAvailable: Bool,
+         cannotUseAppleIntelligence: Bool,
          eventQueries: [String: String] = RecordedNimbusContext.EVENT_QUERIES,
-         isPhone: Bool = UIDevice.current.userInterfaceIdiom == .phone,
+         isPhone: Bool = UIDeviceDetails.userInterfaceIdiom == .phone,
          bundle: Bundle = Bundle.main,
          logger: Logger = DefaultLogger.shared) {
         self.logger = logger
@@ -73,6 +85,10 @@ class RecordedNimbusContext: RecordedContext {
         self.isDefaultBrowser = isDefaultBrowser
         self.isBottomToolbarUser = isBottomToolbarUser
         self.hasEnabledTipsNotifications = hasEnabledTipsNotifications
+        self.hasAcceptedTermsOfUse = hasAcceptedTermsOfUse
+        self.userDisabledAi  = userDisabledAi
+        self.isAppleIntelligenceAvailable = isAppleIntelligenceAvailable
+        self.cannotUseAppleIntelligence = cannotUseAppleIntelligence
 
         let info = bundle.infoDictionary ?? [:]
         appVersion = info["CFBundleShortVersionString"] as? String
@@ -103,6 +119,7 @@ class RecordedNimbusContext: RecordedContext {
         daysSinceUpdate = calculatedAttributes.daysSinceUpdate
         language = calculatedAttributes.language
         region = calculatedAttributes.region
+        touExperiencePoints = Experiments.touExperiencePoints(region: region)
         self.logger.log("init end", level: .debug, category: .experiments)
     }
 
@@ -124,6 +141,10 @@ class RecordedNimbusContext: RecordedContext {
      */
     func record() {
         logger.log("record start", level: .debug, category: .experiments)
+
+        // Bring the ping into scope so that Glean knows it exists and includes NimbusSystem.recordedNimbusContext
+        _ = NimbusGleanPings.nimbusTargetingContext
+
         let eventQueryValuesObject = GleanMetrics.NimbusSystem.RecordedNimbusContextObjectItemEventQueryValuesObject(
             daysOpenedInLast28: eventQueryValues[RecordedNimbusContext.DAYS_OPENED_IN_LAST_28].toInt64()
         )
@@ -141,10 +162,14 @@ class RecordedNimbusContext: RecordedContext {
                 region: region,
                 isDefaultBrowser: isDefaultBrowser,
                 isBottomToolbarUser: isBottomToolbarUser,
-                hasEnabledTipsNotifications: hasEnabledTipsNotifications
+                hasEnabledTipsNotifications: hasEnabledTipsNotifications,
+                hasAcceptedTermsOfUse: hasAcceptedTermsOfUse,
+                userDisabledAi: userDisabledAi,
+                isAppleIntelligenceAvailable: isAppleIntelligenceAvailable,
+                cannotUseAppleIntelligence: cannotUseAppleIntelligence,
+                touExperiencePoints: touExperiencePoints.toInt64()
             )
         )
-        GleanMetrics.Pings.shared.nimbus.submit()
         logger.log("record end", level: .debug, category: .experiments)
     }
 
@@ -184,13 +209,18 @@ class RecordedNimbusContext: RecordedContext {
             "is_default_browser": isDefaultBrowser,
             "is_bottom_toolbar_user": isBottomToolbarUser,
             "has_enabled_tips_notifications": hasEnabledTipsNotifications,
+            "has_accepted_terms_of_use": hasAcceptedTermsOfUse,
+            "user_disabled_ai": userDisabledAi,
+            "is_apple_intelligence_available": isAppleIntelligenceAvailable,
+            "cannot_use_apple_intelligence": cannotUseAppleIntelligence,
+            "tou_experience_points": touExperiencePoints as Any
         ]),
             let jsonString = NSString(data: data, encoding: String.Encoding.utf8.rawValue) as? String
         else {
             logger.log("toJson error thrown while creating JSON string", level: .warning, category: .experiments)
             return "{}"
         }
-        logger.log("toJson end", level: .debug, category: .experiments, extra: ["json": jsonString])
+        logger.log("toJson end: \(jsonString)", level: .debug, category: .experiments)
         return jsonString
     }
 }

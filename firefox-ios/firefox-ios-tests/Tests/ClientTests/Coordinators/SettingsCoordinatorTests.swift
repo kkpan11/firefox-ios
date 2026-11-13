@@ -7,29 +7,29 @@ import XCTest
 @testable import Client
 import SwiftUI
 
+@MainActor
 final class SettingsCoordinatorTests: XCTestCase {
     private var mockRouter: MockRouter!
     private var wallpaperManager: WallpaperManagerMock!
     private var delegate: MockSettingsCoordinatorDelegate!
     private var mockSettingsVC: MockAppSettingsScreen!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: MockProfile())
         self.mockRouter = MockRouter(navigationController: MockNavigationController())
         self.wallpaperManager = WallpaperManagerMock()
         self.delegate = MockSettingsCoordinatorDelegate()
         self.mockSettingsVC = MockAppSettingsScreen()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         self.mockRouter = nil
         self.wallpaperManager = nil
         self.delegate = nil
         self.mockSettingsVC = nil
         DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
     func testEmptyChildren_whenCreated() {
@@ -109,7 +109,7 @@ final class SettingsCoordinatorTests: XCTestCase {
         subject.start(with: .theme)
 
         XCTAssertEqual(mockRouter.pushCalled, 1)
-        XCTAssertTrue(mockRouter.pushedViewController is ThemeSettingsController)
+        XCTAssertTrue(mockRouter.pushedViewController is UIHostingController<AppearanceSettingsView>)
     }
 
     func testWallpaperSettingsRoute_cannotBeShown_showsWallpaperSettingsPage() throws {
@@ -147,7 +147,9 @@ final class SettingsCoordinatorTests: XCTestCase {
         subject.start(with: .browser)
 
         XCTAssertEqual(mockRouter.pushCalled, 1)
-        XCTAssertTrue(mockRouter.pushedViewController is BrowsingSettingsViewController)
+        let viewController = mockRouter.pushedViewController as? BrowsingSettingsViewController
+        XCTAssertNotNil(viewController)
+        XCTAssertTrue(viewController?.parentCoordinator === subject)
     }
 
     func testToolbarSettingsRoute_showsToolbarSettingsPage() throws {
@@ -156,7 +158,7 @@ final class SettingsCoordinatorTests: XCTestCase {
         subject.start(with: .toolbar)
 
         XCTAssertEqual(mockRouter.pushCalled, 1)
-        XCTAssertTrue(mockRouter.pushedViewController is SearchBarSettingsViewController)
+        XCTAssertTrue(mockRouter.pushedViewController is UIHostingController<AddressBarSettingsView>)
     }
 
     func testTopSitesSettingsRoute_showsTopSitesSettingsPage() throws {
@@ -184,6 +186,73 @@ final class SettingsCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(mockRouter.pushCalled, 1)
         XCTAssertTrue(mockRouter.pushedViewController is UIHostingController<AppIconSelectionView>)
+    }
+
+    func testAppIconSettingsRoute_whenStackIsDeep_replacesNavigationStack() throws {
+        let subject = createSubject()
+        let root = try XCTUnwrap(mockRouter.rootViewController)
+        let navigationController = try XCTUnwrap(mockRouter.navigationController as? MockNavigationController)
+        navigationController.viewControllers = [root, UIViewController()]
+
+        subject.handle(route: .settings(section: .appIcon))
+
+        XCTAssertEqual(mockRouter.pushCalled, 0)
+        XCTAssertEqual(navigationController.setViewControllersCalled, 1)
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+        XCTAssertTrue(navigationController.viewControllers.first === root)
+        XCTAssertTrue(navigationController.viewControllers.last is UIHostingController<AppIconSelectionView>)
+    }
+
+    func testAppIconSettingsRoute_whenAlreadyOnAppIcon_doesNotPushDuplicate() throws {
+        let subject = createSubject()
+        let root = try XCTUnwrap(mockRouter.rootViewController)
+        let navigationController = try XCTUnwrap(mockRouter.navigationController as? MockNavigationController)
+        let existingAppIcon = UIHostingController(
+            rootView: AppIconSelectionView(windowUUID: .XCTestDefaultUUID)
+        )
+        navigationController.viewControllers = [root, existingAppIcon]
+
+        subject.handle(route: .settings(section: .appIcon))
+
+        XCTAssertEqual(mockRouter.pushCalled, 0)
+        XCTAssertEqual(navigationController.viewControllers.count, 2)
+        XCTAssertTrue(navigationController.viewControllers.first === root)
+        XCTAssertTrue(navigationController.viewControllers.last is UIHostingController<AppIconSelectionView>)
+    }
+
+    func testAppIconSettingsRoute_calledTwice_pushesOnlyOnce() throws {
+        let subject = createSubject()
+
+        subject.start(with: .appIcon)
+        subject.start(with: .appIcon)
+
+        XCTAssertEqual(mockRouter.pushCalled, 1)
+    }
+
+    func testGeneralSettingsRoute_whenStackIsDeep_popsToRoot() throws {
+        let subject = createSubject()
+        let root = try XCTUnwrap(mockRouter.rootViewController)
+        let navigationController = try XCTUnwrap(mockRouter.navigationController as? MockNavigationController)
+        navigationController.viewControllers = [root, UIViewController()]
+
+        subject.handle(route: .settings(section: .general))
+
+        XCTAssertEqual(mockRouter.popToViewControllerCalled, 1)
+        XCTAssertEqual(mockRouter.pushCalled, 0)
+        XCTAssertEqual(navigationController.setViewControllersCalled, 0)
+    }
+
+    func testHandleSettingsRoute_whenStackIsDeep_replacesNavigationStack() throws {
+        let subject = createSubject()
+        let root = try XCTUnwrap(mockRouter.rootViewController)
+        let navigationController = try XCTUnwrap(mockRouter.navigationController as? MockNavigationController)
+        navigationController.viewControllers = [root, UIViewController()]
+
+        _ = testCanHandleAndHandle(subject, route: .settings(section: .appIcon))
+
+        XCTAssertEqual(mockRouter.pushCalled, 0)
+        XCTAssertEqual(navigationController.setViewControllersCalled, 1)
+        XCTAssertTrue(navigationController.viewControllers.last is UIHostingController<AppIconSelectionView>)
     }
 
     // MARK: - Delegate
@@ -251,7 +320,8 @@ final class SettingsCoordinatorTests: XCTestCase {
         subject.showDevicePassCode()
 
         XCTAssertEqual(mockRouter.pushCalled, 1)
-        XCTAssertTrue(mockRouter.pushedViewController is DevicePasscodeRequiredViewController)
+        let passcodeViewController = mockRouter.pushedViewController as? DevicePasscodeRequiredViewController
+        XCTAssertEqual(passcodeViewController?.shouldUsePrivateOverride, true)
     }
 
     func testCreditCardSettings_showsCreditCardVC() {
@@ -364,13 +434,22 @@ final class SettingsCoordinatorTests: XCTestCase {
         XCTAssertTrue(mockRouter.pushedViewController is SiriSettingsViewController)
     }
 
+    func testGeneralSettingsDelegate_pushedAIControls() {
+        let subject = createSubject()
+
+        subject.pressedAIControls()
+
+        XCTAssertEqual(mockRouter.pushCalled, 1)
+        XCTAssertEqual(mockRouter.pushedViewController?.title, "AI Controls")
+    }
+
     func testGeneralSettingsDelegate_pushedToolbar() {
         let subject = createSubject()
 
         subject.pressedToolbar()
 
         XCTAssertEqual(mockRouter.pushCalled, 1)
-        XCTAssertTrue(mockRouter.pushedViewController is SearchBarSettingsViewController)
+        XCTAssertTrue(mockRouter.pushedViewController is UIHostingController<AddressBarSettingsView>)
     }
 
     func testGeneralSettingsDelegate_pushedTheme() {
@@ -379,7 +458,45 @@ final class SettingsCoordinatorTests: XCTestCase {
         subject.pressedTheme()
 
         XCTAssertEqual(mockRouter.pushCalled, 1)
-        XCTAssertTrue(mockRouter.pushedViewController is ThemeSettingsController)
+        XCTAssertTrue(mockRouter.pushedViewController is UIHostingController<AppearanceSettingsView>)
+    }
+
+    func testGeneralSettingsDelegate_pushedQuickAnswersSettings() {
+        let subject = createSubject()
+
+        subject.pressedQuickAnswers()
+
+        XCTAssertEqual(mockRouter.pushCalled, 1)
+        XCTAssertTrue(mockRouter.pushedViewController is QuickAnswersSettingsViewController)
+    }
+
+    func testGeneralSettingsDelegate_pushedSummarizeSettings() {
+        let subject = createSubject()
+
+        subject.pressedSummarize()
+
+        XCTAssertEqual(mockRouter.pushCalled, 1)
+        XCTAssertTrue(mockRouter.pushedViewController is SummarizeSettingsViewController)
+    }
+
+    func testGeneralSettingsDelegate_pushedTranslationSettings_withLanguagePickerDisabled() {
+        setLanguagePickerEnabled(false)
+        let subject = createSubject()
+
+        subject.pressedTranslation()
+
+        XCTAssertEqual(mockRouter.pushCalled, 1)
+        XCTAssertTrue(mockRouter.pushedViewController is TranslationSettingsViewController)
+    }
+
+    func testGeneralSettingsDelegate_pushedTranslationSettings_withLanguagePickerEnabled() {
+        setLanguagePickerEnabled(true)
+        let subject = createSubject()
+
+        subject.pressedTranslation()
+
+        XCTAssertEqual(mockRouter.pushCalled, 1)
+        XCTAssertTrue(mockRouter.pushedViewController is TranslationPickerSettingsViewController)
     }
 
     // MARK: - BrowsingSettingsDelegate
@@ -432,12 +549,36 @@ final class SettingsCoordinatorTests: XCTestCase {
         XCTAssertTrue(mockRouter.pushedViewController is ContentBlockerSettingViewController)
     }
 
+    func testPrivacySettingsDelegate_pushedVPN() {
+        guard #available(iOS 17.0, *) else { return }
+        let subject = createSubject()
+
+        subject.pressedVPN()
+
+        XCTAssertEqual(mockRouter.pushCalled, 1)
+        XCTAssertTrue(mockRouter.pushedViewController is VPNSettingsViewController)
+    }
+
     func testPrivacySettingsDelegate_handlePasswordRoute() {
         let subject = createSubject()
         subject.settingsViewController = mockSettingsVC
 
         subject.pressedPasswords()
 
+        XCTAssertEqual(mockSettingsVC.handleRouteCalled, 1)
+        XCTAssertEqual(mockSettingsVC.savedRoute, .password)
+    }
+
+    func testPasswordSettingsRoute_whenStackIsDeep_handlesWithoutPopping() throws {
+        let subject = createSubject()
+        subject.settingsViewController = mockSettingsVC
+        let root = try XCTUnwrap(mockRouter.rootViewController)
+        let navigationController = try XCTUnwrap(mockRouter.navigationController as? MockNavigationController)
+        navigationController.viewControllers = [root, UIViewController()]
+
+        subject.pressedPasswords()
+
+        XCTAssertEqual(mockRouter.popToViewControllerCalled, 0)
         XCTAssertEqual(mockSettingsVC.handleRouteCalled, 1)
         XCTAssertEqual(mockSettingsVC.savedRoute, .password)
     }
@@ -549,8 +690,9 @@ final class SettingsCoordinatorTests: XCTestCase {
             router: mockRouter,
             wallpaperManager: wallpaperManager,
             tabManager: MockTabManager(),
+            relayController: MockRelayController(),
             gleanUsageReportingMetricsService: MockGleanUsageReportingMetricsService(
-                profile: MockProfile()
+                profile: makeProfile()
             )
         )
         trackForMemoryLeaks(subject)
@@ -561,6 +703,12 @@ final class SettingsCoordinatorTests: XCTestCase {
         let result = subject.canHandle(route: route)
         subject.handle(route: route)
         return result
+    }
+
+    private func setLanguagePickerEnabled(_ enabled: Bool) {
+        FxNimbus.shared.features.translationsFeature.with { _ in
+            TranslationsFeature(languagePickerEnabled: enabled)
+        }
     }
 }
 

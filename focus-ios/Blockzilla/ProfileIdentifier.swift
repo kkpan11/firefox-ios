@@ -8,8 +8,8 @@ import Glean
 
 // MARK: - ProfileIdentifier Implementation
 
-class ProfileIdentifier {
-    struct Constants {
+final class ProfileIdentifier {
+    enum Constants {
         static let profileIdKey = "profileId"
         static let canaryUUID = UUID(uuidString: "beefbeef-beef-beef-beef-beeefbeefbee")!
         static let fileName = "profile_identifier.txt"

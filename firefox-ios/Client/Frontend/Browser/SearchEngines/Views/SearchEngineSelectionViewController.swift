@@ -15,7 +15,7 @@ class SearchEngineSelectionViewController: UIViewController,
     // MARK: - Properties
     var notificationCenter: NotificationProtocol
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var currentWindowUUID: UUID? { return windowUUID }
 
     weak var coordinator: SearchEngineSelectionCoordinator?
@@ -50,7 +50,15 @@ class SearchEngineSelectionViewController: UIViewController,
     }
 
     deinit {
-        unsubscribeFromRedux()
+        // TODO: FXIOS-13097 This is a work around until we can leverage isolated deinits
+        guard Thread.isMainThread else {
+            assertionFailure("TabSwipeGestureHandler was not deallocated on the main thread. Observer was not removed")
+            return
+        }
+
+        MainActor.assumeIsolated {
+            unsubscribeFromRedux()
+        }
     }
 
     override func viewDidLoad() {
@@ -60,7 +68,9 @@ class SearchEngineSelectionViewController: UIViewController,
         popoverPresentationController?.delegate = self // For iPad setup
 
         setupView()
-        listenForThemeChange(view)
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
 
         store.dispatch(
             SearchEngineSelectionAction(
@@ -93,10 +103,10 @@ class SearchEngineSelectionViewController: UIViewController,
 
     func subscribeToRedux() {
         store.dispatch(
-            ScreenAction(
+            ComponentAction(
                 windowUUID: windowUUID,
-                actionType: ScreenActionType.showScreen,
-                screen: .searchEngineSelection
+                actionType: ComponentActionType.addComponent,
+                component: .searchEngineSelection
             )
         )
 
@@ -110,10 +120,10 @@ class SearchEngineSelectionViewController: UIViewController,
 
     func unsubscribeFromRedux() {
         store.dispatch(
-            ScreenAction(
+            ComponentAction(
                 windowUUID: windowUUID,
-                actionType: ScreenActionType.closeScreen,
-                screen: .searchEngineSelection
+                actionType: ComponentActionType.removeComponent,
+                component: .searchEngineSelection
             )
         )
     }

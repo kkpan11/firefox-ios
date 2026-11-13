@@ -7,6 +7,8 @@ import ToolbarKit
 import Shared
 
 final class AddressToolbarContainerModel: Equatable {
+    typealias LongPressMenuProvider = @MainActor (ToolbarActionConfiguration.ActionType) -> UIMenu?
+
     let toolbarHelper: ToolbarHelperInterface
 
     let navigationActions: [ToolbarElement]
@@ -19,28 +21,42 @@ final class AddressToolbarContainerModel: Equatable {
     let searchEngineName: String
     let searchEngineImage: UIImage
     let searchEnginesManager: SearchEnginesManager
+    let lockIconButtonA11yId: String?
     let lockIconImageName: String?
     let lockIconNeedsTheming: Bool
     let safeListedURLImageName: String?
     let url: URL?
+    let isEmptySearch: Bool
     let searchTerm: String?
     let isEditing: Bool
     let didStartTyping: Bool
     let shouldShowKeyboard: Bool
+    let editingAccessoryAction: ToolbarElement?
     let isPrivateMode: Bool
     let shouldSelectSearchTerm: Bool
     let shouldDisplayCompact: Bool
     let canShowNavigationHint: Bool
     let shouldAnimate: Bool
+    let hasAlternativeLocationColor: Bool
+    let isAddressBarMinimized: Bool
+    let isAccessoryViewVisible: Bool
+    let isSearchTermInAddressBarEnabled: Bool
 
     let windowUUID: UUID
+    private let longPressMenuProvider: LongPressMenuProvider
 
+    @MainActor
     var addressToolbarConfig: AddressToolbarConfiguration {
-        let term = searchTerm ?? searchTermFromURL(url)
-        let backgroundAlpha = toolbarHelper.backgroundAlpha()
+        let locationURL = isEmptySearch ? nil : url
+        let urlSearchTerm = searchTermFromURL(locationURL)
+        let term = searchTerm ?? urlSearchTerm
+        let backgroundAlpha = toolbarHelper.glassEffectAlpha
         let shouldBlur = toolbarHelper.shouldBlur()
-        let uxConfiguration: AddressToolbarUXConfiguration = .experiment(backgroundAlpha: backgroundAlpha,
-                                                                         shouldBlur: shouldBlur)
+        let uxConfiguration: AddressToolbarUXConfiguration = .experiment(
+            backgroundAlpha: backgroundAlpha,
+            isAddressBarMinimized: isAddressBarMinimized,
+            shouldBlur: shouldBlur,
+            hasAlternativeLocationColor: hasAlternativeLocationColor)
 
         var droppableUrl: URL?
         if let url, !InternalURL.isValid(url: url) {
@@ -53,7 +69,7 @@ final class AddressToolbarContainerModel: Equatable {
                 format: .AddressToolbar.SearchEngineA11yLabel,
                 searchEngineName
             ),
-            lockIconButtonA11yId: AccessibilityIdentifiers.Browser.AddressToolbar.lockIcon,
+            lockIconButtonA11yId: lockIconButtonA11yId,
             lockIconButtonA11yLabel: .AddressToolbar.PrivacyAndSecuritySettingsA11yLabel,
             urlTextFieldPlaceholder: .AddressToolbar.LocationPlaceholder,
             urlTextFieldA11yId: AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField,
@@ -61,13 +77,15 @@ final class AddressToolbarContainerModel: Equatable {
             lockIconImageName: lockIconImageName,
             lockIconNeedsTheming: lockIconNeedsTheming,
             safeListedURLImageName: safeListedURLImageName,
-            url: url,
+            url: locationURL,
             droppableUrl: droppableUrl,
-            searchTerm: term,
+            searchTerm: isEmptySearch ? nil : term,
+            shouldDisplaySearchTerm: shouldDisplaySearchTerm(urlSearchTerm),
             isEditing: isEditing,
             didStartTyping: didStartTyping,
             shouldShowKeyboard: shouldShowKeyboard,
             shouldSelectSearchTerm: shouldSelectSearchTerm,
+            editingAccessoryAction: editingAccessoryAction,
             onTapLockIcon: { button in
                 let action = ToolbarMiddlewareAction(buttonType: .trackingProtection,
                                                      buttonTapped: button,
@@ -75,45 +93,40 @@ final class AddressToolbarContainerModel: Equatable {
                                                      windowUUID: self.windowUUID,
                                                      actionType: ToolbarMiddlewareActionType.didTapButton)
                 store.dispatch(action)
-            },
-            onLongPress: {
-                let action = ToolbarMiddlewareAction(buttonType: .locationView,
-                                                     gestureType: .longPress,
-                                                     windowUUID: self.windowUUID,
-                                                     actionType: ToolbarMiddlewareActionType.didTapButton)
-                store.dispatch(action)
             })
         return AddressToolbarConfiguration(
             locationViewConfiguration: locationViewConfiguration,
+            longPressMenuProvider: { self.longPressMenuProvider(.locationView) },
             navigationActions: navigationActions,
             leadingPageActions: leadingPageActions,
             trailingPageActions: trailingPageActions,
             browserActions: browserActions,
-            borderPosition: borderPosition,
+            borderConfiguration: AddressToolbarBorderConfiguration(
+                a11yIdentifier: AccessibilityIdentifiers.Toolbar.topBorder,
+                borderPosition: borderPosition
+            ),
             uxConfiguration: uxConfiguration,
-            shouldAnimate: shouldAnimate)
+            shouldAnimate: shouldAnimate
+        )
     }
 
     /// Returns a skeleton (placeholder) `AddressToolbarConfiguration` for the address bar.
     /// This method is intended to provide a minimal configuration for loading or placeholder states,
     /// with only essential actions and UI elements set up. Most properties are left empty or set to default values.
-    /// - Parameters:
-    ///   - url: The URL to display in the address bar, if any.
-    ///   - isReaderModeAvailableOrActive: Indicates if reader mode is available or active,
+    /// - Parameter tab: The tab whose URL, secure content status are used to configure
+    /// and determine which page actions should be displayed.
     ///   used to determine trailing actions.
     /// - Returns: A skeleton `AddressToolbarConfiguration` suitable for placeholder or loading UI.
-    func configureSkeletonAddressBar(
-        with url: URL?,
-        isReaderModeAvailableOrActive: Bool?
-    ) -> AddressToolbarConfiguration {
-        let backgroundAlpha = toolbarHelper.backgroundAlpha()
+    @MainActor
+    func getSkeletonAddressBarConfiguration(for tab: Tab?) -> AddressToolbarConfiguration {
+        let backgroundAlpha = toolbarHelper.glassEffectAlpha
         let shouldBlur = toolbarHelper.shouldBlur()
         let uxConfiguration: AddressToolbarUXConfiguration = .experiment(backgroundAlpha: backgroundAlpha,
                                                                          shouldBlur: shouldBlur)
         // Leading Page Actions
         let shareAction: ToolbarActionConfiguration = .init(
             actionType: .share,
-            iconName: StandardImageIdentifiers.Medium.share,
+            iconName: StandardImageIdentifiers.Medium.shareApple,
             isEnabled: true,
             hasCustomColor: true,
             a11yLabel: "",
@@ -121,15 +134,6 @@ final class AddressToolbarContainerModel: Equatable {
         )
 
         // Trailing Page Actions
-        let readerModeAction: ToolbarActionConfiguration = .init(
-            actionType: .readerMode,
-            iconName: StandardImageIdentifiers.Medium.readerView,
-            isEnabled: true,
-            hasCustomColor: true,
-            a11yLabel: "",
-            a11yId: AccessibilityIdentifiers.Toolbar.readerModeButton
-        )
-
         let reloadAction: ToolbarActionConfiguration = .init(
             actionType: .reload,
             iconName: StandardImageIdentifiers.Medium.arrowClockwise,
@@ -142,17 +146,30 @@ final class AddressToolbarContainerModel: Equatable {
         var leadingPageElements = [ToolbarElement]()
         var trailingPageElements = [ToolbarElement]()
 
+        let url = tab?.url?.displayURL
         if url != nil {
-            leadingPageElements = Self.mapActions([shareAction], isShowingTopTabs: false, windowUUID: windowUUID)
-            trailingPageElements = isReaderModeAvailableOrActive == true
-            ? Self.mapActions([readerModeAction, reloadAction], isShowingTopTabs: false, windowUUID: windowUUID)
-            : Self.mapActions([reloadAction], isShowingTopTabs: false, windowUUID: windowUUID)
+            leadingPageElements = Self.mapActions([shareAction], windowUUID: windowUUID)
+            trailingPageElements = Self.mapActions([reloadAction], windowUUID: windowUUID)
         }
 
+        var lockIconImageName: String?
+        var lockIconNeedsTheming = true
+
+        let hasSecureContent = tab?.webView?.hasOnlySecureContent == true
+        let isWebsiteMode = tab?.url?.isReaderModeURL == false
+
+        if isWebsiteMode {
+            lockIconImageName = hasSecureContent ?
+                StandardImageIdentifiers.Small.shieldCheckmarkFill :
+                StandardImageIdentifiers.Small.shieldSlashFillMulticolor
+            lockIconNeedsTheming = hasSecureContent
+        }
+
+        let urlSearchTerm = searchTermFromURL(url)
         let locationViewConfiguration = LocationViewConfiguration(
             searchEngineImageViewA11yId: "",
             searchEngineImageViewA11yLabel: "",
-            lockIconButtonA11yId: "",
+            lockIconButtonA11yId: nil,
             lockIconButtonA11yLabel: "",
             urlTextFieldPlaceholder: .AddressToolbar.LocationPlaceholder,
             urlTextFieldA11yId: "",
@@ -162,13 +179,13 @@ final class AddressToolbarContainerModel: Equatable {
             safeListedURLImageName: safeListedURLImageName,
             url: url,
             droppableUrl: nil,
-            searchTerm: nil,
+            searchTerm: urlSearchTerm,
+            shouldDisplaySearchTerm: shouldDisplaySearchTerm(urlSearchTerm),
             isEditing: false,
             didStartTyping: false,
             shouldShowKeyboard: false,
             shouldSelectSearchTerm: false,
-            onTapLockIcon: { _ in },
-            onLongPress: {})
+            onTapLockIcon: { _ in })
 
         return AddressToolbarConfiguration(
             locationViewConfiguration: locationViewConfiguration,
@@ -176,45 +193,67 @@ final class AddressToolbarContainerModel: Equatable {
             leadingPageActions: leadingPageElements,
             trailingPageActions: trailingPageElements,
             browserActions: [],
-            borderPosition: borderPosition,
+            borderConfiguration: AddressToolbarBorderConfiguration(
+                a11yIdentifier: AccessibilityIdentifiers.Toolbar.topBorder,
+                borderPosition: borderPosition
+            ),
             uxConfiguration: uxConfiguration,
             shouldAnimate: shouldAnimate
         )
     }
 
+    @MainActor
     init(
         state: ToolbarState,
+        addressToolbarContainerLens: AddressToolbarContainerLens,
         profile: Profile,
         searchEnginesManager: SearchEnginesManager = AppContainer.shared.resolve(),
         toolbarHelper: ToolbarHelperInterface = ToolbarHelper(),
+        featureFlagsProvider: FeatureFlagProviding = AppContainer.shared.resolve(),
+        longPressMenuProvider: @escaping LongPressMenuProvider = { _ in nil },
         windowUUID: UUID
     ) {
+        self.longPressMenuProvider = longPressMenuProvider
         self.borderPosition = state.addressToolbar.borderPosition
-        self.navigationActions = AddressToolbarContainerModel.mapActions(state.addressToolbar.navigationActions,
-                                                                         isShowingTopTabs: state.isShowingTopTabs,
-                                                                         windowUUID: windowUUID)
-        self.leadingPageActions = AddressToolbarContainerModel.mapActions(state.addressToolbar.leadingPageActions,
-                                                                          isShowingTopTabs: state.isShowingTopTabs,
-                                                                          windowUUID: windowUUID)
-        self.trailingPageActions = AddressToolbarContainerModel.mapActions(state.addressToolbar.trailingPageActions,
-                                                                           isShowingTopTabs: state.isShowingTopTabs,
-                                                                           windowUUID: windowUUID)
-        self.browserActions = AddressToolbarContainerModel.mapActions(state.addressToolbar.browserActions,
-                                                                      isShowingTopTabs: state.isShowingTopTabs,
-                                                                      windowUUID: windowUUID)
+        self.navigationActions = Self.mapActions(addressToolbarContainerLens.navigationActions,
+                                                 longPressMenuProvider: longPressMenuProvider,
+                                                 windowUUID: windowUUID)
+        self.leadingPageActions = Self.mapActions(addressToolbarContainerLens.leadingPageActions,
+                                                  longPressMenuProvider: longPressMenuProvider,
+                                                  windowUUID: windowUUID)
+        self.trailingPageActions = Self.mapActions(addressToolbarContainerLens.trailingPageActions,
+                                                   longPressMenuProvider: longPressMenuProvider,
+                                                   windowUUID: windowUUID)
+        self.browserActions = Self.mapActions(addressToolbarContainerLens.browserActions,
+                                              longPressMenuProvider: longPressMenuProvider,
+                                              windowUUID: windowUUID)
+        self.editingAccessoryAction = state.addressToolbar.editingAccessoryAction.map {
+            Self.mapAction(
+                $0,
+                longPressMenuProvider: longPressMenuProvider,
+                windowUUID: windowUUID
+            )
+        }
 
         // If the user has selected an alternative search engine, use that. Otherwise, use the default engine.
         let searchEngineModel = state.addressToolbar.alternativeSearchEngine
                                 ?? searchEnginesManager.defaultEngine?.generateModel()
+        // TODO: Remove once all actions that need hasAlternativeLocationColor are migrated into the lens.
+        // Can't drop this yet, still used here for uxConfiguration's background tint.
+        let hasAlternativeLocationColor = state.toolbarPosition == .top &&
+                                            !state.isShowingTopTabs &&
+                                            state.isShowingNavigationToolbar
 
         self.windowUUID = windowUUID
         self.searchEngineName = searchEngineModel?.name ?? ""
         self.searchEngineImage = searchEngineModel?.image ?? UIImage()
         self.searchEnginesManager = searchEnginesManager
-        self.lockIconImageName = state.addressToolbar.lockIconImageName
-        self.lockIconNeedsTheming = state.addressToolbar.lockIconNeedsTheming
+        self.lockIconButtonA11yId = addressToolbarContainerLens.lockIconState.a11yId
+        self.lockIconImageName = addressToolbarContainerLens.lockIconState.imageName
+        self.lockIconNeedsTheming = addressToolbarContainerLens.lockIconState.needsTheming
         self.safeListedURLImageName = state.addressToolbar.safeListedURLImageName
         self.url = state.addressToolbar.url
+        self.isEmptySearch = state.addressToolbar.isEmptySearch
         self.searchTerm = state.addressToolbar.searchTerm
         self.isEditing = state.addressToolbar.isEditing
         self.didStartTyping = state.addressToolbar.didStartTyping
@@ -224,10 +263,15 @@ final class AddressToolbarContainerModel: Equatable {
         self.shouldDisplayCompact = state.isShowingNavigationToolbar
         self.canShowNavigationHint = state.canShowNavigationHint
         self.shouldAnimate = state.shouldAnimate
+        self.isAddressBarMinimized = state.isAddressBarMinimized
+        self.isAccessoryViewVisible = state.isAccessoryViewVisible
+        self.hasAlternativeLocationColor = hasAlternativeLocationColor
         self.toolbarLayoutStyle = state.toolbarLayout
         self.toolbarHelper = toolbarHelper
+        self.isSearchTermInAddressBarEnabled = featureFlagsProvider.isEnabled(.searchTermInAddressBar)
     }
 
+    @MainActor
     func searchTermFromURL(_ url: URL?) -> String? {
         var searchURL: URL? = url
 
@@ -238,74 +282,149 @@ final class AddressToolbarContainerModel: Equatable {
         return searchEnginesManager.queryForSearchURL(searchURL)
     }
 
+    private func shouldDisplaySearchTerm(_ urlSearchTerm: String?) -> Bool {
+        return isSearchTermInAddressBarEnabled && urlSearchTerm?.isEmpty == false
+    }
+
+    @MainActor
     private static func mapActions(_ actions: [ToolbarActionConfiguration],
-                                   isShowingTopTabs: Bool,
+                                   longPressMenuProvider: @escaping LongPressMenuProvider = { _ in nil },
                                    windowUUID: UUID) -> [ToolbarElement] {
         return actions.map { action in
-            ToolbarElement(
-                iconName: action.iconName,
-                title: action.actionLabel,
-                badgeImageName: action.badgeImageName,
-                maskImageName: action.maskImageName,
-                numberOfTabs: action.numberOfTabs,
-                isEnabled: action.isEnabled,
-                isFlippedForRTL: action.isFlippedForRTL,
-                isSelected: action.isSelected,
-                hasCustomColor: action.hasCustomColor,
-                largeContentTitle: action.largeContentTitle,
-                contextualHintType: action.contextualHintType,
-                a11yLabel: action.a11yLabel,
-                a11yHint: action.a11yHint,
-                a11yId: action.a11yId,
-                a11yCustomActionName: action.a11yCustomActionName,
-                a11yCustomAction: action.a11yCustomActionName != nil ? {
-                    let action = ToolbarMiddlewareAction(buttonType: action.actionType,
-                                                         windowUUID: windowUUID,
-                                                         actionType: ToolbarMiddlewareActionType.customA11yAction)
-                    store.dispatch(action)
-                } : nil,
-                hasLongPressAction: action.canPerformLongPressAction(isShowingTopTabs: isShowingTopTabs),
-                onSelected: { button in
-                    let action = ToolbarMiddlewareAction(buttonType: action.actionType,
-                                                         buttonTapped: button,
-                                                         gestureType: .tap,
-                                                         windowUUID: windowUUID,
-                                                         actionType: ToolbarMiddlewareActionType.didTapButton)
-                    store.dispatch(action)
-                }, onLongPress: action.canPerformLongPressAction(isShowingTopTabs: isShowingTopTabs) ? { button in
-                    let action = ToolbarMiddlewareAction(buttonType: action.actionType,
-                                                         buttonTapped: button,
-                                                         gestureType: .longPress,
-                                                         windowUUID: windowUUID,
-                                                         actionType: ToolbarMiddlewareActionType.didTapButton)
-                    store.dispatch(action)
-                } : nil
+            mapAction(
+                action,
+                longPressMenuProvider: longPressMenuProvider,
+                windowUUID: windowUUID
+            )
+        }
+    }
+
+    @MainActor
+    private static func mapAction(_ action: ToolbarActionConfiguration,
+                                  longPressMenuProvider: @escaping LongPressMenuProvider = { _ in nil },
+                                  windowUUID: UUID) -> ToolbarElement {
+        return ToolbarElement(
+            iconName: action.iconName,
+            title: action.actionLabel,
+            badgeImageName: action.badgeImageName,
+            bottomBadgeImage: action.bottomBadgeImage,
+            maskImageName: action.maskImageName,
+            templateModeForImage: action.templateModeForImage,
+            loadingConfig: action.loadingConfig,
+            numberOfTabs: action.numberOfTabs,
+            isEnabled: action.isEnabled,
+            isFlippedForRTL: action.isFlippedForRTL,
+            isSelected: action.isSelected,
+            hasCustomColor: action.hasCustomColor,
+            hasHighlightedColor: action.hasHighlightedColor,
+            largeContentTitle: action.largeContentTitle,
+            contextualHintType: action.contextualHintType,
+            a11yLabel: action.a11yLabel,
+            a11yHint: action.a11yHint,
+            a11yId: action.a11yId,
+            cacheId: action.cacheId,
+            a11yCustomActionName: action.a11yCustomActionName,
+            a11yCustomAction: getA11yCustomAction(action: action, windowUUID: windowUUID),
+            longPressBehavior: makeLongPressBehavior(
+                action: action,
+                longPressMenuProvider: longPressMenuProvider,
+                windowUUID: windowUUID
+            ),
+            previousTabScreenshot: action.previousTabScreenshot,
+            nextTabScreenshot: action.nextTabScreenshot,
+            onSelected: getOnSelected(actionType: action.actionType, windowUUID: windowUUID),
+            menuElements: getMenuElements(action: action, windowUUID: windowUUID)
+        )
+    }
+
+    @MainActor
+    private static func getA11yCustomAction(action: ToolbarActionConfiguration, windowUUID: UUID) -> (() -> Void)? {
+        return action.a11yCustomActionName != nil ? {
+            let action = ToolbarMiddlewareAction(buttonType: action.actionType,
+                                                 windowUUID: windowUUID,
+                                                 actionType: ToolbarMiddlewareActionType.customA11yAction)
+            store.dispatch(action)
+        } : nil
+    }
+
+    @MainActor
+    private static func getOnSelected(actionType: ToolbarActionConfiguration.ActionType,
+                                      windowUUID: UUID) -> ((UIButton) -> Void)? {
+        return { button in
+            let action = ToolbarMiddlewareAction(buttonType: actionType,
+                                                 buttonTapped: button,
+                                                 gestureType: .tap,
+                                                 windowUUID: windowUUID,
+                                                 actionType: ToolbarMiddlewareActionType.didTapButton)
+            store.dispatch(action)
+        }
+    }
+
+    @MainActor
+    private static func makeLongPressBehavior(
+        action: ToolbarActionConfiguration,
+        longPressMenuProvider: @escaping LongPressMenuProvider,
+        windowUUID: UUID
+    ) -> ToolbarLongPressBehavior {
+        guard action.canPerformLongPressAction else {
+            return .none
+        }
+
+        switch action.actionType {
+        case .tabs, .newTab, .reload:
+            return .menu { longPressMenuProvider(action.actionType) }
+        default:
+            return .action { button in
+                let action = ToolbarMiddlewareAction(buttonType: action.actionType,
+                                                     buttonTapped: button,
+                                                     gestureType: .longPress,
+                                                     windowUUID: windowUUID,
+                                                     actionType: ToolbarMiddlewareActionType.didTapButton)
+                store.dispatch(action)
+            }
+        }
+    }
+
+    @MainActor
+    private static func getMenuElements(action: ToolbarActionConfiguration, windowUUID: UUID) -> [ToolbarMenuElement] {
+        return action.menuElements.map { menuElement in
+            ToolbarMenuElement(
+                title: menuElement.title,
+                imageName: menuElement.imageName,
+                a11yIdentifier: menuElement.a11yIdentifier,
+                onSelected: getOnSelected(actionType: menuElement.actionType, windowUUID: windowUUID)
             )
         }
     }
 
     static func == (lhs: AddressToolbarContainerModel, rhs: AddressToolbarContainerModel) -> Bool {
         lhs.navigationActions == rhs.navigationActions &&
+        lhs.leadingPageActions == rhs.leadingPageActions &&
         lhs.trailingPageActions == rhs.trailingPageActions &&
         lhs.browserActions == rhs.browserActions &&
-
         lhs.toolbarLayoutStyle == rhs.toolbarLayoutStyle &&
         lhs.borderPosition == rhs.borderPosition &&
         lhs.searchEngineName == rhs.searchEngineName &&
         lhs.searchEngineImage == rhs.searchEngineImage &&
+        lhs.lockIconButtonA11yId == rhs.lockIconButtonA11yId &&
         lhs.lockIconImageName == rhs.lockIconImageName &&
         lhs.lockIconNeedsTheming == rhs.lockIconNeedsTheming &&
         lhs.safeListedURLImageName == rhs.safeListedURLImageName &&
         lhs.url == rhs.url &&
+        lhs.isEmptySearch == rhs.isEmptySearch &&
         lhs.searchTerm == rhs.searchTerm &&
         lhs.isEditing == rhs.isEditing &&
         lhs.didStartTyping == rhs.didStartTyping &&
         lhs.shouldShowKeyboard == rhs.shouldShowKeyboard &&
+        lhs.editingAccessoryAction == rhs.editingAccessoryAction &&
         lhs.isPrivateMode == rhs.isPrivateMode &&
         lhs.shouldSelectSearchTerm == rhs.shouldSelectSearchTerm &&
         lhs.shouldDisplayCompact == rhs.shouldDisplayCompact &&
         lhs.canShowNavigationHint == rhs.canShowNavigationHint &&
         lhs.shouldAnimate == rhs.shouldAnimate &&
+        lhs.isAddressBarMinimized == rhs.isAddressBarMinimized &&
+        lhs.isAccessoryViewVisible == rhs.isAccessoryViewVisible &&
+        lhs.hasAlternativeLocationColor == rhs.hasAlternativeLocationColor &&
 
         lhs.windowUUID == rhs.windowUUID
     }

@@ -53,7 +53,7 @@
 "AddPass.Error.Message" = "Ocorreu um erro ao adicionar a senha no Wallet. Tente novamente mais tarde.";
 
 /* Title of the 'Add Pass Failed' alert. */
-"AddPass.Error.Title" = "Falha ao adicionar senha";
+"AddPass.Error.Title" = "Falha ao adicionar passe";
 
 /* %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). Prompt shown to ask the user to use Touch ID, Face ID, or passcode to continue browsing after returning to the app. */
 "Authentication.reason" = "Faça a autenticação para retornar ao %@";
@@ -322,14 +322,17 @@
 /* Description associated with the Crash Reports toggle on settings screen */
 "Settings.detailTextCrashReports.V2" = "Isto nos ajuda a diagnosticar e corrigir problemas com o navegador.";
 
+/* Description associated to the Rollouts toggle on the settings screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextRollouts" = "O %@ melhora funcionalidades, desempenho e estabilidade a cada atualização. Alterações são aplicadas remotamente.";
+
 /* Description associated to the Search Suggestions toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
 "Settings.detailTextSearchSuggestion" = "O %@ envia o que você escreve na barra de endereços para seu mecanismo de pesquisa.";
 
-/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
 "Settings.detailTextSendUsageData" = "A Mozilla se empenha em coletar somente o necessário para fornecer e melhorar o %@ para todos.";
 
-/* Description associated to the Studies toggle on the settings screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"Settings.detailTextStudies" = "O %@ pode instalar e executar estudos de vez em quando.";
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextSendUsageData.v2" = "A Mozilla se empenha em coletar somente o necessário para fornecer e melhorar o %@ para todos.";
 
 /* Title for section in settings menu */
 "Settings.general" = "Geral";
@@ -439,14 +442,14 @@
 /* Show home screen tips toggle label on settings screen */
 "Settings.toggleHomeScreenTips" = "Mostrar dicas na tela inicial";
 
+/* Label for Rollouts toggle on the settings screen */
+"Settings.toggleRollouts" = "Permitir melhorias remotas";
+
 /* Safari toggle label on settings screen */
 "Settings.toggleSafari" = "Safari";
 
 /* Label for Send Usage Data toggle on main screen */
 "Settings.toggleSendUsageData" = "Enviar dados de uso";
-
-/* Label for Studies toggle on the settings screen */
-"Settings.toggleStudies" = "Estudos";
 
 /* Label for toggle on settings screen */
 "Settings.toggleTouchID" = "Usar Touch ID para desbloquear o aplicativo";

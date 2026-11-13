@@ -32,6 +32,8 @@ class MockDebugSettingsDelegate: DebugSettingsDelegate {
 
     func pressedDebugFeatureFlags() {}
 
+    func pressedAddShortcuts() {}
+
     func askedToShow(alert: AlertController) {
         askedToShowAlertCalled += 1
     }
@@ -39,4 +41,6 @@ class MockDebugSettingsDelegate: DebugSettingsDelegate {
     func askedToReload() {
         askedToReloadCalled += 1
     }
+
+    func pressedOffloadBackgroundWebViews() {}
 }

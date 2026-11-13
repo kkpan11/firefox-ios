@@ -6,17 +6,22 @@ import UIKit
 import Common
 
 public protocol BrowserNavigationToolbarDelegate: AnyObject {
+    @MainActor
     func configureContextualHint(for button: UIButton, with contextualHintType: String)
 }
 
 /// Navigation toolbar implementation.
-public final class BrowserNavigationToolbar: UIView, NavigationToolbar, ThemeApplicable {
+public final class BrowserNavigationToolbar: UIView,
+                                             NavigationToolbar,
+                                             ThemeApplicable,
+                                             ToolbarButtonCaching {
     private enum UX {
         static let horizontalEdgeSpace: CGFloat = 16
         static let buttonSize = CGSize(width: 48, height: 48)
         static let borderHeight: CGFloat = 1
     }
 
+    var cachedButtonReferences = [String: ToolbarButton]()
     private weak var toolbarDelegate: BrowserNavigationToolbarDelegate?
     private lazy var actionStack: UIStackView = .build { view in
         view.distribution = .equalSpacing
@@ -66,10 +71,12 @@ public final class BrowserNavigationToolbar: UIView, NavigationToolbar, ThemeApp
             toolbarBorderView.topAnchor.constraint(equalTo: topAnchor),
             toolbarBorderView.trailingAnchor.constraint(equalTo: trailingAnchor),
 
-            actionStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.horizontalEdgeSpace),
+            actionStack.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor,
+                                                 constant: UX.horizontalEdgeSpace),
             actionStack.topAnchor.constraint(equalTo: toolbarBorderView.bottomAnchor),
             actionStack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            actionStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.horizontalEdgeSpace),
+            actionStack.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor,
+                                                  constant: -UX.horizontalEdgeSpace),
         ])
 
         setupAccessibility()
@@ -80,16 +87,10 @@ public final class BrowserNavigationToolbar: UIView, NavigationToolbar, ThemeApp
     }
 
     private func updateActionStack(toolbarElements: [ToolbarElement]) {
-        actionStack.removeAllArrangedViews()
-        toolbarElements.forEach { toolbarElement in
-            let button = toolbarElement.numberOfTabs != nil ? TabNumberButton() : ToolbarButton()
+        let buttons = toolbarElements.map { toolbarElement in
+            let hasCachedButton = hasCachedButton(for: toolbarElement)
+            let button = getToolbarButton(for: toolbarElement)
             button.configure(element: toolbarElement)
-            actionStack.addArrangedSubview(button)
-
-            NSLayoutConstraint.activate([
-                button.widthAnchor.constraint(equalToConstant: UX.buttonSize.width),
-                button.heightAnchor.constraint(equalToConstant: UX.buttonSize.height),
-            ])
 
             if let theme {
                 // As we recreate the buttons we need to apply the theme for them to be displayed correctly
@@ -99,12 +100,32 @@ public final class BrowserNavigationToolbar: UIView, NavigationToolbar, ThemeApp
             if let contextualHintType = toolbarElement.contextualHintType {
                 toolbarDelegate?.configureContextualHint(for: button, with: contextualHintType)
             }
+
+            // Only add the constraints to new buttons
+            if !hasCachedButton {
+                NSLayoutConstraint.activate([
+                    button.widthAnchor.constraint(equalToConstant: UX.buttonSize.width),
+                    button.heightAnchor.constraint(equalToConstant: UX.buttonSize.height),
+                ])
+            }
+
+            return button
+        }
+
+        // Buttons are cached and reused, so the stack often ends up with the exact same arrangement.
+        // Tearing it down and rebuilding it in that case only invalidates layout for no visible change.
+        guard !actionStack.arrangedSubviews.elementsEqual(buttons, by: { $0 === $1 }) else { return }
+
+        actionStack.removeAllArrangedViews()
+
+        buttons.forEach { button in
+            actionStack.addArrangedSubview(button)
         }
     }
 
     // MARK: - ThemeApplicable
     public func applyTheme(theme: Theme) {
-        backgroundColor = isTranslucent ? .clear : theme.colors.layer3
+        backgroundColor = isTranslucent ? .clear : theme.colors.layerSurfaceLow
         toolbarBorderView.backgroundColor = theme.colors.borderPrimary
 
         actionStack.arrangedSubviews.forEach { element in

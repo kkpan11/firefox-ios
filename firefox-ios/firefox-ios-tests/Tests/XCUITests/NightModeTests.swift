@@ -4,36 +4,94 @@
 
 import XCTest
 class NightModeTests: BaseTestCase {
+    private var browserScreen: BrowserScreen!
+    private var toolbarScreen: ToolbarScreen!
+    private var mainMenuScreen: MainMenuScreen!
+    private var settingScreen: SettingScreen!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        browserScreen = BrowserScreen(app: app)
+        toolbarScreen = ToolbarScreen(app: app)
+        mainMenuScreen = MainMenuScreen(app: app)
+        settingScreen = SettingScreen(app: app)
+    }
+
+    var nightModeOnCell: XCUIElement {
+        app.tables.cells["MainMenu.NightModeOn"]
+    }
+
     private func checkNightModeOn() {
-        navigator.goto(ToolsBrowserTabMenu)
-        mozWaitForElementToExist(app.tables.cells["MainMenu.NightModeOn"])
-        XCTAssertTrue(app.tables.cells["MainMenu.NightModeOn"].label == "Turn off Night Mode")
+        mozWaitForElementToExist(nightModeOnCell)
+        XCTAssertTrue(nightModeOnCell.label == "Website Dark Mode")
+        if !iPad() {
+            mozWaitForElementToExist(app.tables.staticTexts["On"])
+        } else {
+            mozWaitForElementToExist(app.tables.staticTexts.matching(identifier: "On").element(boundBy: 1))
+        }
         // Turn off night mode
-        app.tables.cells["MainMenu.NightModeOn"].waitAndTap()
+        nightModeOnCell.waitAndTap()
     }
 
     private func checkNightModeOff() {
-        navigator.goto(ToolsBrowserTabMenu)
-        mozWaitForElementToExist(app.tables.cells["MainMenu.NightModeOn"])
-        XCTAssertTrue(app.tables.cells["MainMenu.NightModeOn"].label == "Turn on Night Mode")
+        mozWaitForElementToExist(nightModeOnCell)
+        XCTAssertTrue(nightModeOnCell.label == "Website Dark Mode")
+        if !iPad() {
+            mozWaitForElementToExist(app.tables.staticTexts.matching(identifier: "Off").element(boundBy: 1))
+        } else {
+            mozWaitForElementToExist(app.tables.staticTexts["Off"])
+        }
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3167643
+    // Regression
+    func testWebsiteDarkModeOption() {
+        browserScreen.navigateToURLAndAssertExampleDomain(path(forTestPage: TestPages.exampleHTML))
+        waitUntilPageLoad()
+        browserScreen.assertWebContentIs(dark: false)
+
+        openExpandedMainMenu()
+        mainMenuScreen.assertWebsiteDarkModeIs(on: false)
+        mainMenuScreen.tapWebsiteDarkMode()
+        browserScreen.assertWebContentIs(dark: true)
+
+        toolbarScreen.tapSettingsMenuButton()
+        mainMenuScreen.tapSettings()
+        settingScreen.assertSettingsTableIsLight()
+        settingScreen.closeSettingsWithDoneButton()
+
+        openExpandedMainMenu()
+        mainMenuScreen.assertWebsiteDarkModeIs(on: true)
+        mainMenuScreen.tapWebsiteDarkMode()
+        browserScreen.assertWebContentIs(dark: false)
+
+        openExpandedMainMenu()
+        mainMenuScreen.assertWebsiteDarkModeIs(on: false)
+        mainMenuScreen.closeMenu()
+    }
+
+    private func openExpandedMainMenu() {
+        toolbarScreen.tapSettingsMenuButton()
+        mainMenuScreen.expandMenuIfNeeded()
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2307056
     func testNightModeUI() {
-        let url1 = "test-example.html"
+        let url1 = TestPages.exampleHTML
         // Go to a webpage, and select night mode on and off, check it's applied or not
         navigator.openURL(path(forTestPage: url1))
         waitUntilPageLoad()
         // turn on the night mode
+        navigator.goto(BrowserTabMenuMore)
         navigator.performAction(Action.ToggleNightMode)
         navigator.nowAt(BrowserTab)
-        navigator.goto(BrowserTabMenu)
+        navigator.goto(BrowserTabMenuMore)
         // checking night mode on or off
         checkNightModeOn()
 
         // checking night mode on or off
         navigator.nowAt(BrowserTab)
-        navigator.goto(BrowserTabMenu)
+        navigator.goto(BrowserTabMenuMore)
         checkNightModeOff()
     }
 }

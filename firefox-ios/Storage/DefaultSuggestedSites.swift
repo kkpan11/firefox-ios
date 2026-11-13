@@ -5,7 +5,9 @@
 import Foundation
 import Localizations
 
-open class DefaultSuggestedSites {
+public enum DefaultSuggestedSites {
+    public static let firefoxJpGuideURL = "https://blog.mozilla.org/ja/firefox-ja/ios-guide/"
+
     private static let urlMap = [
         "https://www.amazon.com/": [
             "as": "https://www.amazon.in",
@@ -59,7 +61,7 @@ open class DefaultSuggestedSites {
                 title: .DefaultSuggestedAmazon,
                 trackingId: 630,
                 // NOTE: Amazon does not host a high quality favicon. We are falling back to the one hosted in our
-                // ContileProvider.contileProdResourceEndpoint (https://ads.mozilla.org/v1/tiles).
+                // UnifiedAdsProvider.prodResourceEndpoint (https://ads.mozilla.org/v1/ads).
                 faviconResource: .bundleAsset(
                     name: "amazon",
                     forRemoteResource: URL(string: "https://tiles-cdn.prod.ads.prod.webservices.mozgcp.net/CAP5k4gWqcBGwir7bEEmBWveLMtvldFu-y_kyO3txFA=.9991.jpg")!
@@ -73,25 +75,9 @@ open class DefaultSuggestedSites {
                     name: "wikipedia",
                     forRemoteResource: URL(string: "https://www.wikipedia.org/static/apple-touch/wikipedia.png")!
                 )
-            ),
-            Site.createSuggestedSite(
-                url: "https://x.com/",
-                title: .DefaultSuggestedX,
-                trackingId: 628,
-                faviconResource: .bundleAsset(
-                    name: "x",
-                    forRemoteResource: URL(string: "https://abs.twimg.com/responsive-web/client-web/icon-ios.77d25eba.png")!
-                )
             )
         ],
         "zh_CN": [ // FXIOS-11064 Do we still want this as a special case localization? Android doesn't compile this anymore
-            Site.createSuggestedSite(
-                url: "http://mozilla.com.cn",
-                title: "火狐社区",
-                trackingId: 700,
-                // FXIOS-11064 We need a higher quality favicon link
-                faviconResource: .remoteURL(url: URL(string: "http://mozilla.com.cn/favicon.ico")!)
-            ),
             Site.createSuggestedSite(
                 url: "https://m.baidu.com/",
                 title: "百度",
@@ -127,8 +113,52 @@ open class DefaultSuggestedSites {
                 trackingId: 705,
                 // FXIOS-11064 We need a higher quality favicon link
                 faviconResource: .remoteURL(url: URL(string: "https://corporate.jd.com/favicon.ico")!)
+            ),
+            Site.createSuggestedSite(
+                url: "http://douyin.com",
+                title: "抖音",
+                trackingId: 706,
+                faviconResource: .remoteURL(url: URL(string: "https://lf-douyin-pc-web.douyinstatic.com/obj/douyin-pc-web/2025_0313_logo.png")!)
             )
-         ]
+        ],
+        "ja_JP": [
+            Site.createSuggestedSite(
+                url: firefoxJpGuideURL,
+                title: "Firefoxガイド",
+                trackingId: 804,
+                faviconResource: .bundleAsset(
+                    name: "firefox-jp",
+                    forRemoteResource: URL(string: "https://www.firefox.com/media/img/favicons/firefox/browser/apple-touch-icon.79c2abeb4e35.png")!
+                )
+            ),
+            Site.createSuggestedSite(
+                url: "https://tenki.jp/",
+                title: "tenki.jp",
+                trackingId: 800,
+                faviconResource: .bundleAsset(
+                    name: "tenki",
+                    forRemoteResource: URL(string: "https://static.tenki.jp/images/icon/bookmark/tenkijp_bookmark_icon_114_114.png")!
+                )
+            ),
+            Site.createSuggestedSite(
+                url: "https://m.yahoo.co.jp/",
+                title: "Yahoo! JAPAN",
+                trackingId: 802,
+                faviconResource: .bundleAsset(
+                    name: "yahoo",
+                    forRemoteResource: URL(string: "https://s.yimg.jp/c/icon/s/bsc/2.0/y120.png")!
+                )
+            ),
+            Site.createSuggestedSite(
+                url: "https://ameblo.jp/",
+                title: "Amebaブログ",
+                trackingId: 801,
+                faviconResource: .bundleAsset(
+                    name: "ameblo",
+                    forRemoteResource: URL(string: "https://stat100.ameba.jp/common_style/img/sp/apple-touch-icon.png")!
+                )
+            )
+         ],
     ]
 
     public static func defaultSites() -> [Site] {

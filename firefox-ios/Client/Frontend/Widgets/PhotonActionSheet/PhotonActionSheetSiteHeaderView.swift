@@ -8,8 +8,7 @@ import Storage
 import SiteImageView
 
 class PhotonActionSheetSiteHeaderView: UITableViewHeaderFooterView, ReusableCell, ThemeApplicable {
-    struct UX {
-        static let borderWidth: CGFloat = 0.5
+    enum UX {
         static let padding: CGFloat = 12
         static let verticalPadding: CGFloat = 2
         static let siteImageViewSize: CGFloat = 52

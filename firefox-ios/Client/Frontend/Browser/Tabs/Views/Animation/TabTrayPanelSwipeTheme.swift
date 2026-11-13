@@ -8,6 +8,7 @@ import UIKit
 struct TabTrayPanelSwipeTheme: Theme {
     var type: ThemeType
     var colors: ThemeColourPalette
+    var isNova: Bool
 
     init(from: Theme, to: Theme, progress: CGFloat) {
         let mixColor = Self.mixColors(from: from.colors, to: to.colors, progress: progress)
@@ -19,15 +20,22 @@ struct TabTrayPanelSwipeTheme: Theme {
             actionSecondary: mixColor(\.actionSecondary),
             layerScrim: mixColor(\.layerScrim),
             layer3: mixColor(\.layer3),
+            layerEmphasis: mixColor(\.layerEmphasis),
             textOnDark: mixColor(\.textOnDark),
             borderPrimary: mixColor(\.borderPrimary),
             borderAccent: mixColor(\.borderAccent),
             borderAccentPrivate: mixColor(\.borderAccentPrivate),
             shadowDefault: mixColor(\.shadowDefault),
-            iconDisabled: mixColor(\.iconDisabled)
+            iconDisabled: mixColor(\.iconDisabled),
+            layer2: mixColor(\.layer2),
+            layerSurfaceLow: mixColor(\.layerSurfaceLow),
+            layerGlassTintNova: from.isNova ? mixColor(\.layerGlassTintNova) : .clear,
+            iconInverted: from.isNova ? mixColor(\.iconInverted) : .clear,
+            actionPrimary: mixColor(\.actionPrimary)
         )
 
         self.type = from.type
+        self.isNova = from.isNova
         self.colors = TabTrayPanelSwipePalette(base: from.colors, overrides: overrides)
     }
 

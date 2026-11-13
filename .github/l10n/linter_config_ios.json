@@ -20,6 +20,8 @@
             "Pocket"
         ],
         "exclusions": [
+            "firefox-ios.xliff:CameraAccess.DisabledAlertMessage.v153",
+            "firefox-ios.xliff:CFBundleDisplayName",
             "firefox-ios.xliff:ctDNmu",
             "firefox-ios.xliff:DefaultBrowserCard.BetterInternet.Description.v108",
             "firefox-ios.xliff:DefaultBrowserCard.Description",
@@ -44,6 +46,7 @@
             "firefox-ios.xliff:NSCameraUsageDescription",
             "firefox-ios.xliff:NSFaceIDUsageDescription",
             "firefox-ios.xliff:NSMicrophoneUsageDescription",
+	        "firefox-ios.xliff:NSSpeechRecognitionUsageDescription",
             "firefox-ios.xliff:Oops! Firefox crashed",
             "firefox-ios.xliff:Open Firefox",
             "firefox-ios.xliff:OpenURL.Error.Message",

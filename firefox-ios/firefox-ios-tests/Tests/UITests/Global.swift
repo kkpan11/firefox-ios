@@ -13,11 +13,11 @@ import Shared
 let LabelAddressAndSearch = "Address and Search"
 
 extension XCTestCase {
-    func tester(_ file: String = #file, _ line: Int = #line) -> KIFUITestActor {
+    func tester(_ file: String = #filePath, _ line: Int = #line) -> KIFUITestActor {
         return KIFUITestActor(inFile: file, atLine: line, delegate: self)
     }
 
-    func system(_ file: String = #file, _ line: Int = #line) -> KIFSystemTestActor {
+    func system(_ file: String = #filePath, _ line: Int = #line) -> KIFSystemTestActor {
         return KIFSystemTestActor(inFile: file, atLine: line, delegate: self)
     }
 }
@@ -360,12 +360,8 @@ class BrowserUtils {
     }
 
     class func closeLibraryMenu(_ tester: KIFUITestActor) {
-        if iPad() {
-            tester.tapView(withAccessibilityIdentifier: AccessibilityIdentifiers.Toolbar.bookmarksButton)
-        } else {
-            // Workaround to be able to swipe the view and close the library panel
-            tester.tapView(withAccessibilityLabel: "Done")
-        }
+        // Workaround to be able to swipe the view and close the library panel
+        tester.tapView(withAccessibilityLabel: "Done")
         tester.waitForAnimationsToFinish()
     }
 }

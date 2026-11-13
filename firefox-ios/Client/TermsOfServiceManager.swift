@@ -6,102 +6,105 @@ import Foundation
 import Shared
 import Glean
 import MozillaAppServices
+import OnboardingKit
 
-protocol VersionProviding {
-    func object(forInfoDictionaryKey key: String) -> Any?
+enum Links {
+    static let termsOfService = "https://www.mozilla.org/about/legal/terms/firefox/"
+    static let privacyNotice = "https://www.mozilla.org/privacy/firefox/"
 }
 
-extension Bundle: VersionProviding {}
-
-struct TermsOfServiceManager: FeatureFlaggable {
+struct TermsOfServiceManager: FeatureFlaggable, Sendable {
     var prefs: Prefs
-    private let bundle: VersionProviding
 
-    init(prefs: Prefs, bundle: VersionProviding = Bundle.main) {
+    init(prefs: Prefs) {
         self.prefs = prefs
-        self.bundle = bundle
     }
 
     var isFeatureEnabled: Bool {
-        featureFlags.isFeatureEnabled(.tosFeature, checking: .buildAndUser)
+        featureFlagsProvider.isEnabled(.tosFeature)
     }
 
     var isAccepted: Bool {
-        prefs.intForKey(PrefsKeys.TermsOfServiceAccepted) == 1
+        prefs.boolForKey(PrefsKeys.TermsOfUseAccepted) ?? false
     }
 
     var shouldShowScreen: Bool {
-        guard featureFlags.isFeatureEnabled(.tosFeature, checking: .buildAndUser) else { return false }
-
-        return prefs.intForKey(PrefsKeys.TermsOfServiceAccepted) == nil
+        guard featureFlagsProvider.isEnabled(.tosFeature) else { return false }
+        return prefs.boolForKey(PrefsKeys.TermsOfUseAccepted) == nil
     }
 
-    func setAccepted() {
-        prefs.setInt(1, forKey: PrefsKeys.TermsOfServiceAccepted)
+    func setAccepted(acceptedDate: Date) {
+        prefs.setBool(true, forKey: PrefsKeys.TermsOfUseAccepted)
+        prefs.setTimestamp(acceptedDate.toTimestamp(), forKey: PrefsKeys.TermsOfUseAcceptedDate)
     }
 
     func shouldSendTechnicalData(telemetryValue: Bool, studiesValue: Bool) {
-        // AdjustHelper.setEnabled($0)
         DefaultGleanWrapper().setUpload(isEnabled: telemetryValue)
         Experiments.setStudiesSetting(studiesValue)
         Experiments.setTelemetrySetting(telemetryValue)
     }
 
-    // MARK: – Constants
+    // MARK: - Terms of Use Configuration
 
-    private enum Experiment {
-        static let onboardingPhase4ID = "new-onboarding-experience-experiment-phase-4-ios"
-        static let controlBranch = "control"
-    }
+    static var brandRefreshTermsOfUseConfiguration: OnboardingKitCardInfoModel {
+        let termsOfUseLink = String(
+            format: .Onboarding.Modern.BrandRefresh.TermsOfUse.TermsOfUseLink,
+            AppName.shortName.rawValue
+        )
+        let termsOfUseAgreement = String(
+            format: .Onboarding.Modern.BrandRefresh.TermsOfUse.TermsOfUseAgreement,
+            termsOfUseLink
+        )
+        let privacyNoticeLink = String.Onboarding.Modern.BrandRefresh.TermsOfUse.PrivacyNoticeLink
+        let privacyAgreement = String(
+            format: .Onboarding.Modern.BrandRefresh.TermsOfUse.PrivacyNoticeAgreement,
+            AppName.shortName.rawValue,
+            privacyNoticeLink
+        )
+        let manageLink = String.Onboarding.TermsOfService.ManageLink
+        let manageAgreement = String(
+            format: String.Onboarding.Modern.TermsOfService.ManagePreferenceAgreement,
+            AppName.shortName.rawValue,
+            MozillaName.shortName.rawValue,
+            manageLink
+        )
 
-    // MARK: – Public API
-
-    /// Returns `true` if all of the following are satisfied:
-    /// 1. App was installed after 138.0 and before 138.1
-    /// 2. The TOS feature flag is enabled
-    /// 3. User is in the "control" branch of the onboarding experiment
-    /// 4. User did not see the TOS screen
-    /// This will be removed in 141.0 ticket FXIOS-12249 
-    var isAffectedUser: Bool {
-        // 1) Installation date check
-        let calendar = Calendar.current
-        guard
-            let start = calendar.date(from: DateComponents(year: 2025, month: 4, day: 29)),
-            let end   = calendar.date(from: DateComponents(year: 2025, month: 5, day: 6)),
-            InstallationUtils.isInstalled(between: start, and: end) else {
-            // App was not installed after 138.0 and before 138.1
-            return false
-        }
-
-        // 2) Feature-flag check
-        guard isFeatureEnabled else {
-            // TOS feature is disabled
-            return false
-        }
-
-        // 3) Experiment branch check
-        guard isInControlBranch(experimentId: Experiment.onboardingPhase4ID) else {
-            // Not in the control group
-            return false
-        }
-
-        // 4) TOS screen was not shown
-        guard shouldShowScreen else {
-            return false
-        }
-
-        return true
-    }
-
-    // MARK: – Helpers
-
-    /// Returns `true` if the given experiment’s branch slug exists and equals “control”.
-    private func isInControlBranch(experimentId: String) -> Bool {
-        guard
-            let branch = Experiments.shared.getExperimentBranch(experimentId: experimentId)
-        else {
-            return false
-        }
-        return branch == Experiment.controlBranch
+        return OnboardingKitCardInfoModel(
+            cardType: .basic,
+            name: "tos",
+            order: 20,
+            title: String(format: .Onboarding.TermsOfService.Title, AppName.shortName.rawValue),
+            body: String.Onboarding.Modern.BrandRefresh.TermsOfUse.Description,
+            buttons: OnboardingButtons(
+                primary: OnboardingButtonInfoModel(
+                    title: String.Onboarding.Modern.BrandRefresh.TermsOfUse.AgreementButtonTitleV2,
+                    action: OnboardingActions.endOnboarding
+                )
+            ),
+            multipleChoiceButtons: [],
+            onboardingType: .freshInstall,
+            a11yIdRoot: AccessibilityIdentifiers.TermsOfService.root,
+            imageID: ImageIdentifiers.homeHeaderLogoBall,
+            embededLinkText: [
+                EmbeddedLink(
+                    fullText: termsOfUseAgreement,
+                    linkText: termsOfUseLink,
+                    action: .openTermsOfService,
+                    accessibilityIdentifier: AccessibilityIdentifiers.TermsOfService.termsOfServiceAgreement
+                ),
+                EmbeddedLink(
+                    fullText: privacyAgreement,
+                    linkText: privacyNoticeLink,
+                    action: .openPrivacyNotice,
+                    accessibilityIdentifier: AccessibilityIdentifiers.TermsOfService.privacyNoticeAgreement
+                ),
+                EmbeddedLink(
+                    fullText: manageAgreement,
+                    linkText: manageLink,
+                    action: .openManageSettings,
+                    accessibilityIdentifier: AccessibilityIdentifiers.TermsOfService.manageDataCollectionAgreement
+                )
+            ]
+        )
     }
 }

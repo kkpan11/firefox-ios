@@ -7,27 +7,28 @@ import XCTest
 
 @testable import Client
 
+@MainActor
 final class TabTrayViewControllerTests: XCTestCase {
     var delegate: MockTabTrayViewControllerDelegate!
     var navigationController: DismissableNavigationViewController!
     private var tabManager: MockTabManager!
     let windowUUID: WindowUUID = .XCTestDefaultUUID
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         let mockTabManager = MockTabManager()
         DependencyHelperMock().bootstrapDependencies(injectedTabManager: mockTabManager)
         delegate = MockTabTrayViewControllerDelegate()
         navigationController = DismissableNavigationViewController()
         tabManager = mockTabManager
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: MockProfile())
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         delegate = nil
         navigationController = nil
         DependencyHelperMock().reset()
+
+        try await super.tearDown()
     }
 
     // MARK: Compact layout
@@ -122,7 +123,7 @@ final class TabTrayViewControllerTests: XCTestCase {
 
     // MARK: - Private
     private func createSubject(selectedSegment: TabTrayPanelType = .tabs,
-                               file: StaticString = #file,
+                               file: StaticString = #filePath,
                                line: UInt = #line) -> TabTrayViewController {
         let subject = TabTrayViewController(panelType: selectedSegment, windowUUID: .XCTestDefaultUUID)
         subject.delegate = delegate
@@ -145,8 +146,13 @@ final class TabTrayViewControllerTests: XCTestCase {
     }
 
     private func makeChildPanels() -> [UINavigationController] {
-        let regularTabsPanel = TabDisplayPanelViewController(isPrivateMode: false, windowUUID: .XCTestDefaultUUID)
-        let privateTabsPanel = TabDisplayPanelViewController(isPrivateMode: true, windowUUID: .XCTestDefaultUUID)
+        let delegate = MockTabDisplayViewDragAndDropInteraction()
+        let regularTabsPanel = TabDisplayPanelViewController(isPrivateMode: false,
+                                                             windowUUID: .XCTestDefaultUUID,
+                                                             dragAndDropDelegate: delegate)
+        let privateTabsPanel = TabDisplayPanelViewController(isPrivateMode: true,
+                                                             windowUUID: .XCTestDefaultUUID,
+                                                             dragAndDropDelegate: delegate)
         let syncTabs = RemoteTabsPanel(windowUUID: .XCTestDefaultUUID)
         return [
             ThemedNavigationController(rootViewController: regularTabsPanel, windowUUID: windowUUID),
@@ -156,7 +162,7 @@ final class TabTrayViewControllerTests: XCTestCase {
     }
 
     private func setupNimbusTabTrayUIExperimentTesting(isEnabled: Bool) {
-        FxNimbus.shared.features.tabTrayUiExperiments.with { _, _ in
+        FxNimbus.shared.features.tabTrayUiExperiments.with { _ in
             return TabTrayUiExperiments(
                 enabled: isEnabled
             )

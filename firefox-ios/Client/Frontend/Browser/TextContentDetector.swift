@@ -4,7 +4,7 @@
 
 import Foundation
 
-class TextContentDetector {
+enum TextContentDetector {
     enum DetectedType {
         case phoneNumber(String)
         case link(URL)
@@ -30,5 +30,14 @@ class TextContentDetector {
         default:
             return nil
         }
+    }
+
+    static func getTextContent(_ content: String) -> [NSTextCheckingResult]? {
+        guard let matches = dataDetector?.matches(
+            in: content,
+            options: [],
+            range: NSRange(location: 0, length: content.count))
+        else { return nil }
+        return matches
     }
 }

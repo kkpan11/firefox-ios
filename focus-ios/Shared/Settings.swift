@@ -16,7 +16,7 @@ enum SettingsToggle: String, Equatable {
     case safari = "Safari"
     case sendAnonymousUsageData = "SendAnonymousUsageData"
     case dailyUsagePing = "DailyUsagePing"
-    case studies = "Studies"
+    case rollouts = "Rollouts"
     case crashToggle = "CrashToggle"
     case enableDomainAutocomplete = "enableDomainAutocomplete"
     case enableCustomDomainAutocomplete = "enableCustomDomainAutocomplete"
@@ -43,7 +43,7 @@ extension SettingsToggle {
     }
 }
 
-struct Settings {
+enum Settings {
     private static let prefs = UserDefaults(suiteName: AppInfo.sharedContainerIdentifier)!
 
     private static let customDomainSettingKey = "customDomains"
@@ -61,7 +61,7 @@ struct Settings {
         case .showHomeScreenTips: return true
         case .safari: return true
         case .sendAnonymousUsageData: return AppInfo.isKlar ? false : true
-        case .studies: return AppInfo.isKlar ? false : true
+        case .rollouts: return AppInfo.isKlar ? false : true
         case .enableDomainAutocomplete: return true
         case .enableCustomDomainAutocomplete: return true
         case .enableSearchSuggestions: return false

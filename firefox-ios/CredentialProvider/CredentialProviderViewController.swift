@@ -10,14 +10,18 @@ import Shared
 import Storage
 
 protocol CredentialProviderViewProtocol: AnyObject {
+    @MainActor
     var extensionContext: ASCredentialProviderExtensionContext { get }
 
+    @MainActor
     func showWelcome()
+    @MainActor
     func showPasscodeRequirement()
+    @MainActor
     func show(itemList: [(ASPasswordCredentialIdentity, ASPasswordCredential)])
 }
 
-struct CredentialProvider {
+enum CredentialProvider {
     static var titleColor: UIColor? {
         return UIColor(named: "labelColor")
     }
@@ -26,13 +30,23 @@ struct CredentialProvider {
         return UIColor(named: "credentialCellColor")
     }
 
-    static var tableViewBackgroundColor: UIColor = .systemGroupedBackground
+    static let tableViewBackgroundColor: UIColor = .systemGroupedBackground
 
     static var welcomeScreenBackgroundColor: UIColor? {
         return UIColor(named: "launchScreenBackgroundColor")
     }
 }
 
+/// The `ASCredentialProviderViewController` overrides in this class are required
+/// parts of the AuthenticationServices extension lifecycle. 
+/// 
+/// The password manager extension depends on these hooks for Firefox to behave correctly 
+/// when used as an external password manager.
+///
+/// NOTE: The `AS` in `ASCredentialProviderViewController` refers to Apple’s AuthenticationServices framework
+/// and not our internal Application Services module.
+/// For Reference:  
+/// - https://developer.apple.com/documentation/authenticationservices/ascredentialproviderviewcontroller
 class CredentialProviderViewController: ASCredentialProviderViewController {
     private var presenter: CredentialProviderPresenter?
     private let appAuthenticator = AppAuthenticator()
@@ -199,8 +213,11 @@ extension CredentialProviderViewController: CredentialWelcomeViewControllerDeleg
                 self.extensionContext.cancelRequest(withError: ASExtensionError(.failed))
                 return
             }
-            self.presenter?.profile.syncCredentialIdentities().upon { result in
-                self.extensionContext.completeExtensionConfigurationRequest()
+            self.presenter?.profile.syncCredentialIdentities().uponQueue(.main) { result in
+                // FXIOS-13228 It should be safe to assumeIsolated here because of `.main` queue above
+                MainActor.assumeIsolated {
+                    self.extensionContext.completeExtensionConfigurationRequest()
+                }
             }
         }
     }

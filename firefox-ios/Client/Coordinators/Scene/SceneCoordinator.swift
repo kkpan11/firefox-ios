@@ -4,6 +4,7 @@
 
 import Common
 import UIKit
+import OnboardingKit
 
 /// Each scene has it's own scene coordinator, which is the root coordinator for a scene.
 class SceneCoordinator: BaseCoordinator,
@@ -12,25 +13,25 @@ class SceneCoordinator: BaseCoordinator,
                         FeatureFlaggable {
     var window: UIWindow?
     var windowUUID: WindowUUID { reservedWindowUUID.uuid }
-    private var isDeeplinkOptimizationRefactorEnabled: Bool {
-        return featureFlags.isFeatureEnabled(.deeplinkOptimizationRefactor, checking: .buildOnly)
-    }
     private let screenshotService: ScreenshotService
     private let sceneContainer: SceneContainer
     private let windowManager: WindowManager
     private let reservedWindowUUID: ReservedWindowUUID
+    private let introManager: IntroScreenManagerProtocol
+    private weak var launchScreenViewController: UIViewController?
 
     init(scene: UIScene,
          sceneSetupHelper: SceneSetupHelper = SceneSetupHelper(),
          screenshotService: ScreenshotService = ScreenshotService(),
          sceneContainer: SceneContainer = SceneContainer(),
-         windowManager: WindowManager = AppContainer.shared.resolve()) {
+         windowManager: WindowManager = AppContainer.shared.resolve(),
+         introManager: IntroScreenManagerProtocol) {
         // Note: this is where we singularly decide the UUID for this specific iOS browser window (UIScene).
         // The logic is handled by `reserveNextAvailableWindowUUID`, but this is the point at which a window's UUID
         // is set; this same UUID will be injected throughout several of the window's related components
         // such as its TabManager instance, which also has the window UUID property as a convenience.
-        let isIpad = (UIDevice.current.userInterfaceIdiom == .pad)
-        let reserved = windowManager.reserveNextAvailableWindowUUID(isIpad: isIpad)
+        let supportsMultipleWindows = UIApplication.shared.supportsMultipleScenes
+        let reserved = windowManager.reserveNextAvailableWindowUUID(supportsMultipleWindows: supportsMultipleWindows)
         self.reservedWindowUUID = reserved
         self.window = sceneSetupHelper.configureWindowFor(scene,
                                                           windowUUID: reserved.uuid,
@@ -38,6 +39,7 @@ class SceneCoordinator: BaseCoordinator,
         self.screenshotService = screenshotService
         self.sceneContainer = sceneContainer
         self.windowManager = windowManager
+        self.introManager = introManager
 
         let navigationController = sceneSetupHelper.createNavigationController()
         let router = DefaultRouter(navigationController: navigationController)
@@ -51,7 +53,20 @@ class SceneCoordinator: BaseCoordinator,
     func start() {
         router.setRootViewController(sceneContainer, hideBar: true)
 
-        let launchScreenVC = LaunchScreenViewController(windowUUID: windowUUID, coordinator: self)
+        let launchScreenVC: UIViewController
+        if introManager.shouldShowIntroScreen {
+            // Show the launch screen for first-time users
+            let onboardingKitVariant = introManager.onboardingKitVariant
+            launchScreenVC = OnboardingLaunchScreenViewController(
+                windowUUID: windowUUID,
+                coordinator: self,
+                variant: onboardingKitVariant
+            )
+        } else {
+            // Use the standard launch screen for returning users
+            launchScreenVC = LaunchScreenViewController(windowUUID: windowUUID, coordinator: self)
+        }
+        launchScreenViewController = launchScreenVC
         router.push(launchScreenVC, animated: false)
     }
 
@@ -74,15 +89,11 @@ class SceneCoordinator: BaseCoordinator,
     }
 
     private func canShowIntroOnboarding() -> Bool {
-        let profile: Profile = AppContainer.shared.resolve()
-        let introManager = IntroScreenManager(prefs: profile.prefs)
         let launchType = LaunchType.intro(manager: introManager)
         return launchType.canLaunch(fromType: .SceneCoordinator)
     }
 
     private func showIntroOnboardingIfNeeded() {
-        let profile: Profile = AppContainer.shared.resolve()
-        let introManager = IntroScreenManager(prefs: profile.prefs)
         let launchType = LaunchType.intro(manager: introManager)
         if launchType.canLaunch(fromType: .SceneCoordinator) {
             startLaunch(with: launchType)
@@ -135,19 +146,13 @@ class SceneCoordinator: BaseCoordinator,
 
         let windowInfo = AppWindowInfo(tabManager: tabManager, sceneCoordinator: self)
         windowManager.newBrowserWindowConfigured(windowInfo, uuid: windowUUID)
+        MergeWindowsQuickActionController().update()
 
         add(child: browserCoordinator)
         browserCoordinator.start(with: launchType)
 
         if let savedRoute {
             browserCoordinator.findAndHandle(route: savedRoute)
-            // In the case we have saved route it means we are starting the browser with a deeplink.
-            // A saved route is present when findAndHandle is called on the SceneCoordinator and BrowserCoordinator
-            // is not in the hierarchy yet.
-            guard isDeeplinkOptimizationRefactorEnabled,
-                  !AppEventQueue.hasSignalled(.recordStartupTimeOpenDeeplinkComplete),
-                  !AppEventQueue.hasSignalled(.recordStartupTimeOpenDeeplinkCancelled) else { return }
-            AppEventQueue.signal(event: .recordStartupTimeOpenDeeplinkComplete)
         }
     }
 
@@ -155,6 +160,12 @@ class SceneCoordinator: BaseCoordinator,
     func didFinishTermsOfService(from coordinator: LaunchCoordinator) {
         router.dismiss(animated: true)
         remove(child: coordinator)
+        // TODO: FXIOS-13434 Refactor the `LaunchScreenViewModel` to enhance the presentation logic
+        // This workaround is needed since .overFullScreen presentation doesn't call UIViewController lifecycle methods.
+        guard let launchScreenViewController = launchScreenViewController as? OnboardingLaunchScreenViewController else {
+            return
+        }
+        launchScreenViewController.loadNextLaunchType()
     }
 
     func didFinishLaunch(from coordinator: LaunchCoordinator) {

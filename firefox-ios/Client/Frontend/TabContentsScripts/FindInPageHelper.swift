@@ -7,8 +7,11 @@ import Foundation
 import WebKit
 
 protocol FindInPageHelperDelegate: AnyObject {
-    func findInPageHelper(_ findInPageHelper: FindInPageHelper, didUpdateCurrentResult currentResult: Int)
-    func findInPageHelper(_ findInPageHelper: FindInPageHelper, didUpdateTotalResults totalResults: Int)
+    @MainActor
+    func findInPageHelper(didUpdateCurrentResult currentResult: Int)
+
+    @MainActor
+    func findInPageHelper(didUpdateTotalResults totalResults: Int)
 }
 
 class FindInPageHelper: TabContentScript {
@@ -29,23 +32,25 @@ class FindInPageHelper: TabContentScript {
         return ["findInPageHandler"]
     }
 
+    @MainActor
     func userContentController(
         _ userContentController: WKUserContentController,
         didReceiveScriptMessage message: WKScriptMessage
     ) {
         guard let data = message.body as? [String: Int] else {
-            logger.log("Invalid data message body in FindInPageHelper: \(message.body)",
+            logger.log("Invalid data message body in FindInPageHelper",
                        level: .fatal,
-                       category: .library)
+                       category: .library,
+                       extra: ["messageBody": "\(message.body)"])
             return
         }
 
         if let currentResult = data["currentResult"] {
-            delegate?.findInPageHelper(self, didUpdateCurrentResult: currentResult)
+            delegate?.findInPageHelper(didUpdateCurrentResult: currentResult)
         }
 
         if let totalResults = data["totalResults"] {
-            delegate?.findInPageHelper(self, didUpdateTotalResults: totalResults)
+            delegate?.findInPageHelper(didUpdateTotalResults: totalResults)
         }
     }
 }

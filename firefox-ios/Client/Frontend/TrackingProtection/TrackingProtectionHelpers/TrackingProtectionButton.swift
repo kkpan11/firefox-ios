@@ -12,8 +12,9 @@ public struct TrackingProtectionButtonModel {
 }
 
 class TrackingProtectionButton: ResizableButton, ThemeApplicable {
-    private struct UX {
+    private enum UX {
         static let buttonCornerRadius: CGFloat = 12
+        static let newStyleButtonCornerRadius: CGFloat = 24
         static let buttonVerticalInset: CGFloat = 12
         static let buttonHorizontalInset: CGFloat = 16
         static let buttonFontSize: CGFloat = 16
@@ -83,7 +84,11 @@ class TrackingProtectionButton: ResizableButton, ThemeApplicable {
 //        By explicitly setting it to nil, we're ensuring a static background color
 //        that is defined in updatedConfiguration.background.backgroundColor
         updatedConfiguration.background.backgroundColorTransformer = nil
-        updatedConfiguration.background.cornerRadius = UX.buttonCornerRadius
+        if #available(iOS 26.0, *) {
+            updatedConfiguration.background.cornerRadius = UX.newStyleButtonCornerRadius
+        } else {
+            updatedConfiguration.background.cornerRadius = UX.buttonCornerRadius
+        }
 
         updatedConfiguration.cornerStyle = .fixed
 
@@ -94,7 +99,7 @@ class TrackingProtectionButton: ResizableButton, ThemeApplicable {
     // MARK: ThemeApplicable
 
     func applyTheme(theme: Theme) {
-        backgroundColorNormal = theme.colors.layer2
+        backgroundColorNormal = theme.isNova ? theme.colors.layerSurfaceMedium : theme.colors.layer2
         foregroundColor = theme.colors.textPrimary
         setNeedsUpdateConfiguration()
     }

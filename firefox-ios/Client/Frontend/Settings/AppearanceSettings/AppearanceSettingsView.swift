@@ -7,21 +7,34 @@ import Common
 
 /// Child settings pages appearance actions
 protocol AppearanceSettingsDelegate: AnyObject {
+    @MainActor
     func pressedPageZoom()
+
+    @MainActor
+    func pressedWallpaper()
 }
 
 /// The main view displaying the settings for the appearance menu.
-struct AppearanceSettingsView: View, FeatureFlaggable {
+struct AppearanceSettingsView: ThemeableView {
     let windowUUID: WindowUUID
-    let delegate: AppearanceSettingsDelegate?
+    let themeManager: ThemeManager
+    weak var delegate: AppearanceSettingsDelegate?
+    var isWallpaperSectionEnabled = false
 
-    @Environment(\.themeManager)
-    var themeManager
+    @State var theme: Theme
 
-    @State private var currentTheme: Theme?
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
 
-    var shouldShowPageZoom: Bool {
-        return featureFlags.isFeatureEnabled(.defaultZoomFeature, checking: .buildOnly)
+    init(windowUUID: WindowUUID,
+         themeManager: ThemeManager = AppContainer.shared.resolve(),
+         delegate: AppearanceSettingsDelegate? = nil,
+         isWallpaperSectionEnabled: Bool = false) {
+        self.windowUUID = windowUUID
+        self.themeManager = themeManager
+        self.delegate = delegate
+        self.isWallpaperSectionEnabled = isWallpaperSectionEnabled
+        self.theme = themeManager.resolveTheme(for: windowUUID, privateOverride: false)
     }
 
     /// Compute the theme option to display in the ThemeSelectionView.
@@ -36,51 +49,138 @@ struct AppearanceSettingsView: View, FeatureFlaggable {
     }
 
     private var viewBackground: Color {
-        return Color(currentTheme?.colors.layer1 ?? UIColor.clear)
+        return Color(theme.colors.layer1)
     }
 
-    private struct UX {
+    private enum UX {
         static let spacing: CGFloat = 24
+        static let cornerRadius: CGFloat = 24
+        static var spacingCurrentOS: CGFloat {
+            guard #available(iOS 26.0, *) else { return 0 }
+            return UX.spacing
+        }
     }
 
     var body: some View {
         ScrollView {
-            VStack {
+            VStack(spacing: UX.spacingCurrentOS) {
                 // Section for selecting the browser theme.
-                GenericSectionView(theme: currentTheme, title: String.BrowserThemeSectionHeader) {
-                    ThemeSelectionView(theme: currentTheme,
-                                       selectedThemeOption: themeOption,
-                                       onThemeSelected: updateBrowserTheme)
-                }
-                // Section for toggling website appearance (e.g., dark mode).
-                GenericSectionView(theme: currentTheme,
-                                   title: String.WebsiteAppearanceSectionHeader,
-                                   description: String.WebsiteDarkModeDescription) {
-                    DarkModeToggleView(theme: currentTheme,
-                                       isEnabled: NightModeHelper.isActivated(),
-                                       onChange: setWebsiteDarkMode)
-                }
-                if shouldShowPageZoom {
-                    GenericSectionView(theme: currentTheme, title: .Settings.Appearance.PageZoom.SectionHeader) {
-                        GenericItemCellView(title: .Settings.Appearance.PageZoom.PageZoomTitle,
-                                            image: .chevronRightLarge,
-                                            theme: currentTheme) {
-                            delegate?.pressedPageZoom()
-                        }
+                BrowserThemeSection(
+                    theme: theme,
+                    themeOption: themeOption,
+                    onThemeSelected: updateBrowserTheme,
+                    cornerRadius: UX.cornerRadius
+                )
+
+                if isWallpaperSectionEnabled {
+                    WallpaperSection(theme: theme, cornerRadius: UX.cornerRadius) {
+                        delegate?.pressedWallpaper()
                     }
                 }
+
+                // Section for toggling website appearance (e.g., dark mode).
+                WebsiteAppearanceSection(theme: theme, onChange: setWebsiteDarkMode, cornerRadius: UX.cornerRadius)
+
+                PageZoomSection(theme: theme, cornerRadius: UX.cornerRadius) {
+                    delegate?.pressedPageZoom()
+                }
+
                 Spacer()
             }
         }
-        .padding(.top, UX.spacing)
-        .frame(maxWidth: .infinity)
+        .modifier(PaddingStyle(theme: theme, spacing: UX.spacing))
         .background(viewBackground)
-        .onAppear {
-            currentTheme = themeManager.getCurrentTheme(for: windowUUID)
+        .listenToThemeChanges(in: self, theme: $theme)
+    }
+
+    // MARK: Subcomponents
+    private struct BrowserThemeSection: View {
+        let theme: Theme?
+        let themeOption: ThemeSelectionView.ThemeOption
+        let onThemeSelected: (ThemeSelectionView.ThemeOption) -> Void
+        let cornerRadius: CGFloat
+
+        var body: some View {
+            GenericSectionView(
+                theme: theme,
+                title: String.BrowserThemeSectionHeader,
+                identifier: AccessibilityIdentifiers.Settings.Appearance.browserThemeSectionTitle
+            ) {
+                ThemeSelectionView(
+                    theme: theme,
+                    selectedThemeOption: themeOption,
+                    onThemeSelected: onThemeSelected
+                )
+                .modifier(SectionStyle(theme: theme, cornerRadius: cornerRadius))
+            }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .ThemeDidChange)) { notification in
-            guard let uuid = notification.windowUUID, uuid == windowUUID else { return }
-            currentTheme = themeManager.getCurrentTheme(for: windowUUID)
+    }
+
+    private struct WebsiteAppearanceSection: View {
+        let theme: Theme?
+        let onChange: (Bool) -> Void
+        let cornerRadius: CGFloat
+
+        var body: some View {
+            GenericSectionView(
+                theme: theme,
+                title: String.WebsiteAppearanceSectionHeader,
+                description: String.WebsiteDarkModeDescription,
+                identifier: AccessibilityIdentifiers.Settings.Appearance.websiteAppearanceSectionTitle
+            ) {
+                DarkModeToggleView(
+                    theme: theme,
+                    isEnabled: NightModeHelper.isActivated(),
+                    onChange: onChange
+                )
+                .modifier(SectionStyle(theme: theme, cornerRadius: cornerRadius))
+            }
+        }
+    }
+
+    private struct PageZoomSection: View {
+        let theme: Theme?
+        let cornerRadius: CGFloat
+        let onTap: () -> Void
+
+        var body: some View {
+            GenericSectionView(
+                theme: theme,
+                title: .Settings.Appearance.PageZoom.SectionHeader,
+                identifier: AccessibilityIdentifiers.Settings.Appearance.pageZoomTitle
+            ) {
+                GenericItemCellView(
+                    title: .Settings.Appearance.PageZoom.PageZoomTitle,
+                    image: .chevronRightLarge,
+                    theme: theme
+                ) {
+                    onTap()
+                }
+                .modifier(SectionStyle(theme: theme, cornerRadius: cornerRadius))
+            }
+        }
+    }
+
+    private struct WallpaperSection: View {
+        let theme: Theme?
+        let cornerRadius: CGFloat
+        let onTap: () -> Void
+
+        var body: some View {
+            GenericSectionView(
+                theme: theme,
+                title: .Settings.Homepage.CustomizeFirefoxHome.Wallpaper,
+                identifier: AccessibilityIdentifiers.Settings.Appearance.wallpaperTitle
+            ) {
+                GenericItemCellView(
+                    title: .Settings.Homepage.CustomizeFirefoxHome.Wallpaper,
+                    image: .chevronRightLarge,
+                    theme: theme
+                ) {
+                    onTap()
+                }
+                .modifier(SectionStyle(theme: theme, cornerRadius: cornerRadius))
+            }
         }
     }
 

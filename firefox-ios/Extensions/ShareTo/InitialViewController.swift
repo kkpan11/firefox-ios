@@ -9,6 +9,7 @@ import Storage
 import MozillaAppServices
 
 // Small iPhone screens in landscape require that the popup have a shorter height.
+@MainActor
 func isLandscapeSmallScreen(_ traitCollection: UITraitCollection) -> Bool {
     if !UX.enableResizeRowsForSmallScreens {
         return false
@@ -39,49 +40,36 @@ class InitialViewController: UIViewController {
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
         super.viewDidLoad()
 
-        view.backgroundColor = .clear
-
-        // iPad drop shadow removal hack!
-        var view = parent?.view
-        while view != nil, view!.classForCoder.description() != "UITransitionView" {
-            view = view?.superview
-        }
-        if let view = view {
-            // For reasons unknown, if the alpha is < 1.0, the drop shadow is not shown
-            view.alpha = 0.99
-        }
-
+        self.view.backgroundColor = UIColor(white: 0.0, alpha: UX.alphaForFullscreenOverlay)
         self.view.alpha = 0
 
         self.getShareItem { shareItem in
-            DispatchQueue.main.async {
-                guard let shareItem = shareItem else {
-                    let alert = UIAlertController(
-                        title: .SendToErrorTitle,
-                        message: .SendToErrorMessage,
-                        preferredStyle: .alert
-                    )
-                    alert.addAction(UIAlertAction(
-                        title: .SendToErrorOKButton,
-                        style: .default
-                    ) { _ in self.finish(afterDelay: 0)
-                    })
-                    self.present(alert, animated: true, completion: nil)
-                    return
-                }
-
-                // This is the view controller for the popup dialog
-                let shareController = ShareViewController()
-                shareController.delegate = self
-                shareController.shareItem = shareItem
-                self.shareViewController = shareController
-
-                self.embedController = EmbeddedNavController(
-                    isSearchMode: !shareItem.isUrlType(),
-                    parent: self,
-                    rootViewController: shareController
+            guard let shareItem = shareItem else {
+                let alert = UIAlertController(
+                    title: .SendToErrorTitle,
+                    message: .SendToErrorMessage,
+                    preferredStyle: .alert
                 )
+                alert.addAction(UIAlertAction(
+                    title: .SendToErrorOKButton,
+                    style: .default
+                ) { _ in self.finish(afterDelay: 0)
+                })
+                self.present(alert, animated: true, completion: nil)
+                return
             }
+
+            // This is the view controller for the popup dialog
+            let shareController = ShareViewController()
+            shareController.delegate = self
+            shareController.shareItem = shareItem
+            self.shareViewController = shareController
+
+            self.embedController = EmbeddedNavController(
+                isSearchMode: !shareItem.isUrlType(),
+                parent: self,
+                rootViewController: shareController
+            )
         }
     }
 
@@ -96,13 +84,15 @@ class InitialViewController: UIViewController {
         }
     }
 
-    func getShareItem(completion: @escaping (ExtensionUtils.ExtractedShareItem?) -> Void) {
+    func getShareItem(completion: @MainActor @escaping (ExtensionUtils.ExtractedShareItem?) -> Void) {
         ExtensionUtils.extractSharedItem(fromExtensionContext: extensionContext) { item, error in
-            if let item = item, error == nil {
-                completion(item)
-            } else {
-                completion(nil)
-                self.extensionContext?.cancelRequest(withError: CocoaError(.keyValueValidation))
+            DispatchQueue.main.async {
+                if let item = item, error == nil {
+                    completion(item)
+                } else {
+                    completion(nil)
+                    self.extensionContext?.cancelRequest(withError: CocoaError(.keyValueValidation))
+                }
             }
         }
     }

@@ -7,11 +7,9 @@ import UIKit
 import ComponentLibrary
 
 class ThemedLearnMoreTableViewCell: ThemedTableViewCell {
-    private struct UX {
-        static let horizontalMargin: CGFloat = 15
+    private enum UX {
         static let verticalMargin: CGFloat = 10
         static let labelsSpacing: CGFloat = 3
-        static let learnMoreInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
     }
 
     private lazy var labelsStackView: UIStackView = .build { stackView in
@@ -21,13 +19,11 @@ class ThemedLearnMoreTableViewCell: ThemedTableViewCell {
 
     private lazy var titleLabel: UILabel = .build { label in
         label.numberOfLines = 0
-        label.textAlignment = .left
         label.font = FXFontStyles.Regular.body.scaledFont()
     }
 
     private lazy var subtitleLabel: UILabel = .build { label in
         label.numberOfLines = 0
-        label.textAlignment = .left
         label.font = FXFontStyles.Regular.caption1.scaledFont()
     }
 
@@ -42,14 +38,14 @@ class ThemedLearnMoreTableViewCell: ThemedTableViewCell {
         setupLayout()
     }
 
-    func configure(title: String, subtitle: String, learnMoreText: String, a11yId: String?, theme: Theme) {
+    func configure(title: String, subtitle: String, learnMoreText: String, a11yId: String?) {
         titleLabel.text = title
         subtitleLabel.text = subtitle
         let learnMoreButtonViewModel = LinkButtonViewModel(
             title: learnMoreText,
             a11yIdentifier: a11yId ?? "",
             font: FXFontStyles.Regular.caption1.scaledFont(),
-            contentInsets: UX.learnMoreInsets
+            contentInsets: .zero
         )
         learnMoreButton.configure(viewModel: learnMoreButtonViewModel)
     }
@@ -64,7 +60,6 @@ class ThemedLearnMoreTableViewCell: ThemedTableViewCell {
     }
 
     private func setupLayout() {
-        separatorInset = .zero
         selectionStyle = .none
         contentView.addSubview(labelsStackView)
         contentView.addSubview(learnMoreButton)
@@ -79,13 +74,13 @@ class ThemedLearnMoreTableViewCell: ThemedTableViewCell {
 
         NSLayoutConstraint.activate([
             labelsStackView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.verticalMargin),
-            labelsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.horizontalMargin),
-            labelsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -UX.horizontalMargin),
+            labelsStackView.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor),
+            labelsStackView.trailingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.trailingAnchor),
 
             learnMoreButton.topAnchor.constraint(equalTo: labelsStackView.bottomAnchor, constant: UX.labelsSpacing),
-            learnMoreButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.horizontalMargin),
-            bottomConstraint,
-            learnMoreButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -UX.horizontalMargin)
+            learnMoreButton.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor),
+            learnMoreButton.trailingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.trailingAnchor),
+            bottomConstraint
         ])
     }
 

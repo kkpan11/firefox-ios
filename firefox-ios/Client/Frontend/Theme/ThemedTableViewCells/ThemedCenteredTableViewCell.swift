@@ -6,7 +6,7 @@ import Foundation
 import Common
 
 class ThemedCenteredTableViewCell: ThemedTableViewCell {
-    private struct UX {
+    private enum UX {
         static let labelMargin: CGFloat = 15
     }
 
@@ -46,10 +46,10 @@ class ThemedCenteredTableViewCell: ThemedTableViewCell {
             centeredLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             centeredLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             centeredLabel.leadingAnchor.constraint(
-                greaterThanOrEqualTo: contentView.leadingAnchor,
+                equalTo: contentView.leadingAnchor,
                 constant: UX.labelMargin),
             centeredLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: contentView.trailingAnchor,
+                equalTo: contentView.trailingAnchor,
                 constant: -UX.labelMargin)
         ])
     }

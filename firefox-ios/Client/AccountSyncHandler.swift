@@ -6,29 +6,15 @@ import Common
 import Foundation
 import Storage
 
-final class Debouncer {
-    private let delay: TimeInterval
-    private var workItem: DispatchWorkItem?
-
-    init(delay: TimeInterval) {
-        self.delay = delay
-    }
-
-    func call(action: @escaping () -> Void) {
-        workItem?.cancel()  // Cancel any previously scheduled work
-        workItem = DispatchWorkItem(block: action)
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + delay, execute: workItem!)
-    }
-}
-
 /// `AccountSyncHandler` exists to observe certain `TabEventLabel` notifications,
 /// and react accordingly.
-class AccountSyncHandler: TabEventHandler {
-    private let debouncer: Debouncer
+@MainActor
+final class AccountSyncHandler: TabEventHandler, Notifiable, Sendable {
+    private let notificationCenter: NotificationProtocol = NotificationCenter.default
+    private let debouncer: MainActorDebouncer
+    private let loginDebouncer: MainActorDebouncer
     private let profile: Profile
     private let logger: Logger
-    private let queueDelay: Double
     private var windowManager: WindowManager {
         return AppContainer.shared.resolve()
     }
@@ -36,25 +22,34 @@ class AccountSyncHandler: TabEventHandler {
         .allWindows
 
     // For testing purposes only:
-    private var onSyncCompleted: (() -> Void)?
+    private let onSyncCompleted: (@Sendable () -> Void)?
 
     init(
         with profile: Profile,
         debounceTime: Double = 5.0,
-        queue: DispatchQueueInterface = DispatchQueue.global(),
-        queueDelay: Double = 0.5,
+        loginDebounceTime: Double = 0.5,
         logger: Logger = DefaultLogger.shared,
-        onSyncCompleted: (() -> Void)? = nil
+        onSyncCompleted: (@Sendable () -> Void)? = nil
     ) {
         self.profile = profile
-        self.debouncer = Debouncer(delay: debounceTime)
+        self.debouncer = MainActorDebouncer(delay: debounceTime)
+        self.loginDebouncer = MainActorDebouncer(delay: loginDebounceTime)
         self.logger = logger
-        self.queueDelay = queueDelay
         self.onSyncCompleted = onSyncCompleted
 
         // Other clients only show urls and ordering of tabs, we can ignore everything
         // else that doesn't modify those attributes
         register(self, forTabEvents: .didGainFocus, .didClose, .didChangeURL)
+
+        // Upload local tabs immediately after login so other clients see them
+        // without requiring any tab interaction. syncEverything() fires on login
+        // but the Rust TabsStore's local tab list is empty until setLocalTabs()
+        // is called...so we do that here as soon as the account is ready.
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [.accountAuthenticated]
+        )
     }
 
     // MARK: - Account Server Sync
@@ -82,7 +77,9 @@ class AccountSyncHandler: TabEventHandler {
     /// To prevent multiple tab actions to have a separate syncs, we sync after 5s of no tab activity
     private func performClientsAndTabsSync() {
         guard profile.hasSyncableAccount() else { return }
-        debouncer.call { [weak self] in self?.storeTabs() }
+        debouncer.call { [weak self] in
+            self?.storeTabs()
+        }
     }
 
     private func storeTabs() {
@@ -93,16 +90,8 @@ class AccountSyncHandler: TabEventHandler {
         // Store tabs keyed by tabUUID to easily handle overrides.
         var storedTabsDict = [String: RemoteTab]()
         for manager in tabManagers {
-            // Set inactive tabs explicitly as inactive (initial state)
-            for tab in manager.inactiveTabs {
-                if let remoteTab = Tab.toRemoteTab(tab, inactive: true) {
-                    storedTabsDict[tab.tabUUID] = remoteTab
-                }
-            }
-
-            // Active tabs override inactive ones if there's overlap
-            for tab in manager.normalActiveTabs {
-                if let remoteTab = Tab.toRemoteTab(tab, inactive: false) {
+            for tab in manager.normalTabs {
+                if let remoteTab = RemoteTabCreator.toRemoteTab(from: tab) {
                     storedTabsDict[tab.tabUUID] = remoteTab
                 }
             }
@@ -111,22 +100,36 @@ class AccountSyncHandler: TabEventHandler {
         // Final stored tabs for syncing
         let storedTabs = Array(storedTabsDict.values)
 
-        // It's fine if we wait until more busy work has finished. We tend to contend with more important
-        // work like querying for top sites.
-        DispatchQueue.main.asyncAfter(deadline: .now() + queueDelay) { [weak self] in
-            self?.logger.log(
-                "Storing \(storedTabs.count) total tabs for \(windowCount) windows", level: .debug, category: .sync)
-            self?.profile.storeAndSyncTabs(storedTabs).upon { result in
-                switch result {
-                case .success(let tabCount):
-                    self?.logger.log(
-                        "Successfully stored \(tabCount) tabs", level: .debug, category: .sync)
-                case .failure(let error):
-                    self?.logger.log(
-                        "Failed to store tabs: \(error.localizedDescription)", level: .warning, category: .sync)
-                }
-                self?.onSyncCompleted?() // callback for tests
+        logger.log(
+            "Storing \(storedTabs.count) total tabs for \(windowCount) windows", level: .debug, category: .sync
+        )
+
+        profile.storeAndSyncTabs(storedTabs).upon { [logger, onSyncCompleted] result in
+            switch result {
+            case .success(let tabCount):
+                logger.log(
+                    "Successfully stored \(tabCount) tabs", level: .debug, category: .sync)
+            case .failure(let error):
+                logger.log(
+                    "Failed to store tabs: \(error.localizedDescription)", level: .warning, category: .sync)
             }
+            onSyncCompleted?() // callback for tests
+        }
+    }
+}
+
+// MARK: - Notifiable
+extension AccountSyncHandler {
+    nonisolated func handleNotifications(_ notification: Notification) {
+        switch notification.name {
+        case .accountAuthenticated:
+            // Wait until more busy work has finished
+            // such as contending with querying for top sites
+            Task { @MainActor [weak self] in
+                self?.loginDebouncer.call { self?.storeTabs() }
+            }
+        default:
+            break
         }
     }
 }

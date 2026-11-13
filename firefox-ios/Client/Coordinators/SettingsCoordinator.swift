@@ -6,10 +6,16 @@ import Common
 import Foundation
 import Redux
 import SwiftUI
+import Shared
 
 protocol SettingsCoordinatorDelegate: AnyObject {
+    @MainActor
     func openURLinNewTab(_ url: URL)
+
+    @MainActor
     func openDebugTestTabs(count: Int)
+
+    @MainActor
     func didFinishSettings(from coordinator: SettingsCoordinator)
 }
 
@@ -24,12 +30,15 @@ final class SettingsCoordinator: BaseCoordinator,
                                  ParentCoordinatorDelegate,
                                  QRCodeNavigationHandler,
                                  BrowsingSettingsDelegate,
-                                 AppearanceSettingsDelegate {
+                                 AppearanceSettingsDelegate,
+                                 TranslationPickerSettingsDelegate,
+                                 FeatureFlaggable {
     var settingsViewController: AppSettingsScreen?
     private let wallpaperManager: WallpaperManagerInterface
     private let profile: Profile
     private let tabManager: TabManager
     private let themeManager: ThemeManager
+    private let relayController: RelayControllerProtocol
     private let gleanUsageReportingMetricsService: GleanUsageReportingMetricsService
     weak var parentCoordinator: SettingsCoordinatorDelegate?
     private var windowUUID: WindowUUID { return tabManager.windowUUID }
@@ -41,6 +50,7 @@ final class SettingsCoordinator: BaseCoordinator,
         profile: Profile = AppContainer.shared.resolve(),
         tabManager: TabManager,
         themeManager: ThemeManager = AppContainer.shared.resolve(),
+        relayController: RelayControllerProtocol,
         gleanUsageReportingMetricsService: GleanUsageReportingMetricsService = AppContainer.shared.resolve(),
         gleanWrapper: GleanWrapper = DefaultGleanWrapper()
     ) {
@@ -50,6 +60,7 @@ final class SettingsCoordinator: BaseCoordinator,
         self.themeManager = themeManager
         self.gleanUsageReportingMetricsService = gleanUsageReportingMetricsService
         self.settingsTelemetry = SettingsTelemetry(gleanWrapper: gleanWrapper)
+        self.relayController = relayController
         super.init(router: router)
 
         // It's important we initialize AppSettingsTableViewController with a settingsDelegate and parentCoordinator
@@ -64,15 +75,33 @@ final class SettingsCoordinator: BaseCoordinator,
         router.setRootViewController(settingsViewController)
     }
 
-    func start(with settingsSection: Route.SettingsSection) {
+    func start(with settingsSection: Route.SettingsSection, shouldResetNavigationStack: Bool = false) {
         // We might already know the sub-settings page we want to show, but in some case we don't and
         // the flow decision needs to be figured out by the view controller
         if let viewController = getSettingsViewController(settingsSection: settingsSection) {
-            router.push(viewController)
+            // FIXME: FXIOS-15967 We should pop to the root of the settings screen before pushing new screens from deeplinks,
+            // which might push a view controller to the wrong sub-settings nav hierarchy.
+            if isAlreadyOnTop(viewController) { return }
+            // If Settings is already showing a subpage, reset to root before opening the routed destination.
+            if shouldResetNavigationStack,
+               let root = router.rootViewController,
+               router.navigationController.viewControllers.count > 1 {
+                router.navigationController.setViewControllers([root, viewController], animated: false)
+            } else {
+                router.push(viewController)
+            }
         } else {
+            if shouldResetNavigationStack, let root = router.rootViewController {
+                router.popToViewController(root, reason: .deeplink, animated: false)
+            }
             assert(settingsViewController != nil)
             settingsViewController?.handle(route: settingsSection)
         }
+    }
+
+    private func isAlreadyOnTop(_ vc: UIViewController) -> Bool {
+        guard let top = router.navigationController.topViewController else { return false }
+        return type(of: top) == type(of: vc)
     }
 
     override func canHandle(route: Route) -> Bool {
@@ -87,12 +116,13 @@ final class SettingsCoordinator: BaseCoordinator,
     override func handle(route: Route) {
         switch route {
         case let .settings(section):
-            start(with: section)
+            start(with: section, shouldResetNavigationStack: true)
         default:
             break
         }
     }
 
+    // swiftlint:disable:next function_body_length
     private func getSettingsViewController(settingsSection section: Route.SettingsSection) -> UIViewController? {
         switch section {
         case .appIcon:
@@ -154,20 +184,19 @@ final class SettingsCoordinator: BaseCoordinator,
             return viewController
 
         case .theme:
-            if themeManager.isNewAppearanceMenuOn {
-                let appearanceView = AppearanceSettingsView(windowUUID: windowUUID,
-                                                            delegate: self)
-                return UIHostingController(rootView: appearanceView)
-            } else {
-                return ThemeSettingsController(windowUUID: windowUUID)
-            }
+            let appearanceView = AppearanceSettingsView(
+                windowUUID: windowUUID,
+                delegate: self,
+                isWallpaperSectionEnabled: wallpaperManager.canSettingsBeShown
+            )
+            return UIHostingController(rootView: appearanceView)
 
         case .wallpaper:
             if wallpaperManager.canSettingsBeShown {
                 let viewModel = WallpaperSettingsViewModel(
                     wallpaperManager: wallpaperManager,
                     tabManager: tabManager,
-                    theme: themeManager.getCurrentTheme(for: windowUUID),
+                    theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false),
                     windowUUID: windowUUID
                 )
                 let wallpaperVC = WallpaperSettingsViewController(viewModel: viewModel, windowUUID: windowUUID)
@@ -187,13 +216,21 @@ final class SettingsCoordinator: BaseCoordinator,
             return contentBlockerVC
 
         case .browser:
-            return BrowsingSettingsViewController(profile: profile, windowUUID: windowUUID)
+            let viewController = BrowsingSettingsViewController(profile: profile, windowUUID: windowUUID)
+            viewController.parentCoordinator = self
+            return viewController
 
         case .toolbar:
+            // Toolbar position cannot be changed on iPad
+            guard UIDeviceDetails.userInterfaceIdiom != .pad else { return nil }
             let viewModel = SearchBarSettingsViewModel(prefs: profile.prefs)
-            return LegacyFeatureFlagsManager.shared.isFeatureEnabled(.addressBarMenu, checking: .buildOnly)
-               ? UIHostingController(rootView: AddressBarSettingsView(windowUUID: windowUUID, viewModel: viewModel))
-               : SearchBarSettingsViewController(viewModel: viewModel, windowUUID: windowUUID)
+            return UIHostingController(
+                rootView: AddressBarSettingsView(
+                    windowUUID: windowUUID,
+                    viewModel: viewModel,
+                    prefs: profile.prefs
+                )
+            )
 
         case .topSites:
             let viewController = TopSitesSettingsViewController(windowUUID: windowUUID)
@@ -203,6 +240,7 @@ final class SettingsCoordinator: BaseCoordinator,
         case .creditCard, .password:
             return nil // Needs authentication, decision handled by VC
 
+        case .translation: return translationSettingsViewController()
         case .general, .rateApp:
             return nil // Return nil since we're already at the general page
         }
@@ -288,7 +326,9 @@ final class SettingsCoordinator: BaseCoordinator,
     // MARK: PrivacySettingsDelegate
 
     func pressedAutoFillsPasswords() {
-        let viewController = AutoFillPasswordSettingsViewController(profile: profile, windowUUID: windowUUID)
+        let viewController = AutoFillPasswordSettingsViewController(profile: profile,
+                                                                    relayController: relayController,
+                                                                    windowUUID: windowUUID)
         viewController.parentCoordinator = self
         router.push(viewController)
     }
@@ -311,11 +351,25 @@ final class SettingsCoordinator: BaseCoordinator,
     }
 
     func pressedCreditCard() {
-        findAndHandle(route: .settings(section: .creditCard))
+        settingsViewController?.handle(route: .creditCard)
+    }
+
+    func pressedRelayMask() {
+        let viewController = RelayMaskSettingsViewController(profile: profile,
+                                                             windowUUID: windowUUID,
+                                                             tabManager: tabManager,
+                                                             relayController: relayController)
+        router.push(viewController)
     }
 
     func pressedClearPrivateData() {
         let viewController = ClearPrivateDataTableViewController(profile: profile, tabManager: tabManager)
+        router.push(viewController)
+    }
+
+    func pressedVPN() {
+        guard #available(iOS 17.0, *) else { return }
+        let viewController = VPNSettingsViewController(windowUUID: windowUUID, prefs: profile.prefs)
         router.push(viewController)
     }
 
@@ -328,7 +382,7 @@ final class SettingsCoordinator: BaseCoordinator,
     }
 
     func pressedPasswords() {
-        findAndHandle(route: .settings(section: .password))
+        settingsViewController?.handle(route: .password)
     }
 
     func pressedNotifications() {
@@ -340,16 +394,31 @@ final class SettingsCoordinator: BaseCoordinator,
 
     func askedToOpen(url: URL?, withTitle title: NSAttributedString?) {
         guard let url = url else { return }
-        let viewController = SettingsContentViewController(windowUUID: windowUUID)
+        let viewController = SettingsContentViewController(
+            windowUUID: windowUUID,
+            shouldUsePrivateOverride: true,
+            shouldBeInPrivateTheme: false
+        )
         viewController.settingsTitle = title
         viewController.url = url
         router.push(viewController)
     }
 
     // MARK: GeneralSettingsDelegate
+    func pressedAIControls() {
+        let model = AIControlsModel(prefs: profile.prefs, windowUUID: windowUUID)
+
+        let viewController = UIHostingController(
+            rootView: AIControlsSettingsView(
+                aiControlsModel: model
+            )
+        )
+        viewController.title = .Settings.AIControls.Title
+        router.push(viewController)
+    }
 
     func pressedCustomizeAppIcon() {
-        settingsTelemetry.tappedAppIconSetting()
+        settingsTelemetry.optionSelected(option: .AppIconSelection)
 
         let viewController = UIHostingController(
             rootView: AppIconSelectionView(
@@ -389,35 +458,27 @@ final class SettingsCoordinator: BaseCoordinator,
     }
 
     func pressedToolbar() {
+        // Toolbar position cannot be changed on iPad
+        guard UIDeviceDetails.userInterfaceIdiom != .pad else { return }
         let viewModel = SearchBarSettingsViewModel(prefs: profile.prefs)
-        if LegacyFeatureFlagsManager.shared.isFeatureEnabled(.addressBarMenu, checking: .buildOnly) {
-            let viewController = UIHostingController(
-                rootView: AddressBarSettingsView(
+        let viewController = UIHostingController(
+            rootView: AddressBarSettingsView(
                 windowUUID: windowUUID,
-                viewModel: viewModel))
-            viewController.title = .Settings.AddressBar.AddressBarMenuTitle
-            router.push(viewController)
-        } else {
-            let viewController = SearchBarSettingsViewController(viewModel: viewModel, windowUUID: windowUUID)
-            router.push(viewController)
-        }
+                viewModel: viewModel,
+                prefs: profile.prefs))
+        viewController.title = .Settings.AddressBar.AddressBarMenuTitle
+        router.push(viewController)
     }
 
     func pressedTheme() {
-        let action = ScreenAction(windowUUID: windowUUID,
-                                  actionType: ScreenActionType.showScreen,
-                                  screen: .themeSettings)
-        store.dispatch(action)
-
-        if themeManager.isNewAppearanceMenuOn {
-            let appearanceView = AppearanceSettingsView(windowUUID: windowUUID,
-                                                        delegate: self)
-            let viewController = UIHostingController(rootView: appearanceView)
-            viewController.title = .SettingsAppearanceTitle
-            router.push(viewController)
-        } else {
-            router.push(ThemeSettingsController(windowUUID: windowUUID))
-        }
+        let appearanceView = AppearanceSettingsView(
+            windowUUID: windowUUID,
+            delegate: self,
+            isWallpaperSectionEnabled: wallpaperManager.canSettingsBeShown
+        )
+        let viewController = UIHostingController(rootView: appearanceView)
+        viewController.title = .SettingsAppearanceTitle
+        router.push(viewController)
     }
 
     func pressedBrowsing() {
@@ -425,6 +486,45 @@ final class SettingsCoordinator: BaseCoordinator,
                                                             windowUUID: windowUUID)
         viewController.parentCoordinator = self
         router.push(viewController)
+    }
+
+    func pressedQuickAnswers() {
+        let viewController = QuickAnswersSettingsViewController(
+            prefs: profile.prefs,
+            windowUUID: windowUUID
+        )
+        router.push(viewController)
+    }
+
+    func pressedSummarize() {
+        let viewController = SummarizeSettingsViewController(
+            prefs: profile.prefs,
+            windowUUID: windowUUID
+        )
+        router.push(viewController)
+    }
+
+    func pressedTranslation() {
+        router.push(translationSettingsViewController())
+    }
+
+    private func translationSettingsViewController() -> UIViewController {
+        if featureFlagsProvider.isEnabled(.translationLanguagePicker) {
+            let viewController = TranslationPickerSettingsViewController(windowUUID: windowUUID)
+            viewController.coordinator = self
+            return viewController
+        } else {
+            return TranslationSettingsViewController(prefs: profile.prefs, windowUUID: windowUUID)
+        }
+    }
+
+    func showLanguagePicker(availableLanguages: [String]) {
+        let picker = TranslationLanguagePickerViewController(
+            windowUUID: windowUUID,
+            languages: availableLanguages
+        )
+        let navigationController = UINavigationController(rootViewController: picker)
+        router.present(navigationController)
     }
 
     // MARK: AccountSettingsDelegate
@@ -496,6 +596,19 @@ final class SettingsCoordinator: BaseCoordinator,
         router.push(viewController)
     }
 
+    func pressedWallpaper() {
+        guard wallpaperManager.canSettingsBeShown else { return }
+        let viewModel = WallpaperSettingsViewModel(
+            wallpaperManager: wallpaperManager,
+            tabManager: tabManager,
+            theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false),
+            windowUUID: windowUUID
+        )
+        let viewController = WallpaperSettingsViewController(viewModel: viewModel, windowUUID: windowUUID)
+        viewController.settingsDelegate = self
+        router.push(viewController)
+    }
+
     // MARK: - AboutSettingsDelegate
 
     func pressedRateApp() {
@@ -504,14 +617,22 @@ final class SettingsCoordinator: BaseCoordinator,
     }
 
     func pressedLicense(url: URL, title: NSAttributedString) {
-        let viewController = SettingsContentViewController(windowUUID: windowUUID)
+        let viewController = SettingsContentViewController(
+            windowUUID: windowUUID,
+            shouldUsePrivateOverride: true,
+            shouldBeInPrivateTheme: false
+        )
         viewController.settingsTitle = title
         viewController.url = url
         router.push(viewController)
     }
 
     func pressedYourRights(url: URL, title: NSAttributedString) {
-        let viewController = SettingsContentViewController(windowUUID: windowUUID)
+        let viewController = SettingsContentViewController(
+            windowUUID: windowUUID,
+            shouldUsePrivateOverride: true,
+            shouldBeInPrivateTheme: false
+        )
         viewController.settingsTitle = title
         viewController.url = url
         router.push(viewController)

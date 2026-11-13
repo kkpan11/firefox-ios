@@ -9,19 +9,22 @@ import Shared
 
 /// Provides a Remote-Settings-based substitute for our DefaultSearchEngineProvider
 /// This is unused unless SEC (Search Engine Consolidation) experiment is enabled.
-final class ASSearchEngineProvider: SearchEngineProvider {
+final class ASSearchEngineProvider: SearchEngineProvider, Sendable {
     private let logger: Logger
     private let iconDataFetcher: ASSearchEngineIconDataFetcherProtocol?
     private let selector: ASSearchEngineSelectorProtocol?
+    private let isSearchConfigV3Enabled: Bool
 
     init(logger: Logger = DefaultLogger.shared,
          selector: ASSearchEngineSelectorProtocol? = nil,
-         iconDataFetcher: ASSearchEngineIconDataFetcherProtocol? = ASSearchEngineIconDataFetcher()) {
+         iconDataFetcher: ASSearchEngineIconDataFetcherProtocol? = ASSearchEngineIconDataFetcher(),
+         isSearchConfigV3Enabled: Bool = SearchEngineFlags.isSearchConfigV3Enabled) {
         self.logger = logger
         self.iconDataFetcher = iconDataFetcher
+        self.isSearchConfigV3Enabled = isSearchConfigV3Enabled
         let profile = (AppContainer.shared.resolve() as Profile)
-        if selector == nil, let service = profile.remoteSettingsService {
-            self.selector = ASSearchEngineSelector(service: service)
+        if selector == nil {
+            self.selector = ASSearchEngineSelector(service: profile.remoteSettingsService )
         } else {
             self.selector = selector
         }
@@ -53,12 +56,13 @@ final class ASSearchEngineProvider: SearchEngineProvider {
                                                        engineOrderingPrefs: SearchEnginePrefs,
                                                        prefsMigrator: SearchEnginePreferencesMigrator,
                                                        completion: @escaping SearchEngineCompletion) {
-        let locale = Locale.current
+        let locale = SystemLocaleProvider()
         let prefsVersion = preferencesVersion
+        let closureLogger = logger
 
         // First load the unordered engines, based on the current locale and language
+        // swiftlint:disable closure_body_length
         getUnorderedBundledEnginesFor(locale: locale,
-                                      possibleLanguageIdentifier: locale.possibilitiesForLanguageIdentifier(),
                                       completion: { engineResults in
             let unorderedEngines = customEngines + engineResults
             let finalEngineOrderingPrefs = prefsMigrator.migratePrefsIfNeeded(engineOrderingPrefs,
@@ -70,6 +74,9 @@ final class ASSearchEngineProvider: SearchEngineProvider {
                 // We haven't persisted the engine order, so use the default engine ordering.
                 // For AS-based engines we are guaranteed the preferred default to be at index 0
                 // (this happens in `fetchSearchEngines()`).
+                closureLogger.log("[SEC] Search order prefs: NO. (Unavailable, or empty.)",
+                                  level: .info,
+                                  category: .remoteSettings)
                 ensureMainThread { completion(finalEngineOrderingPrefs, unorderedEngines) }
                 return
             }
@@ -78,51 +85,109 @@ final class ASSearchEngineProvider: SearchEngineProvider {
             // We may have found engines that weren't persisted in the ordered list
             // (if the user changed locales or added a new engine); these engines
             // will be appended to the end of the list.
-            let orderedEngines = unorderedEngines.sorted { engine1, engine2 in
-                let index1 = orderedEngineNames.firstIndex(of: engine1.engineID)
-                let index2 = orderedEngineNames.firstIndex(of: engine2.engineID)
+            closureLogger.log("[SEC] Search order prefs: YES. Will apply (identifiers): \(orderedEngineNames)",
+                              level: .info,
+                              category: .remoteSettings)
+            let unorderedDbgInfo = unorderedEngines.map { $0.shortName + "(\($0.engineID))" }
+            closureLogger.log("[SEC] Unordered engines: \(unorderedDbgInfo)",
+                              level: .info,
+                              category: .remoteSettings)
 
-                if index1 == nil && index2 == nil {
-                    return engine1.shortName < engine2.shortName
-                }
+            var orderedEngines: [OpenSearchEngine] = []
+            var availableEngines = unorderedEngines
 
-                if let index1, let index2 {
-                    return index1 < index2
-                } else {
-                    // nil < N for all non-nil values of N.
-                    return index1 ?? -1 > index2 ?? -1
+            // Map the user's engine prefs in-order to the available engines we have from AS
+            for prefsEngineID in orderedEngineNames {
+                guard let idx = availableEngines.firstIndex(where: { $0.engineID == prefsEngineID }) else {
+                    closureLogger.log("[SEC] Engine ID in prefs, but no available engine. (Removed in RS?) \(prefsEngineID)",
+                                      level: .warning,
+                                      category: .remoteSettings)
+                    continue
                 }
+                orderedEngines.append(availableEngines[idx])
+                availableEngines.remove(at: idx)
             }
 
-            ensureMainThread { completion(finalEngineOrderingPrefs, orderedEngines) }
+            // It's possible there are engines remaining that were not in the input preferences list.
+            // This can happen for example if a new engine is added to Remote Settings.
+            // Append these engines to the end of the list.
+            if !availableEngines.isEmpty {
+                closureLogger.log("[SEC] Appending remaining engines \(availableEngines)", level: .info, category: .remoteSettings)
+                orderedEngines = orderedEngines + availableEngines
+            }
+
+            let before = unorderedEngines.map { $0.shortName }
+            let after = orderedEngines.map { $0.shortName }
+            closureLogger.log("[SEC] Search order prefs result. Before: \(before) After: \(after).",
+                              level: .info,
+                              category: .remoteSettings)
+
+            let finalEngineOutput = orderedEngines
+            ensureMainThread { completion(finalEngineOrderingPrefs, finalEngineOutput) }
         })
+        // swiftlint:enable closure_body_length
     }
 
-    private func getUnorderedBundledEnginesFor(locale: Locale,
-                                               possibleLanguageIdentifier: [String],
+    private func getUnorderedBundledEnginesFor(locale: LocaleProvider,
                                                completion: @escaping ([OpenSearchEngine]) -> Void ) {
-        let localeCode = localeCode(from: locale)
-        let region = regionCode(from: locale)
+        let localeCode = ASSearchEngineUtilities.localeCode(from: locale)
+        let region = locale.regionCode(fallback: "US")
         let logger = self.logger
         guard let iconPopulator = iconDataFetcher, let selector else {
             let logExtra1 = iconDataFetcher == nil ? "nil" : "ok"
             let logExtra2 = selector == nil ? "nil" : "ok"
-            logger.log("Icon fetcher and/or selector are nil. (\(logExtra1), \(logExtra2))",
+            logger.log("[SEC] Icon fetcher and/or selector are nil.",
                        level: .fatal,
-                       category: .remoteSettings)
+                       category: .remoteSettings,
+                       extra: ["iconFetcher": logExtra1, "selector": logExtra2])
             completion([])
             return
         }
 
+        guard isSearchConfigV3Enabled else {
+            getUnorderedV2Engines(localeCode: localeCode,
+                                  region: region,
+                                  selector: selector,
+                                  iconPopulator: iconPopulator,
+                                  completion: completion)
+            return
+        }
+
+        getUnorderedV3Engines(localeCode: localeCode,
+                              region: region,
+                              selector: selector,
+                              iconPopulator: iconPopulator) { engines in
+            if let engines {
+                completion(engines)
+                return
+            }
+            // TODO [FXIOS-17178]: Should we fallback to v2, or just fail? Needs investigation.
+            logger.log("[SEC][v3] Falling back to search-config-v2 for this session.",
+                       level: .warning,
+                       category: .remoteSettings)
+            self.getUnorderedV2Engines(localeCode: localeCode,
+                                       region: region,
+                                       selector: selector,
+                                       iconPopulator: iconPopulator,
+                                       completion: completion)
+        }
+    }
+
+    private func getUnorderedV2Engines(localeCode: String,
+                                       region: String,
+                                       selector: ASSearchEngineSelectorProtocol,
+                                       iconPopulator: ASSearchEngineIconDataFetcherProtocol,
+                                       completion: @escaping ([OpenSearchEngine]) -> Void) {
+        let logger = self.logger
         selector.fetchSearchEngines(locale: localeCode, region: region) { (result, error) in
             if let error {
-                logger.log("Error fetching search engines via App Services: \(error)",
+                logger.log("[SEC] Error fetching search engines via App Services: \(error)",
                            level: .warning,
                            category: .remoteSettings)
             }
 
             guard let result, !result.engines.isEmpty else {
-                logger.log("AS search engine fetch returned empty results",
+                logger.log("[SEC] AS search engine fetch returned empty results",
                            level: .fatal,
                            category: .remoteSettings)
                 completion([])
@@ -142,33 +207,37 @@ final class ASSearchEngineProvider: SearchEngineProvider {
         }
     }
 
-    private func localeCode(from locale: Locale) -> String {
-        // Per updated discussions with AS team, for now we are using the `preferredLanguages`
-        // codes for the locale parameter as long as it's available
-
-        let languages = Locale.preferredLanguages
-        if let langCode = languages.first {
-            return langCode
-        } else {
-            // Per feedback from AS team, we want to pass in the 2-component BCP 47 code. In some
-            // rare cases this may include a script with the region, if so we remove that.
-            // See also: Locale+possibilitiesForLanguageIdentifier.swift
-            let identifier = locale.identifier
-            let components = identifier.components(separatedBy: "-")
-            if components.count == 3, let first = components.first, let last = components.last {
-                return "\(first)-\(last)"
+    /// Completes with `nil` if search-config-v3 could not provide any engines, so the caller can fall back to v2.
+    private func getUnorderedV3Engines(localeCode: String,
+                                       region: String,
+                                       selector: ASSearchEngineSelectorProtocol,
+                                       iconPopulator: ASSearchEngineIconDataFetcherProtocol,
+                                       completion: @escaping ([OpenSearchEngine]?) -> Void) {
+        let logger = self.logger
+        selector.fetchSearchEnginesV3(locale: localeCode, region: region) { (result, error) in
+            if let error {
+                logger.log("[SEC][v3] Error fetching search engines via App Services: \(error)",
+                           level: .warning,
+                           category: .remoteSettings)
             }
-            return identifier
-        }
-    }
 
-    private func regionCode(from locale: Locale) -> String {
-        let systemRegion: String?
-        if #available(iOS 17, *) {
-            systemRegion = (locale as NSLocale).regionCode
-        } else {
-            systemRegion = (locale as NSLocale).countryCode
+            guard let result, !result.engines.isEmpty else {
+                logger.log("[SEC][v3] AS search engine fetch returned empty results",
+                           level: .warning,
+                           category: .remoteSettings)
+                completion(nil)
+                return
+            }
+
+            // Per AS team, optional engines can be ignored. Currently only used on Android.
+            let filteredEngines = result.engines.filter { $0.optional == false }
+
+            iconPopulator.populateEngineIconDataV3(filteredEngines) { enginesAndIcons in
+                let openSearchEngines = enginesAndIcons.map { engine, iconImage in
+                    ASSearchEngineUtilities.convertASToOpenSearch(engine, image: iconImage)
+                }
+                completion(openSearchEngines)
+            }
         }
-        return systemRegion ?? locale.identifier.components(separatedBy: "-").last ?? "US"
     }
 }

@@ -8,7 +8,8 @@ import Shared
 import UserNotifications
 import MozillaAppServices
 
-class NotificationService: UNNotificationServiceExtension {
+// FIXME: FXIOS-14295 Make NotificationService thread safe
+class NotificationService: UNNotificationServiceExtension, @unchecked Sendable {
     var display: SyncDataDisplay?
     var profile: BrowserProfile?
 
@@ -23,10 +24,11 @@ class NotificationService: UNNotificationServiceExtension {
     ) {
         // Set-up Rust network stack. This is needed in addition to the call
         // from the AppDelegate due to the fact that this uses a separate process
-        Viaduct.shared.useReqwestBackend()
+        Viaduct.shared.initialize(userAgent: UserAgent.fxaUserAgent)
         MozillaAppServices.initialize()
 
-        let userInfo = request.content.userInfo
+        // FIXME: FXIOS-14273 Dictionaries are non-Sendable
+        nonisolated(unsafe) let userInfo = request.content.userInfo
 
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
             contentHandler(request.content)
@@ -44,7 +46,10 @@ class NotificationService: UNNotificationServiceExtension {
 
         let display = SyncDataDisplay(content: content, contentHandler: contentHandler)
         self.display = display
-        let handlerCompletion = { (result: Result<PushMessage, PushMessageError>) in
+        self.handleEncryptedPushMessage(
+            userInfo: userInfo,
+            profile: profile
+        ) { (result: Result<PushMessage, PushMessageError>) in
             guard case .success(let event) = result else {
                 if case .failure(let failure) = result {
                     self.didFinish(nil, with: failure)
@@ -53,12 +58,11 @@ class NotificationService: UNNotificationServiceExtension {
             }
             self.didFinish(event)
         }
-        self.handleEncryptedPushMessage(userInfo: userInfo, profile: profile, completion: handlerCompletion)
     }
 
-    func handleEncryptedPushMessage(userInfo: [AnyHashable: Any],
+    func handleEncryptedPushMessage(userInfo: sending [AnyHashable: Any],
                                     profile: BrowserProfile,
-                                    completion: @escaping (Result<PushMessage, PushMessageError>) -> Void
+                                    completion: @escaping @Sendable (Result<PushMessage, PushMessageError>) -> Void
     ) {
         Task {
             do {
@@ -79,7 +83,7 @@ class NotificationService: UNNotificationServiceExtension {
                 }
                 if decryptResult.scope == RustFirefoxAccounts.pushScope {
                     let handler = FxAPushMessageHandler(with: profile)
-                    handler.handleDecryptedMessage(message: decryptedString, completion: completion)
+                    await handler.handleDecryptedMessage(message: decryptedString, completion: completion)
                 } else {
                     completion(.failure(.messageIncomplete("Unknown sender")))
                 }
@@ -149,7 +153,6 @@ class SyncDataDisplay {
             displayThisDeviceDisconnectedNotification()
         default:
             displayUnknownMessageNotification(debugInfo: "Unknown: \(message)")
-            break
         }
     }
 

@@ -7,16 +7,20 @@ import Foundation
 import MozillaAppServices
 import Shared
 
-typealias VoidReturnCallback = () -> Void
+// This typealias should probably move somewhere else possibly its own file since eventually this file
+// will be removed and this alias which is used all over the app will be gone
+typealias VoidReturnCallback = @MainActor () -> Void
 
 protocol ParentFolderSelector: AnyObject {
     /// In some cases, a child `EditFolderViewController` needs to pass information to a parent `EditBookmarkViewController`
     /// to select the folder that was just created
     /// - Parameter folder: The folder that was created in the `EditFolderViewController`
+    @MainActor
     func selectFolderCreatedFromChild(folder: Folder)
 }
 
-class EditBookmarkViewModel: ParentFolderSelector {
+// FIXME: FXIOS-14161 Make EditBookmarkViewModel actually Sendable
+class EditBookmarkViewModel: ParentFolderSelector, @unchecked Sendable {
     private let parentFolder: FxBookmarkNode
     private var node: BookmarkItemData?
     private let profile: Profile
@@ -76,6 +80,7 @@ class EditBookmarkViewModel: ParentFolderSelector {
         return folder.indentation
     }
 
+    @MainActor
     func selectFolder(_ folder: Folder) {
         isFolderCollapsed.toggle()
         selectedFolder = folder
@@ -87,6 +92,7 @@ class EditBookmarkViewModel: ParentFolderSelector {
         }
     }
 
+    @MainActor
     func createNewFolder() {
         bookmarkCoordinatorDelegate?.showBookmarkDetail(
             bookmarkType: .folder,
@@ -119,7 +125,7 @@ class EditBookmarkViewModel: ParentFolderSelector {
             // so this call will always try to update an existing bookmark
             let result = await self?.bookmarksSaver.save(bookmark: node,
                                                          parentFolderGUID: selectedFolder.guid)
-            // Only update the recent folder pref if it doesn't match whats saved in the pref
+            // Only update the recent folder pref if it doesn't match what's saved in the pref
             if selectedFolder.guid != self?.profile.prefs.stringForKey(PrefsKeys.RecentBookmarkFolder) {
                 switch result {
                 case .success:
@@ -135,6 +141,7 @@ class EditBookmarkViewModel: ParentFolderSelector {
         }
     }
 
+    @MainActor
     func didFinish() {
         bookmarkCoordinatorDelegate?.didFinish()
     }
@@ -146,17 +153,5 @@ class EditBookmarkViewModel: ParentFolderSelector {
         selectedFolder = folder
         folderStructures = [folder]
         onFolderStatusUpdate?()
-    }
-}
-
-extension BookmarkItemData {
-    func copy(with title: String, url: String) -> BookmarkItemData {
-        return BookmarkItemData(guid: guid,
-                                dateAdded: dateAdded,
-                                lastModified: lastModified,
-                                parentGUID: parentGUID,
-                                position: position,
-                                url: url,
-                                title: title)
     }
 }

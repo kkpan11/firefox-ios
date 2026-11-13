@@ -4,19 +4,34 @@
 
 import Foundation
 
-protocol OnboardingDefaultBrowserModelProtocol {
+public protocol OnboardingDefaultBrowserModelProtocol<OnboardingPopupActionType>: Sendable {
     associatedtype OnboardingPopupActionType
-    var title: String { get set }
-    var instructionSteps: [String] { get set }
-    var buttonTitle: String { get set }
-    var buttonAction: OnboardingPopupActionType { get set }
-    var a11yIdRoot: String { get set }
+    var title: String { get }
+    var instructionSteps: [String] { get }
+    var buttonTitle: String { get }
+    var buttonAction: OnboardingPopupActionType { get }
+    var a11yIdRoot: String { get }
 }
 
-public struct OnboardingInstructionsPopupInfoModel<OnboardingPopupActionType>: OnboardingDefaultBrowserModelProtocol {
-    var title: String
-    var instructionSteps: [String]
-    var buttonTitle: String
-    var buttonAction: OnboardingPopupActionType
-    var a11yIdRoot: String
+public struct OnboardingInstructionsPopupInfoModel
+<OnboardingPopupActionType: Sendable>: OnboardingDefaultBrowserModelProtocol {
+    public let title: String
+    public let instructionSteps: [String]
+    public let buttonTitle: String
+    public let buttonAction: OnboardingPopupActionType
+    public let a11yIdRoot: String
+
+    public init(
+        title: String,
+        instructionSteps: [String],
+        buttonTitle: String,
+        buttonAction: OnboardingPopupActionType,
+        a11yIdRoot: String
+    ) {
+        self.title = title
+        self.instructionSteps = instructionSteps
+        self.buttonTitle = buttonTitle
+        self.buttonAction = buttonAction
+        self.a11yIdRoot = a11yIdRoot
+    }
 }

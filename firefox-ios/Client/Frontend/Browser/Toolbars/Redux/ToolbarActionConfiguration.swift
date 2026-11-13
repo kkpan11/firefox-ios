@@ -3,8 +3,16 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import Foundation
+import ToolbarKit
 
-struct ToolbarActionConfiguration: Equatable, FeatureFlaggable {
+struct ToolbarMenuElementConfiguration: Equatable {
+    let actionType: ToolbarActionConfiguration.ActionType
+    let title: String
+    let imageName: String?
+    let a11yIdentifier: String?
+}
+
+struct ToolbarActionConfiguration: Equatable {
     enum ActionType {
         case back
         case forward
@@ -13,14 +21,18 @@ struct ToolbarActionConfiguration: Equatable, FeatureFlaggable {
         case search
         case tabs
         case menu
-        case qrCode
         case share
         case reload
         case stopLoading
         case trackingProtection
         case locationView
+        case googleLens
+        case googleLensPhotoLibrary
+        case googleLensTakePhoto
         case readerMode
-        case dataClearance
+        case readerModeWithSummarizer
+        case summarizer
+        case translate
         case cancelEdit
     }
 
@@ -28,25 +40,37 @@ struct ToolbarActionConfiguration: Equatable, FeatureFlaggable {
     var actionLabel: String?
     var iconName: String?
     var badgeImageName: String?
+    /// The image for the bottom badge in a `ToolbarButton`.
+    var bottomBadgeImage: UIImage?
     var maskImageName: String?
+    var templateModeForImage = true
+    var loadingConfig: LoadingConfig?
     var numberOfTabs: Int?
     var isFlippedForRTL = false
     var isEnabled: Bool
     var isSelected = false
     var hasCustomColor = false
+    var hasHighlightedColor = true
     var largeContentTitle: String?
     var contextualHintType: String?
+    var previousTabScreenshot: UIImage?
+    var nextTabScreenshot: UIImage?
     var a11yLabel: String
     var a11yHint: String?
     var a11yId: String
+    var cacheId: String?
     var a11yCustomActionName: String?
+    var menuElements: [ToolbarMenuElementConfiguration] = []
 
-    func canPerformLongPressAction(isShowingTopTabs: Bool?) -> Bool {
-        return actionType == .back ||
-               actionType == .forward ||
-               actionType == .reload ||
-               actionType == .newTab ||
-               actionType == .readerMode ||
-               (actionType == .tabs && isShowingTopTabs == false)
+    var canPerformLongPressAction: Bool {
+        switch actionType {
+        case .back, .forward, .reload, .newTab, .tabs, .readerMode,
+             .readerModeWithSummarizer, .summarizer, .translate:
+            return true
+        case .home, .search, .menu, .share, .stopLoading, .trackingProtection,
+             .locationView, .googleLens, .googleLensPhotoLibrary, .googleLensTakePhoto,
+             .cancelEdit:
+            return false
+        }
     }
 }

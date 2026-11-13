@@ -11,21 +11,27 @@ struct BlockedTrackerItem: Hashable {
     let identifier = UUID()
     let title: String
     let image: UIImage
+    let titleIdentifier: String
+    let imageIdentifier: String
 }
 
 // MARK: BlockedTrackersTableViewController
-class BlockedTrackersTableViewController: UIViewController,
+final class BlockedTrackersTableViewController: UIViewController,
                                           Themeable,
-                                          UITableViewDelegate {
-    private struct UX {
+                                          UITableViewDelegate,
+                                          Notifiable,
+                                          UITextViewDelegate {
+    private enum UX {
         static let baseCellHeight: CGFloat = 44
         static let baseDistance: CGFloat = 20
         static let headerDistance: CGFloat = 8
     }
 
     private lazy var trackersTable: BlockedTrackersTableView = .build { tableView in
+        typealias A11y = AccessibilityIdentifiers.EnhancedTrackingProtection.BlockedTrackers
         tableView.delegate = self
         tableView.isScrollEnabled = true
+        tableView.accessibilityIdentifier = A11y.trackersTable
     }
 
     // MARK: Navigation View
@@ -37,7 +43,7 @@ class BlockedTrackersTableViewController: UIViewController,
     var model: BlockedTrackersTableModel
     var notificationCenter: NotificationProtocol
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     let windowUUID: WindowUUID
 
     var currentWindowUUID: UUID? { return windowUUID }
@@ -51,14 +57,16 @@ class BlockedTrackersTableViewController: UIViewController,
         self.notificationCenter = notificationCenter
         self.themeManager = themeManager
         super.init(nibName: nil, bundle: nil)
+
+        startObservingNotifications(
+            withNotificationCenter: notificationCenter,
+            forObserver: self,
+            observing: [UIContentSizeCategory.didChangeNotification]
+        )
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-
-    deinit {
-        notificationCenter.removeObserver(self)
     }
 
     // MARK: View Lifecycle
@@ -67,12 +75,14 @@ class BlockedTrackersTableViewController: UIViewController,
         setupView()
         setupDataSource()
         applySnapshot()
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateViewDetails()
-        listenForThemeChange(view)
         applyTheme()
     }
 
@@ -95,10 +105,10 @@ class BlockedTrackersTableViewController: UIViewController,
                 constant: TPMenuUX.UX.popoverTopDistance
             ),
             navigationView.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor
             ),
             navigationView.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor
             )
         ]
         constraints.append(contentsOf: navigationViewContraints)
@@ -128,16 +138,17 @@ class BlockedTrackersTableViewController: UIViewController,
 
     private func setupDataSource() {
         trackersTable.diffableDataSource =
-        UITableViewDiffableDataSource<Int, BlockedTrackerItem>(tableView: trackersTable) { (tableView, indexPath, item)
-            -> UITableViewCell? in
-            guard let cell = tableView.dequeueReusableCell(
+        UITableViewDiffableDataSource<Int, BlockedTrackerItem>(
+            tableView: trackersTable
+        ) { [weak self] tableView, indexPath, item -> UITableViewCell? in
+            guard let self, let cell = tableView.dequeueReusableCell(
                 withIdentifier: BlockedTrackerCell.cellIdentifier,
                 for: indexPath
             ) as? BlockedTrackerCell else { return UITableViewCell() }
 
-            let isLastItem = indexPath.row == (self.model.getItems().count - 1)
+            let isLastItem = indexPath.row == model.getItems().count - 1
             cell.configure(with: item, hideDivider: isLastItem)
-            cell.applyTheme(theme: self.currentTheme())
+            cell.applyTheme(theme: currentTheme())
             return cell
         }
     }
@@ -176,8 +187,41 @@ class BlockedTrackersTableViewController: UIViewController,
         return UITableView.automaticDimension
     }
 
+    func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
+        guard section == 0, let footerView = tableView.dequeueReusableHeaderFooterView(
+            withIdentifier: BlockedTrackersFooterView.cellIdentifier
+        ) as? BlockedTrackersFooterView else { return nil }
+
+        footerView.configure(
+            with: model.getTrackersBlockedModeText(),
+            linkedText: .Menu.EnhancedTrackingProtection.trackersBlockedFooterTextLink,
+            url: SupportUtils.URLForTopic("tracking-protection-ios"),
+            theme: currentTheme(),
+            and: self
+        )
+        return footerView
+    }
+
+    func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
+        return UITableView.automaticDimension
+    }
+
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         return UITableView.automaticDimension
+    }
+
+    func textView(_ textView: UITextView,
+                  shouldInteractWith URL: URL,
+                  in characterRange: NSRange,
+                  interaction: UITextItemInteraction) -> Bool {
+        let viewController = BlockedTrackersLearnMoreViewController(
+            windowUUID: windowUUID,
+            notificationCenter: notificationCenter,
+            themeManager: themeManager,
+            url: URL
+        )
+        navigationController?.pushViewController(viewController, animated: true)
+        return false
     }
 
     @objc
@@ -209,8 +253,10 @@ class BlockedTrackersTableViewController: UIViewController,
     // MARK: Notifications
     func handleNotifications(_ notification: Notification) {
         switch notification.name {
-        case .DynamicFontChanged:
-            adjustLayout()
+        case UIContentSizeCategory.didChangeNotification:
+            ensureMainThread {
+                self.adjustLayout()
+            }
         default: break
         }
     }
@@ -247,6 +293,6 @@ class BlockedTrackersTableViewController: UIViewController,
         let theme = currentTheme()
         navigationView.applyTheme(theme: theme)
         trackersTable.applyTheme(theme: theme)
-        view.backgroundColor = theme.colors.layer3
+        view.backgroundColor = theme.isNova ? theme.colors.layer1 : theme.colors.layer3
     }
 }

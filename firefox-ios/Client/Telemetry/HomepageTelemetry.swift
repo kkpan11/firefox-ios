@@ -15,8 +15,7 @@ struct HomepageTelemetry {
         case bookmark = "bookmark"
         case bookmarkShowAll = "bookmarks_show_all_button"
         case story = "story"
-        case storyDiscoverMore = "stories_discover_more"
-        case customizeHomepage = "customize_homepage_button"
+        case quickAnswersEntryPoint = "quick_answers_entry_point"
 
         var sectionName: String {
             switch self {
@@ -26,12 +25,28 @@ struct HomepageTelemetry {
                 return "jump_back_in"
             case .bookmark, .bookmarkShowAll:
                 return "bookmarks"
-            case .story, .storyDiscoverMore:
+            case .story:
                 return "stories"
-            case .customizeHomepage:
-                return "customize_homepage"
+            case .quickAnswersEntryPoint:
+                return "header"
             }
         }
+    }
+
+    enum TopSitesShortcutPinnedSource: String {
+        case homescreenButton = "homescreen_button"
+        case contextMenu = "context_menu"
+        case appMenu = "app_menu"
+    }
+
+    enum TopSitesShortcutUnpinnedSource: String {
+        case contextMenu = "context_menu"
+        case appMenu = "app_menu"
+    }
+
+    private enum EventValue: String {
+        case fxHomepageOriginZeroSearch = "zero-search"
+        case fxHomepageOriginOther = "origin-other"
     }
 
     private let gleanWrapper: GleanWrapper
@@ -50,7 +65,7 @@ struct HomepageTelemetry {
     }
 
     func sendSectionLabeledCounter(for itemType: ItemType) {
-        gleanWrapper.recordLabel(for: GleanMetrics.Homepage.sectionViewed, label: itemType.sectionName)
+        gleanWrapper.incrementLabeledCounter(for: GleanMetrics.Homepage.sectionViewed, label: itemType.sectionName)
     }
 
     // MARK: - Top Sites
@@ -70,8 +85,8 @@ struct HomepageTelemetry {
     }
 
     func sendTopSitesPressedEvent(position: Int, tileType: String, isZeroSearch: Bool) {
-        let originExtra: TelemetryWrapper.EventValue = isZeroSearch ? .fxHomepageOriginZeroSearch : .fxHomepageOriginOther
-        gleanWrapper.recordLabel(
+        let originExtra: EventValue = isZeroSearch ? .fxHomepageOriginZeroSearch : .fxHomepageOriginOther
+        gleanWrapper.incrementLabeledCounter(
             for: GleanMetrics.TopSites.pressedTileOrigin,
             label: originExtra.rawValue
         )
@@ -81,11 +96,25 @@ struct HomepageTelemetry {
         )
     }
 
+    func sendTopSitesShortcutPinnedEvent(source: TopSitesShortcutPinnedSource) {
+        gleanWrapper.recordEvent(
+            for: GleanMetrics.TopSites.shortcutPinned,
+            extras: GleanMetrics.TopSites.ShortcutPinnedExtra(source: source.rawValue)
+        )
+    }
+
+    func sendTopSitesShortcutUnpinnedEvent(source: TopSitesShortcutUnpinnedSource) {
+        gleanWrapper.recordEvent(
+            for: GleanMetrics.TopSites.shortcutUnpinned,
+            extras: GleanMetrics.TopSites.ShortcutUnpinnedExtra(source: source.rawValue)
+        )
+    }
+
     // MARK: - Pocket
     func sendTapOnPocketStoryCounter(position: Int, isZeroSearch: Bool) {
-        let originExtra: TelemetryWrapper.EventValue = isZeroSearch ? .fxHomepageOriginZeroSearch : .fxHomepageOriginOther
-        gleanWrapper.recordLabel(for: GleanMetrics.Pocket.openStoryOrigin, label: originExtra.rawValue)
-        gleanWrapper.recordLabel(for: GleanMetrics.Pocket.openStoryPosition, label: "position-\(position)")
+        let originExtra: EventValue = isZeroSearch ? .fxHomepageOriginZeroSearch : .fxHomepageOriginOther
+        gleanWrapper.incrementLabeledCounter(for: GleanMetrics.Pocket.openStoryOrigin, label: originExtra.rawValue)
+        gleanWrapper.incrementLabeledCounter(for: GleanMetrics.Pocket.openStoryPosition, label: "position-\(position)")
     }
 
     func sendPocketSectionCounter() {
@@ -94,5 +123,9 @@ struct HomepageTelemetry {
 
     func sendOpenInPrivateTabEventForPocket() {
         gleanWrapper.recordEvent(for: GleanMetrics.Pocket.openInPrivateTab)
+    }
+
+    func sendQuickAnswersButtonViewedEvent() {
+        gleanWrapper.recordEvent(for: GleanMetrics.AiQuickAnswers.buttonViewed)
     }
 }

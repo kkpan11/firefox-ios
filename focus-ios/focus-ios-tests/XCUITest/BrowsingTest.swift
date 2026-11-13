@@ -29,6 +29,11 @@ class BrowsingTest: BaseTestCase {
         waitForHittable(shareButton)
         shareButton.tap()
 
+        // The iPhone Duo simulator has no Reminders app, so it isn't offered in the share sheet
+        if iPhoneDuo() {
+            return
+        }
+
         // Launch external app
         let RemindersApp: XCUIElement
         if #available(iOS 17, *) {
@@ -43,7 +48,11 @@ class BrowsingTest: BaseTestCase {
         waitForExistence(RemindersApp)
         waitForHittable(RemindersApp)
         RemindersApp.tap()
-        waitForExistence(app.buttons["Add"])
+        if #unavailable(iOS 26) {
+            waitForExistence(app.buttons["Add"])
+        } else {
+            waitForExistence(app.images["safari"])
+        }
     }
 
     // Smoketest
@@ -140,5 +149,32 @@ class BrowsingTest: BaseTestCase {
             app.swipeDown()
             waitForNoExistence(collapsedTruncatedurltextTextView)
         }
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/4104980
+    func testXssAccountTakeover() throws {
+        let pocURL = "https://firefoxuxss.v12.sh"
+        try skipIfSiteIsDown(pocURL)
+        loadWebPage(pocURL)
+        waitForWebPageLoad()
+
+        waitForExistence(app.otherElements["Firefox Focus UXSS POC"])
+        let buttons = [ "Google", "X", "YouTube", "Reddit" ]
+        buttons.forEach { button in
+            waitForExistence(app.buttons[button])
+        }
+
+        for _ in 0...5 {
+            app.buttons["X"].tap()
+            waitForWebPageLoad()
+            app.buttons["Back"].tap()
+            waitForWebPageLoad()
+            waitForExistence(app.otherElements["Firefox Focus UXSS POC"])
+        }
+
+        app.buttons["Google"].tap()
+        waitForNoExistence(app.buttons["Google"])
+        waitForWebPageLoad()
+        waitForExistence(app.webViews.staticTexts["Redirecting you to https://qrshaka.fun/poc/b.php?redirect=1"])
     }
 }

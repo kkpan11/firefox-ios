@@ -2,12 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import Account
 import Common
 import Shared
 import UIKit
 
-struct SettingsUX {
+enum SettingsUX {
     static let TableViewHeaderFooterHeight = CGFloat(44)
 }
 
@@ -27,7 +26,20 @@ extension UILabel {
 }
 
 // A base setting class that shows a title. You probably want to subclass this, not use it directly.
+@MainActor
 class Setting: NSObject {
+    enum UX {
+        static let horizontalMargin: CGFloat = 15
+        static var cellLayoutMarginsForCurrentOS: UIEdgeInsets {
+            guard #available(iOS 26.0, *) else { return .zero }
+            return UIEdgeInsets(top: 0, left: horizontalMargin, bottom: 0, right: 0)
+        }
+        static var cellSeparatorInsetForCurrentOS: UIEdgeInsets {
+            guard #available(iOS 26.0, *) else { return .zero }
+            return UIEdgeInsets(top: 0, left: horizontalMargin, bottom: 0, right: horizontalMargin)
+        }
+    }
+
     private var _title: NSAttributedString?
     private var _footerTitle: NSAttributedString?
     private var _cellHeight: CGFloat?
@@ -102,15 +114,14 @@ class Setting: NSObject {
         cell.imageView?.image = _image
         cell.accessibilityTraits = UIAccessibilityTraits.button
         cell.indentationWidth = 0
-        cell.layoutMargins = .zero
+        cell.layoutMargins = UX.cellLayoutMarginsForCurrentOS
+        cell.separatorInset = UX.cellSeparatorInsetForCurrentOS
         cell.isUserInteractionEnabled = enabled
 
         backgroundView.backgroundColor = theme.colors.layer5Hover
         backgroundView.bounds = cell.bounds
         cell.selectedBackgroundView = backgroundView
 
-        // So that the separator line goes all the way to the left edge.
-        cell.separatorInset = .zero
         if let cell = cell as? ThemedTableViewCell {
             cell.applyTheme(theme: theme)
         }
@@ -172,7 +183,7 @@ class SettingSection: Setting {
 }
 
 class PaddedSwitch: UIView {
-    private struct UX {
+    private enum UX {
         static let padding: CGFloat = 8
     }
 
@@ -211,7 +222,7 @@ class PaddedSwitch: UIView {
 
 // A helper class for settings with a UISwitch.
 // Takes and optional settingsDidChange callback and status text.
-class BoolSetting: Setting, FeatureFlaggable {
+class BoolSetting: Setting, UserFeaturePreferenceProvider {
     // Sometimes a subclass will manage its own pref setting. In that case the prefkey will be nil
     let prefKey: String?
     let prefs: Prefs?
@@ -219,7 +230,7 @@ class BoolSetting: Setting, FeatureFlaggable {
     var settingDidChange: ((Bool) -> Void)?
     private let defaultValue: Bool?
     private let statusText: NSAttributedString?
-    private let featureFlagName: NimbusFeatureFlagID?
+    private let featureFlagName: FeatureFlagID?
 
     init(
         prefs: Prefs?,
@@ -227,7 +238,7 @@ class BoolSetting: Setting, FeatureFlaggable {
         defaultValue: Bool?,
         attributedTitleText: NSAttributedString,
         attributedStatusText: NSAttributedString? = nil,
-        featureFlagName: NimbusFeatureFlagID? = nil,
+        featureFlagName: FeatureFlagID? = nil,
         settingDidChange: ((Bool) -> Void)? = nil
     ) {
         self.prefs = prefs
@@ -271,7 +282,7 @@ class BoolSetting: Setting, FeatureFlaggable {
         prefs: Prefs?,
         prefKey: String? = nil,
         defaultValue: Bool = false,
-        featureFlagName: NimbusFeatureFlagID? = nil,
+        featureFlagName: FeatureFlagID? = nil,
         enabled: Bool = true,
         settingDidChange: @escaping (Bool) -> Void
     ) {
@@ -285,7 +296,7 @@ class BoolSetting: Setting, FeatureFlaggable {
     }
 
     convenience init(
-        with featureFlagID: NimbusFeatureFlagID,
+        with featureFlagID: FeatureFlagID,
         titleText: NSAttributedString,
         statusText: NSAttributedString? = nil,
         settingDidChange: ((Bool) -> Void)? = nil
@@ -319,14 +330,7 @@ class BoolSetting: Setting, FeatureFlaggable {
         )
 
         displayBool(control.switchView)
-        if let title = title {
-            if let status = status {
-                control.switchView.accessibilityLabel = "\(title.string), \(status.string)"
-            } else {
-                control.switchView.accessibilityLabel = title.string
-            }
-            cell.accessibilityLabel = nil
-        }
+        configureSwitchAccessibility(for: cell)
 
         cell.accessoryView = control
         cell.selectionStyle = .none
@@ -340,21 +344,19 @@ class BoolSetting: Setting, FeatureFlaggable {
     func switchValueChanged(_ control: UISwitch) {
         writeBool(control)
         settingDidChange?(control.isOn)
-        if let featureFlagName = featureFlagName {
-            TelemetryWrapper.recordEvent(category: .action,
-                                         method: .change,
-                                         object: .setting,
-                                         extras: ["pref": featureFlagName.rawValue as Any,
-                                                  "to": control.isOn])
+
+        if let settingChanged = featureFlagName?.rawValue ?? prefKey {
+            SettingsTelemetry().changedSetting(
+                settingChanged,
+                to: "\(control.isOn)",
+                from: "\(!control.isOn)"
+            )
         } else {
-            TelemetryWrapper.recordEvent(category: .action,
-                                         method: .change,
-                                         object: .setting,
-                                         extras: ["pref": prefKey as Any, "to": control.isOn])
+            assertionFailure("We should be able to get a unique key to describe the changed setting")
         }
     }
 
-    func getFeatureFlagName() -> NimbusFeatureFlagID? {
+    func getFeatureFlagName() -> FeatureFlagID? {
         return featureFlagName
     }
 
@@ -365,7 +367,7 @@ class BoolSetting: Setting, FeatureFlaggable {
     // These methods allow a subclass to control how the pref is saved
     func displayBool(_ control: UISwitch) {
         if let featureFlagName = featureFlagName {
-            control.isOn = featureFlags.isFeatureEnabled(featureFlagName, checking: .userOnly)
+            control.isOn = userPreferences.getPreferenceFor(featureFlagName)
         } else {
             guard let key = prefKey, let defaultValue = defaultValue else { return }
             control.isOn = prefs?.boolForKey(key) ?? defaultValue
@@ -374,11 +376,41 @@ class BoolSetting: Setting, FeatureFlaggable {
 
     func writeBool(_ control: UISwitch) {
         if let featureFlagName = featureFlagName {
-            featureFlags.set(feature: featureFlagName, to: control.isOn)
+            userPreferences.setPreferenceFor(featureFlagName, to: control.isOn)
         } else {
             guard let key = prefKey else { return }
             prefs?.setBool(control.isOn, forKey: key)
         }
+    }
+
+    func configureSwitchAccessibility(for cell: UITableViewCell) {
+        if let title = title {
+            if let status {
+                control.switchView.accessibilityLabel = "\(title.string), \(status.string)"
+            } else {
+                control.switchView.accessibilityLabel = title.string
+            }
+        }
+
+        if let learnMoreCell = cell as? ThemedLearnMoreTableViewCell {
+            configureLearnMoreAccessibilityAction(title: title?.string ?? "") { [weak learnMoreCell] in
+                learnMoreCell?.learnMoreDidTap?()
+            }
+        } else {
+            control.switchView.accessibilityCustomActions = nil
+        }
+
+        cell.accessibilityElements = [control.switchView]
+    }
+
+    func configureLearnMoreAccessibilityAction(title: String, onActivate: @escaping () -> Void) {
+        let actionName = String(format: .Settings.General.AccessibilityLabels.LearnMoreAction, title)
+        control.switchView.accessibilityCustomActions = [
+            UIAccessibilityCustomAction(name: actionName) { _ in
+                onActivate()
+                return true
+            }
+        ]
     }
 }
 
@@ -387,7 +419,7 @@ class BoolNotificationSetting: BoolSetting {
 
     override func displayBool(_ control: UISwitch) {
         if let featureFlagName = getFeatureFlagName() {
-            control.isOn = featureFlags.isFeatureEnabled(featureFlagName, checking: .userOnly)
+            control.isOn = userPreferences.getPreferenceFor(featureFlagName)
         } else {
             guard let key = prefKey, let defaultValue = getDefaultValue() else { return }
 
@@ -400,7 +432,7 @@ class BoolNotificationSetting: BoolSetting {
 
     override func writeBool(_ control: UISwitch) {
         if let featureFlagName = getFeatureFlagName() {
-            featureFlags.set(feature: featureFlagName, to: control.isOn)
+            userPreferences.setPreferenceFor(featureFlagName, to: control.isOn)
         } else {
             Task { @MainActor in
                 let isSystemNotificationOn = await isSystemNotificationOn()
@@ -454,7 +486,7 @@ class StringPrefSetting: StringSetting {
         placeholder: String,
         accessibilityIdentifier: String,
         settingIsValid isValueValid: ((String?) -> Bool)? = nil,
-        settingDidChange: ((String?) -> Void)? = nil
+        settingDidChange: (@MainActor (String?) -> Void)? = nil
     ) {
         super.init(defaultValue: defaultValue,
                    placeholder: placeholder,
@@ -475,7 +507,7 @@ class WebPageSetting: StringPrefSetting {
         placeholder: String,
         accessibilityIdentifier: String,
         isChecked: @escaping () -> Bool = { return false },
-        settingDidChange: ((String?) -> Void)? = nil
+        settingDidChange: (@MainActor (String?) -> Void)? = nil
     ) {
         self.isChecked = isChecked
         super.init(prefs: prefs,
@@ -503,6 +535,7 @@ class WebPageSetting: StringPrefSetting {
         alignTextFieldToNatural()
     }
 
+    @MainActor
     static func isURLOrEmpty(_ string: String?) -> Bool {
         guard let string = string, !string.isEmpty else {
             return true
@@ -520,7 +553,7 @@ protocol SettingValuePersister {
 /// This takes an optional settingIsValid and settingDidChange callback
 /// If settingIsValid returns false, the Setting will not change and the text remains red.
 class StringSetting: Setting, UITextFieldDelegate {
-    private struct UX {
+    private enum UX {
         static let padding: CGFloat = 15
         static let textFieldHeight: CGFloat = 44
         static let textFieldIdentifierSuffix = "TextField"
@@ -528,7 +561,7 @@ class StringSetting: Setting, UITextFieldDelegate {
 
     private let defaultValue: String?
     private let placeholder: String
-    private let settingDidChange: ((String?) -> Void)?
+    private let settingDidChange: (@MainActor (String?) -> Void)?
     private let settingIsValid: ((String?) -> Bool)?
     private let persister: SettingValuePersister
 
@@ -540,7 +573,7 @@ class StringSetting: Setting, UITextFieldDelegate {
         accessibilityIdentifier: String,
         persister: SettingValuePersister,
         settingIsValid isValueValid: ((String?) -> Bool)? = nil,
-        settingDidChange: ((String?) -> Void)? = nil
+        settingDidChange: (@MainActor (String?) -> Void)? = nil
     ) {
         self.defaultValue = defaultValue
         self.settingDidChange = settingDidChange
@@ -636,13 +669,11 @@ class StringSetting: Setting, UITextFieldDelegate {
         textField.textColor = color
     }
 
-    @objc
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         textField.resignFirstResponder()
         return isValid(textField.text)
     }
 
-    @objc
     func textFieldDidEndEditing(_ textField: UITextField) {
         let text = textField.text
         if !isValid(text) {
@@ -659,8 +690,8 @@ enum CheckmarkSettingStyle {
     case rightSide
 }
 
-class CheckmarkSetting: Setting {
-    private struct UX {
+final class CheckmarkSetting: Setting {
+    private enum UX {
         static let defaultInset: CGFloat = 0
         static let cellIndentationWidth: CGFloat = 42
         static let cellIndentationLevel = 1
@@ -767,7 +798,7 @@ class CheckmarkSetting: Setting {
 // A helper class for prefs that deal with sync. Handles reloading the tableView data if changes to
 // the fxAccount happen.
 class AccountSetting: Setting {
-    unowned var settings: SettingsTableViewController
+    unowned let settings: SettingsTableViewController
 
     var profile: Profile? {
         return settings.profile
@@ -804,15 +835,134 @@ class WithoutAccountSetting: AccountSetting {
     }
 }
 
-@objc
+/// A setting that displays a picker menu allowing users to select from multiple predefined options.
+///
+/// Note: on pre iOS 17.4 devices the setting shows an `UIAlertController` on cell tap instead of an `UIMenu`.
+class PickerSetting<Value: Equatable>: Setting {
+    private let pickerOptions: [(value: Value, displayString: String)]
+    private let onOptionSelected: (Value) -> Void
+    private var menuItems: [UIAction] {
+        return pickerOptions.map { option in
+            return UIAction(title: option.displayString) { [weak self] _ in
+                self?.selectedDisplayString = option.displayString
+                self?.onOptionSelected(option.value)
+            }
+        }
+    }
+    private var selectedDisplayString: String
+    private var pickerButton: UIButton?
+
+    /// Initializes a new picker setting with the specified configuration.
+    ///
+    /// - Parameters:
+    ///   - selectedValue: The currently selected value that determines which option appears as selected.
+    ///   - pickerOptions: An array of tuples pairing each selectable value with its localized display string.
+    ///   - accessibilityIdentifier: The accessibility identifier for the setting cell.
+    ///   - onOptionSelected: A closure called when a new option is selected,
+    ///   receiving the selected value (not the display string).
+    init(
+        selectedValue: Value,
+        pickerOptions: [(value: Value, displayString: String)],
+        accessibilityIdentifier: String,
+        onOptionSelected: @escaping (Value) -> Void
+    ) {
+        self.selectedDisplayString = pickerOptions.first(where: { $0.value == selectedValue })?.displayString ?? ""
+        self.pickerOptions = pickerOptions
+        self.onOptionSelected = onOptionSelected
+        super.init()
+        self.accessibilityIdentifier = accessibilityIdentifier
+    }
+
+    override func onConfigureCell(_ cell: UITableViewCell, theme: any Theme) {
+        super.onConfigureCell(cell, theme: theme)
+        cell.textLabel?.text = selectedDisplayString
+
+        // We show the picker button with the attached UIMenu only in iOS 17.4 more devices cause on previous
+        // version there is no possibility to trigger the menu programmatically on cell tap, given missing
+        // button.performPrimaryAction() API.
+        if #available(iOS 17.4, *) {
+            let pickerButton = makePickerButton(theme: theme)
+            cell.accessoryView = pickerButton
+            self.pickerButton = pickerButton
+        } else {
+            // Use UIImageView for older iOS to avoid button tint color flickering issue when tapping the cell.
+            let accessoryImageView = makeAccessoryImageView(theme: theme)
+            cell.accessoryView = accessoryImageView
+        }
+
+        cell.selectionStyle = .none
+    }
+
+    private func makePickerButton(theme: any Theme) -> UIButton {
+        let button = UIButton()
+        button.setImage(
+            UIImage(named: StandardImageIdentifiers.Large.chevronDown)?.withRenderingMode(.alwaysTemplate),
+            for: .normal
+        )
+        button.adjustsImageSizeForAccessibilityContentSizeCategory = true
+        button.sizeToFit()
+        button.tintColor = theme.colors.iconSecondary
+        button.isAccessibilityElement = false
+        button.showsMenuAsPrimaryAction = true
+        button.menu = UIMenu(children: menuItems)
+        return button
+    }
+
+    private func makeAccessoryImageView(theme: any Theme) -> UIImageView {
+        let imageView = UIImageView(
+            image: UIImage(named: StandardImageIdentifiers.Large.chevronDown)?.withRenderingMode(.alwaysTemplate)
+        )
+        imageView.tintColor = theme.colors.iconSecondary
+        imageView.contentMode = .scaleAspectFit
+        imageView.adjustsImageSizeForAccessibilityContentSizeCategory = true
+        return imageView
+    }
+
+    override func onClick(_ navigationController: UINavigationController?) {
+        if #available(iOS 17.4, *) {
+            pickerButton?.performPrimaryAction()
+        } else {
+            presentActionSheet(from: navigationController)
+        }
+    }
+
+    private func presentActionSheet(from navigationController: UINavigationController?) {
+        let alertController = UIAlertController(
+            title: nil,
+            message: nil,
+            preferredStyle: .actionSheet
+        )
+
+        for option in pickerOptions {
+            let action = UIAlertAction(
+                title: option.displayString,
+                style: .default
+            ) { [weak self] _ in
+                self?.selectedDisplayString = option.displayString
+                self?.onOptionSelected(option.value)
+            }
+            alertController.addAction(action)
+        }
+        alertController.addAction(UIAlertAction(title: .CancelString, style: .cancel))
+
+        if let theme {
+            alertController.applyNovaActionTint(theme)
+        }
+        navigationController?.present(alertController, animated: true)
+    }
+}
+
 protocol SettingsDelegate: AnyObject {
+    @MainActor
     func settingsOpenURLInNewTab(_ url: URL)
+
+    @MainActor
     func didFinish()
 }
 
 // The base settings view controller.
-class SettingsTableViewController: ThemedTableViewController {
-    private struct UX {
+class SettingsTableViewController: ThemedTableViewController, Notifiable {
+    private enum UX {
         static let tableViewFooterHeight: CGFloat = 30
         static let estimatedRowHeight: CGFloat = 44
         static let estimatedSectionHeaderHeight: CGFloat = 44
@@ -830,6 +980,7 @@ class SettingsTableViewController: ThemedTableViewController {
 
         tableView.register(cellType: ThemedLeftAlignedTableViewCell.self)
         tableView.register(cellType: ThemedSubtitleTableViewCell.self)
+        tableView.register(cellType: ThemedSwitchTableViewCell.self)
         tableView.register(
             ThemedTableSectionHeaderFooterView.self,
             forHeaderFooterViewReuseIdentifier: ThemedTableSectionHeaderFooterView.cellIdentifier
@@ -852,40 +1003,30 @@ class SettingsTableViewController: ThemedTableViewController {
         super.viewWillAppear(animated)
 
         settings = generateSettings()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(syncDidChangeState),
-            name: .ProfileDidStartSyncing,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(syncDidChangeState),
-            name: .ProfileDidFinishSyncing,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(firefoxAccountDidChange),
-            name: .FirefoxAccountChanged,
-            object: nil
+        startObservingNotifications(
+            withNotificationCenter: NotificationCenter.default,
+            forObserver: self,
+            observing: [
+                .ProfileDidStartSyncing,
+                .ProfileDidFinishSyncing,
+                .FirefoxAccountChanged
+            ]
         )
 
         applyTheme()
     }
 
-    func currentTheme() -> Theme {
-        return themeManager.getCurrentTheme(for: windowUUID)
+    override var shouldUsePrivateOverride: Bool {
+        return true
+    }
+
+    override var shouldBeInPrivateTheme: Bool {
+        return false
     }
 
     override func applyTheme() {
         settings = generateSettings()
         super.applyTheme()
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        refresh()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -903,22 +1044,10 @@ class SettingsTableViewController: ThemedTableViewController {
         return []
     }
 
-    @objc
     private func syncDidChangeState() {
-        DispatchQueue.main.async {
-            self.tableView.reloadData()
-        }
+        self.tableView.reloadData()
     }
 
-    @objc
-    private func refresh() {
-        // Through-out, be aware that modifying the control while a refresh is in progress is /not/ supported
-        // and will likely crash the app.
-        // self.profile.rustAccount.refreshProfile()
-        // TODO [rustfxa] listen to notification and refresh profile
-    }
-
-    @objc
     func firefoxAccountDidChange() {
         self.tableView.reloadData()
     }
@@ -941,7 +1070,7 @@ class SettingsTableViewController: ThemedTableViewController {
         let section = settings[indexPath.section]
         if let setting = section[indexPath.row] {
             let cell = dequeueCellFor(indexPath: indexPath, setting: setting)
-            setting.onConfigureCell(cell, theme: themeManager.getCurrentTheme(for: windowUUID))
+            setting.onConfigureCell(cell, theme: currentTheme())
             return cell
         }
         return super.tableView(tableView, cellForRowAt: indexPath)
@@ -954,13 +1083,13 @@ class SettingsTableViewController: ThemedTableViewController {
     ) {
         let section = settings[indexPath.section]
         if let setting = section[indexPath.row], let themedCell = cell as? ThemedTableViewCell {
-            setting.onConfigureCell(themedCell, theme: themeManager.getCurrentTheme(for: windowUUID))
-            themedCell.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            setting.onConfigureCell(themedCell, theme: currentTheme())
+            themedCell.applyTheme(theme: currentTheme())
         }
     }
 
     private func dequeueCellFor(indexPath: IndexPath, setting: Setting) -> ThemedTableViewCell {
-        if setting as? DisconnectSetting != nil {
+        if setting is DisconnectSetting {
             guard let cell = tableView.dequeueReusableCell(
                 withIdentifier: ThemedCenteredTableViewCell.cellIdentifier,
                 for: indexPath
@@ -968,12 +1097,20 @@ class SettingsTableViewController: ThemedTableViewController {
                 return ThemedCenteredTableViewCell()
             }
             return cell
-        } else if setting as? SendDataSetting != nil {
+        } else if setting is SendDataSetting || setting is AdBlockerSetting {
             guard let cell = tableView.dequeueReusableCell(
                 withIdentifier: ThemedLearnMoreTableViewCell.cellIdentifier,
                 for: indexPath
             ) as? ThemedLearnMoreTableViewCell else {
                 return ThemedLearnMoreTableViewCell()
+            }
+            return cell
+        } else if setting is BoolSetting {
+            guard let cell = tableView.dequeueReusableCell(
+                withIdentifier: ThemedSwitchTableViewCell.cellIdentifier,
+                for: indexPath
+            ) as? ThemedSwitchTableViewCell else {
+                return ThemedSwitchTableViewCell()
             }
             return cell
         } else if setting.style == .subtitle {
@@ -1015,7 +1152,7 @@ class SettingsTableViewController: ThemedTableViewController {
         if let sectionTitle = sectionSetting.title?.string {
             headerView.titleLabel.text = sectionTitle.uppercased()
         }
-        headerView.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+        headerView.applyTheme(theme: currentTheme())
         return headerView
     }
 
@@ -1029,7 +1166,7 @@ class SettingsTableViewController: ThemedTableViewController {
 
         footerView.titleLabel.text = sectionFooter
         footerView.titleAlignment = .top
-        footerView.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+        footerView.applyTheme(theme: currentTheme())
         return footerView
     }
 
@@ -1071,6 +1208,23 @@ class SettingsTableViewController: ThemedTableViewController {
         let section = settings[indexPath.section]
         if let setting = section[indexPath.row] {
             setting.accessoryButtonTapped()
+        }
+    }
+
+    // MARK: Notifiable
+
+    func handleNotifications(_ notification: Notification) {
+        switch notification.name {
+        case .ProfileDidStartSyncing, .ProfileDidFinishSyncing:
+            ensureMainThread {
+                self.syncDidChangeState()
+            }
+        case .FirefoxAccountChanged:
+            ensureMainThread {
+                self.firefoxAccountDidChange()
+            }
+        default:
+            break
         }
     }
 }

@@ -5,8 +5,9 @@
 import Foundation
 import WebKit
 
-class WebsiteDataManagementViewModel {
-    enum State {
+// TODO: FXIOS-14216 - WebsiteDataManagementViewModel shouldn't be @unchecked Sendable
+final class WebsiteDataManagementViewModel: @unchecked Sendable {
+    enum State: Equatable {
         case loading
         case displayInitial
         case displayAll
@@ -16,6 +17,8 @@ class WebsiteDataManagementViewModel {
     private(set) var siteRecords: [WKWebsiteDataRecord] = []
     private(set) var selectedRecords: Set<WKWebsiteDataRecord> = []
     var onViewModelChanged: () -> Void = {}
+    /// Called when only `selectedRecords` changes, so observers can update in place instead of reloading.
+    var onSelectionChanged: () -> Void = {}
 
     var clearButtonTitle: String {
         switch selectedRecords.count {
@@ -24,6 +27,7 @@ class WebsiteDataManagementViewModel {
         }
     }
 
+    @MainActor
     func loadAllWebsiteData() {
         state = .loading
 
@@ -39,14 +43,15 @@ class WebsiteDataManagementViewModel {
 
     func selectItem(_ item: WKWebsiteDataRecord) {
         selectedRecords.insert(item)
-        onViewModelChanged()
+        onSelectionChanged()
     }
 
     func deselectItem(_ item: WKWebsiteDataRecord) {
         selectedRecords.remove(item)
-        onViewModelChanged()
+        onSelectionChanged()
     }
 
+    @MainActor
     func createAlertToRemove() -> UIAlertController {
         if selectedRecords.isEmpty {
             return UIAlertController.clearAllWebsiteDataAlert { _ in self.removeAllRecords() }
@@ -59,6 +64,7 @@ class WebsiteDataManagementViewModel {
         state = .displayAll
     }
 
+    @MainActor
     private func removeSelectedRecords() {
         let previousState = state
         state = .loading
@@ -73,6 +79,7 @@ class WebsiteDataManagementViewModel {
         }
     }
 
+    @MainActor
     private func removeAllRecords() {
         let previousState = state
         state = .loading

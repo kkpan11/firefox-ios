@@ -17,10 +17,6 @@ class SearchBarSetting: Setting {
         return AccessibilityIdentifiers.Settings.SearchBar.searchBarSetting
     }
 
-    override var status: NSAttributedString {
-        return NSAttributedString(string: viewModel.searchBarTitle )
-    }
-
     override var style: UITableViewCell.CellStyle { return .value1 }
 
     init(settings: SettingsTableViewController,
@@ -28,7 +24,7 @@ class SearchBarSetting: Setting {
          settingsDelegate: GeneralSettingsDelegate?) {
         self.viewModel = SearchBarSettingsViewModel(prefs: profile.prefs)
         self.settingsDelegate = settingsDelegate
-        let theme = settings.themeManager.getCurrentTheme(for: settings.windowUUID)
+        let theme = settings.currentTheme()
         super.init(
             title: NSAttributedString(
                 string: viewModel.title,

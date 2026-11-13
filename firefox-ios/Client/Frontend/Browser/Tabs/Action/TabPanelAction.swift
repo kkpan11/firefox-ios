@@ -11,7 +11,9 @@ struct MoveTabData {
     let isPrivate: Bool
 }
 
-class TabPanelViewAction: Action {
+struct TabPanelViewAction: Action {
+    let windowUUID: WindowUUID
+    let actionType: ActionType
     let panelType: TabTrayPanelType?
     let isPrivateModeActive: Bool?
     let urlRequest: URLRequest?
@@ -20,7 +22,6 @@ class TabPanelViewAction: Action {
     let moveTabData: MoveTabData?
     let toastType: ToastType?
     let shareSheetURL: URL?
-    let isInactiveTab: Bool?
     let deleteTabPeriod: TabsDeletionPeriod?
 
     init(panelType: TabTrayPanelType?,
@@ -31,10 +32,11 @@ class TabPanelViewAction: Action {
          moveTabData: MoveTabData? = nil,
          toastType: ToastType? = nil,
          shareSheetURL: URL? = nil,
-         isInactiveTab: Bool? = nil,
          deleteTabPeriod: TabsDeletionPeriod? = nil,
          windowUUID: WindowUUID,
          actionType: ActionType) {
+        self.windowUUID = windowUUID
+        self.actionType = actionType
         self.panelType = panelType
         self.isPrivateModeActive = isPrivateModeActive
         self.urlRequest = urlRequest
@@ -43,53 +45,41 @@ class TabPanelViewAction: Action {
         self.moveTabData = moveTabData
         self.toastType = toastType
         self.shareSheetURL = shareSheetURL
-        self.isInactiveTab = isInactiveTab
         self.deleteTabPeriod = deleteTabPeriod
-        super.init(windowUUID: windowUUID,
-                   actionType: actionType)
     }
 }
 
 enum TabPanelViewActionType: ActionType {
     case tabPanelDidLoad
     case tabPanelWillAppear
-    case tabPanelDidAppear
-    case addNewTab
     case closeTab
-    case undoClose
     case closeAllTabs
     case cancelCloseAllTabs
     case confirmCloseAllTabs
     case deleteTabsOlderThan
-    case undoCloseAllTabs
     case moveTab
-    case toggleInactiveTabs
-    case closeInactiveTab
-    case undoCloseInactiveTab
-    case closeAllInactiveTabs
-    case undoCloseAllInactiveTabs
     case learnMorePrivateMode
     case selectTab
+    case prefetchScreenshots
 }
 
-class TabPanelMiddlewareAction: Action {
+struct TabPanelMiddlewareAction: Action {
+    let windowUUID: WindowUUID
+    let actionType: ActionType
     let tabDisplayModel: TabDisplayModel?
-    let inactiveTabModels: [InactiveTabsModel]?
     let toastType: ToastType??
     let scrollBehavior: TabScrollBehavior?
 
     init(tabDisplayModel: TabDisplayModel? = nil,
-         inactiveTabModels: [InactiveTabsModel]? = nil,
          toastType: ToastType? = nil,
          scrollBehavior: TabScrollBehavior? = nil,
          windowUUID: WindowUUID,
          actionType: ActionType) {
+        self.windowUUID = windowUUID
+        self.actionType = actionType
         self.tabDisplayModel = tabDisplayModel
-        self.inactiveTabModels = inactiveTabModels
         self.toastType = toastType
         self.scrollBehavior = scrollBehavior
-        super.init(windowUUID: windowUUID,
-                   actionType: actionType)
     }
 }
 
@@ -98,20 +88,29 @@ enum TabPanelMiddlewareActionType: ActionType {
     case willAppearTabPanel
     case didChangeTabPanel
     case refreshTabs
-    case refreshInactiveTabs
-    case showToast
     case scrollToTab
 }
 
-final class ScreenshotAction: Action {
+struct ScreenshotAction: Action {
+    let windowUUID: WindowUUID
+    let actionType: ActionType
     let tab: Tab
 
     init(windowUUID: WindowUUID, tab: Tab, actionType: any ActionType) {
+        self.windowUUID = windowUUID
+        self.actionType = actionType
         self.tab = tab
-        super.init(windowUUID: windowUUID, actionType: actionType)
     }
 }
 
 enum ScreenshotActionType: ActionType {
     case screenshotTaken
+    case screenshotRestored
 }
+
+// MARK: Modernizing actions
+enum TabPanelViewModernAction: ModernAction {
+    case addNewTab(ofType: TabsDisplayViewPanelType)
+}
+
+// MARK: ModernAction Payload Types

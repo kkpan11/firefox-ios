@@ -8,7 +8,7 @@ import XCTest
 
 @testable import Storage
 
-class MockRustRemoteTabs: RustRemoteTabs {
+class MockRustRemoteTabs: RustRemoteTabs, @unchecked Sendable {
     override public func getAll() -> Deferred<Maybe<[ClientRemoteTabs]>> {
         let url = "https://example.com"
         let title = "example"
@@ -18,13 +18,14 @@ class MockRustRemoteTabs: RustRemoteTabs {
                             title: title,
                             history: [URL(string: url)!],
                             lastUsed: Date.now(),
-                            icon: nil,
-                            inactive: false)
+                            icon: nil)
         let clientRemoteTab = ClientRemoteTabs(clientId: clientGUID,
                                                clientName: "testClient",
                                                deviceType: .mobile,
                                                lastModified: Int64(Date.now()),
-                                               remoteTabs: [tab.toRemoteTabRecord()])
+                                               remoteTabs: [tab.toRemoteTabRecord()],
+                                               tabGroups: [:],
+                                               windows: [:])
 
         let url2 = "https://example2.com"
         let title2 = "example2"
@@ -34,47 +35,38 @@ class MockRustRemoteTabs: RustRemoteTabs {
                              title: title2,
                              history: [URL(string: url2)!],
                              lastUsed: Date.now(),
-                             icon: nil,
-                             inactive: false)
+                             icon: nil)
 
         let clientRemoteTab2 = ClientRemoteTabs(clientId: clientGUID2,
                                                 clientName: "testClient2",
                                                 deviceType: .mobile,
                                                 lastModified: Int64(Date.now()),
-                                                remoteTabs: [tab2.toRemoteTabRecord()])
+                                                remoteTabs: [tab2.toRemoteTabRecord()],
+                                                tabGroups: [:],
+                                                windows: [:])
         return deferMaybe([clientRemoteTab, clientRemoteTab2])
     }
 }
 
 class RustRemoteTabsTests: XCTestCase {
-    var files: FileAccessor!
+    var files: TemporaryFiles!
     var tabs: RustRemoteTabs!
     var mockTabs: MockRustRemoteTabs!
 
     override func setUp() {
         super.setUp()
-        files = MockFiles()
+        files = makeTemporaryFiles()
 
-        if let rootDirectory = try? files.getAndEnsureDirectory() {
-            let databasePath = URL(
-                fileURLWithPath: rootDirectory,
-                isDirectory: true
-            ).appendingPathComponent("testTabs.db").path
-            try? files.remove("testTabs.db")
+        tabs = RustRemoteTabs(databasePath: files.pathEnsuringRoot(for: "testTabs.db"))
+        mockTabs = MockRustRemoteTabs(databasePath: files.pathEnsuringRoot(for: "mockTestTabs.db"))
+        _ = tabs.reopenIfClosed()
+        _ = mockTabs.reopenIfClosed()
+    }
 
-            let mockDatabasePath = URL(fileURLWithPath: rootDirectory,
-                                       isDirectory: true)
-                                        .appendingPathComponent("mockTestTabs.db")
-                                        .path
-            try? files.remove("mockTestTabs.db")
-
-            tabs = RustRemoteTabs(databasePath: databasePath)
-            mockTabs = MockRustRemoteTabs(databasePath: mockDatabasePath)
-            _ = tabs.reopenIfClosed()
-            _ = mockTabs.reopenIfClosed()
-        } else {
-            XCTFail("Could not retrieve root directory")
-        }
+    override func tearDown() {
+        _ = tabs?.forceClose()
+        _ = mockTabs?.forceClose()
+        super.tearDown()
     }
 
     func testSetLocalTabs() {
@@ -86,8 +78,7 @@ class RustRemoteTabsTests: XCTestCase {
             title: title,
             history: [URL(string: url)!],
             lastUsed: Date.now(),
-            icon: nil,
-            inactive: false
+            icon: nil
         )
 
         let count = tabs.setLocalTabs(localTabs: [tab])

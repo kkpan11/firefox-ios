@@ -16,11 +16,20 @@
 /* Button label to sync tabs in your account */
 "TabsTray.SyncTabs.SyncTabsButton.Title.v119" = "Synkronoi välilehdet";
 
+/* When user choose to have Blank Page as homepage, this will be displayed as tab title. */
+"TabTray.TabsSelectorBlankTabsTitle.v149" = "Uusi välilehti";
+
 /* The title on the button to look at regular tabs. */
 "TabTray.TabsSelectorNormalTabsTitle.v140" = "Välilehdet";
 
+/* The title on the button to look at synced tabs. */
+"TabTray.TabsSelectorSyncedTabsTitle.v140" = "Synkronointi";
+
 /* Text for a button in the tabs tray used to open another menu to close older tabs. */
 "TabTrayCloseOldTabsTitle.v140" = "Sulje vanhat välilehdet…";
+
+/* Text for a button in the tabs tray used delete current active tabs. %@ is for the number of tabs that will be going to be closed. */
+"TabTrayCloseOneTabTitle.v145" = "Sulje välilehdet (%@)";
 
 /* Text for the menu title under the tabs tray in which users can close tabs older than a certain period of time. */
 "TabTrayCloseTabsOlderThanTitle.v140" = "Sulje välilehdet, jotka ovat vanhempia kuin…";

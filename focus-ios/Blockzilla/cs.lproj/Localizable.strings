@@ -59,25 +59,25 @@
 "Authentication.reason" = "Ověření pro návrat do aplikace %@";
 
 /* Label for button to add a custom URL */
-"Autocomplete.addCustomUrl" = "Přidat vlastní URL adresu";
+"Autocomplete.addCustomUrl" = "Přidat vlastní adresu URL";
 
 /* Label for error state when entering an invalid URL */
-"Autocomplete.addCustomUrlError" = "Zkontrolujte zadanou URL adresu.";
+"Autocomplete.addCustomUrlError" = "Zkontrolujte zadanou adresu URL.";
 
 /* A label displaying an example URL */
 "Autocomplete.addCustomUrlExample" = "Příklad: example.com";
 
 /* Label for the input to add a custom URL */
-"Autocomplete.addCustomUrlLabel" = "URL adresa k přidání";
+"Autocomplete.addCustomUrlLabel" = "Adresa URL k přidání";
 
 /* Placeholder for the input field to add a custom URL */
-"Autocomplete.addCustomUrlPlaceholder" = "Vložte nebo napište URL adresu";
+"Autocomplete.addCustomUrlPlaceholder" = "Vložte nebo zadejte adresu URL";
 
 /* Label for button to add a custom URL with the + prefix */
-"Autocomplete.addCustomUrlWithPlus" = "+ Přidat vlastní URL adresu";
+"Autocomplete.addCustomUrlWithPlus" = "+ Přidat vlastní adresu URL";
 
 /* Label for toast alerting a custom URL has been added */
-"Autocomplete.customUrlAdded" = "Vlastní URL adresa přidána.";
+"Autocomplete.customUrlAdded" = "Vlastní adresa URL přidána.";
 
 /* Description for enabling or disabling the default list. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
 "Autocomplete.defaultDescriptoin" = "Po zapnutí bude %@ našeptávat více než 450 populárních URL adres.";
@@ -86,10 +86,10 @@
 "Autocomplete.disabled" = "Zakázáno";
 
 /* Label for toast alerting that the custom URL being added is a duplicate */
-"Autocomplete.duplicateUrl" = "URL adresa už existuje";
+"Autocomplete.duplicateUrl" = "Adresa URL už existuje";
 
 /* Label for button to add a custom URL */
-"Autocomplete.emptyState" = "Žádné vlastní URL adresy k zobrazení";
+"Autocomplete.emptyState" = "Žádné vlastní adresy URL k zobrazení";
 
 /* label describing URL Autocomplete as enabled */
 "Autocomplete.enabled" = "Povoleno";
@@ -116,7 +116,7 @@
 "Browser.backLabel" = "Zpět";
 
 /* Toast displayed after a URL has been copied to the clipboard */
-"browser.copyAddressToast" = "URL adresa zkopírována do schránky";
+"browser.copyAddressToast" = "Adresa URL zkopírována do schránky";
 
 /* Copy URL button in URL long press menu */
 "Browser.copyMenuLabel" = "Kopírovat";
@@ -314,7 +314,7 @@
 "Settings.DailyUsagePing.Message" = "Toto Mozille pomáhá odhadnout počet aktivních uživatelů.";
 
 /* On the Settings screen, this is the title text for a toggle which controls automatically sending daily usage ping. */
-"Settings.DailyUsagePing.Title" = "Ping denního používání";
+"Settings.DailyUsagePing.Title" = "Denní ping o používání";
 
 /* Dark theme option in settings menu */
 "Settings.darkTheme" = "Tmavý";
@@ -322,14 +322,17 @@
 /* Description associated with the Crash Reports toggle on settings screen */
 "Settings.detailTextCrashReports.V2" = "Toto nám umožňují diagnostikovat a opravit problémy s prohlížečem.";
 
+/* Description associated to the Rollouts toggle on the settings screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextRollouts" = "%@ vylepší funkce, výkon a stabilitu mezi aktualizacemi. Změny se aplikují vzdáleně.";
+
 /* Description associated to the Search Suggestions toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
 "Settings.detailTextSearchSuggestion" = "%@ bude odesílat text zadávaný to adresního řádku vyhledávači.";
 
-/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
 "Settings.detailTextSendUsageData" = "Mozilla sbírá jenom ty informace, které potřebuje pro další vylepšování aplikace %@.";
 
-/* Description associated to the Studies toggle on the settings screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"Settings.detailTextStudies" = "%@ může čas od času instalovat a spouštět studie.";
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextSendUsageData.v2" = "Mozilla sbírá jenom ty informace, které potřebuje pro další vylepšování aplikace %@.";
 
 /* Title for section in settings menu */
 "Settings.general" = "Obecné";
@@ -439,14 +442,14 @@
 /* Show home screen tips toggle label on settings screen */
 "Settings.toggleHomeScreenTips" = "Zobrazovat tipy na domovské stránce";
 
+/* Label for Rollouts toggle on the settings screen */
+"Settings.toggleRollouts" = "Povolit vzdálená vylepšení";
+
 /* Safari toggle label on settings screen */
 "Settings.toggleSafari" = "Safari";
 
 /* Label for Send Usage Data toggle on main screen */
 "Settings.toggleSendUsageData" = "Odesílat údaje o používání";
-
-/* Label for Studies toggle on the settings screen */
-"Settings.toggleStudies" = "Studie";
 
 /* Label for toggle on settings screen */
 "Settings.toggleTouchID" = "Použít Touch ID pro odemčení aplikace";
@@ -491,7 +494,7 @@
 "ShareMenu.RequestDesktop" = "Verze stránky pro počítač";
 
 /* Text for the share menu option when a user wants to reload the site as a mobile device */
-"ShareMenu.RequestMobile" = "Mobilní verze stránky";
+"ShareMenu.RequestMobile" = "Verze stránky pro mobily";
 
 /* Text for the share menu option when a user wants to open the current website in the Chrome app. */
 "ShareMenu.ShareOpenChrome" = "Otevřít v Chrome";

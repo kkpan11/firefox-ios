@@ -20,6 +20,7 @@ final class WKWebServerUtilTests: XCTestCase {
         super.tearDown()
     }
 
+    @MainActor
     func testSetupWebServerGivenIsRunningThenDoesntStart() {
         let subject = createSubject()
 
@@ -30,6 +31,7 @@ final class WKWebServerUtilTests: XCTestCase {
         XCTAssertEqual(webServer.addTestHandlerCalled, 1)
     }
 
+    @MainActor
     func testSetupWebServerGivenIsNotRunningThenStart() {
         webServer.isRunning = true
         let subject = createSubject()
@@ -41,6 +43,7 @@ final class WKWebServerUtilTests: XCTestCase {
         XCTAssertEqual(webServer.addTestHandlerCalled, 0)
     }
 
+    @MainActor
     func testStopWebServer() {
         let subject = createSubject()
 
@@ -49,6 +52,7 @@ final class WKWebServerUtilTests: XCTestCase {
         XCTAssertEqual(webServer.stopCalled, 1)
     }
 
+    @MainActor
     func createSubject() -> WKWebServerUtil {
         let subject = DefaultWKWebServerUtil(webServer: webServer)
         trackForMemoryLeaks(subject)

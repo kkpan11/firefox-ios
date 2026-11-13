@@ -6,10 +6,10 @@ import Foundation
 import Common
 
 /// The default app-wide queue for Firefox iOS.
-public let AppEventQueue = EventQueue<AppEvent>()
+let AppEventQueue = EventQueue<AppEvent>()
 
 /// Action taken when an event's dependencies are completed.
-typealias EventQueueAction = (() -> Void)
+typealias EventQueueAction = (@Sendable () -> Void)
 /// Unique ID associated with an enqueued action.
 typealias ActionToken = UUID
 
@@ -19,16 +19,17 @@ typealias ActionToken = UUID
 ///
 /// (Note: there is an additional implicit state, "not started", which is indicated
 /// by the event being absent from the event queue altogether.)
-public enum QueueEventState: Int {
+enum QueueEventState: Int {
     case inProgress
     case completed
     case failed
 }
 
+// TODO: FXIOS-14149 - EventQueue shouldn't be @unchecked Sendable
 /// A queue that provides synchronization between different areas of the codebase and coordinates
 /// actions that depend on one or more events or app states. For example events see: AppEvent.swift.
-public final class EventQueue<QueueEventType: Hashable> {
-    public struct EnqueuedAction {
+final class EventQueue<QueueEventType: Hashable & Sendable>: @unchecked Sendable {
+    struct EnqueuedAction {
         let token: ActionToken
         let action: EventQueueAction
         let dependencies: [QueueEventType]
@@ -80,7 +81,6 @@ public final class EventQueue<QueueEventType: Hashable> {
               then action: @escaping EventQueueAction) -> ActionToken {
         mainQueue.ensureMainThread { [weak self] in
             guard let self else { return }
-
             // If a specific ID has been provided for this action, ensure
             guard !actions.contains(where: { $0.token == token }) else {
                 logger.log("Ignoring duplicate action (ID: \(token))", level: .info, category: .library)
@@ -199,6 +199,20 @@ public final class EventQueue<QueueEventType: Hashable> {
         }
     }
 
+    /// Clears all signalled events and pending actions. Intended for use in tests only
+    /// to reset the global AppEventQueue between test cases.
+    func reset() {
+        guard AppConstants.isRunningUnitTest else {
+            assertionFailure("Test-only function called in production.")
+            return
+        }
+
+        mainQueue.ensureMainThread { [weak self] in
+            self?.signalledEvents.removeAll()
+            self?.actions.removeAll()
+        }
+    }
+
     /// Used to cancel an enqueued action using the token that was provided when the action was enqueued.
     /// - Returns: true if the action was canceled.
     ///
@@ -224,7 +238,7 @@ public final class EventQueue<QueueEventType: Hashable> {
         assert(Thread.isMainThread, "Expects to be called on the main thread.")
         if isProcessingActions {
             // processActions() does not support reentrancy. If this gets called
-            // recursively, defer next call to the subequent iteration of the MT
+            // recursively, defer next call to the subsequent iteration of the MT
             // run loop. This fixes some edge case bugs with nested dependencies
             // which can potentially cause actions to be executed twice incorrectly.
             mainQueue.async { [weak self] in

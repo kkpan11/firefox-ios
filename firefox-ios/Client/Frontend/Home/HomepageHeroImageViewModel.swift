@@ -7,10 +7,31 @@ import SiteImageView
 
 struct HomepageHeroImageViewModel: HeroImageViewModel {
     let urlStringRequest: String
-    let type: SiteImageView.SiteImageType = .heroImage
-    let generalCornerRadius: CGFloat = HomepageViewModel.UX.generalCornerRadius
-    let faviconCornerRadius: CGFloat = HomepageViewModel.UX.generalCornerRadius
-    let faviconBorderWidth: CGFloat = HomepageViewModel.UX.generalBorderWidth
+    let type: SiteImageView.SiteImageType
+    let generalCornerRadius: CGFloat
+    let faviconCornerRadius: CGFloat
+    let faviconBorderWidth: CGFloat
     let heroImageSize: CGSize
-    let fallbackFaviconSize: CGSize = HomepageViewModel.UX.fallbackFaviconSize
+    let fallbackFaviconSize: CGSize
+    let ignoresAspectRatio: Bool
+
+    init(
+        urlStringRequest: String,
+        type: SiteImageView.SiteImageType = .heroImage,
+        generalCornerRadius: CGFloat = HomepageUX.generalCornerRadius,
+        faviconCornerRadius: CGFloat = HomepageUX.generalCornerRadius,
+        faviconBorderWidth: CGFloat = HomepageUX.generalBorderWidth,
+        heroImageSize: CGSize,
+        fallbackFaviconSize: CGSize = HomepageUX.fallbackFaviconSize,
+        ignoresAspectRatio: Bool = false
+    ) {
+        self.urlStringRequest = urlStringRequest
+        self.type = type
+        self.generalCornerRadius = generalCornerRadius
+        self.faviconCornerRadius = faviconCornerRadius
+        self.faviconBorderWidth = faviconBorderWidth
+        self.heroImageSize = heroImageSize
+        self.fallbackFaviconSize = fallbackFaviconSize
+        self.ignoresAspectRatio = ignoresAspectRatio
+    }
 }

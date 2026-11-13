@@ -17,12 +17,12 @@ final class TabsTelemetry {
     }
 
     func startTabSwitchMeasurement() {
-        tabSwitchTimerId = GleanMetrics.Tabs.tabSwitch.start()
+        tabSwitchTimerId = gleanWrapper.startTiming(for: GleanMetrics.Tabs.tabSwitch)
     }
 
     func stopTabSwitchMeasurement() {
         guard let timerId = tabSwitchTimerId else { return }
-        GleanMetrics.Tabs.tabSwitch.stopAndAccumulate(timerId)
+        gleanWrapper.stopAndAccumulateTiming(for: GleanMetrics.Tabs.tabSwitch, timerId: timerId)
         tabSwitchTimerId = nil
     }
 
@@ -30,5 +30,13 @@ final class TabsTelemetry {
         let extras = GleanMetrics.Webview.ProcessDidTerminateExtra(consecutiveCrash: Int32(attemptNumber))
         gleanWrapper.recordEvent(for: GleanMetrics.Webview.processDidTerminate,
                                  extras: extras)
+    }
+
+    func trackMemoryWarningOffload(tabCount: Int, webViewCount: Int) {
+        let extras = GleanMetrics.Webview.MemoryWarningOffloadExtra(
+            tabCount: Int32(tabCount),
+            webviewCount: Int32(webViewCount)
+        )
+        gleanWrapper.recordEvent(for: GleanMetrics.Webview.memoryWarningOffload, extras: extras)
     }
 }

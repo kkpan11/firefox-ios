@@ -5,7 +5,7 @@
 import Foundation
 import Network
 
-public struct NetworkUtils {
+public enum NetworkUtils {
     private enum DefaultRequestConstants {
         static let timeout: TimeInterval = 5
         static let accept = "application/json"
@@ -20,6 +20,14 @@ public struct NetworkUtils {
         configuration.timeoutIntervalForRequest = DefaultRequestConstants.timeout
         configuration.multipathServiceType = .handover
         return URLSession(configuration: configuration)
+    }
+
+    // Build a URLSession with no-caching suitable for uploading pings
+    public static func defaultGleanPingURLSession() -> URLSession {
+        let sessionConfig = URLSessionConfiguration.default
+        sessionConfig.requestCachePolicy = .reloadIgnoringLocalCacheData
+        sessionConfig.urlCache = nil
+        return URLSession(configuration: sessionConfig)
     }
 }
 

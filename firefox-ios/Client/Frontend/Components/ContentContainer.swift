@@ -6,12 +6,12 @@ import UIKit
 
 enum ContentType {
     case homepage
-    case legacyHomepage
     case privateHomepage
     case nativeErrorPage
     case webview
 }
 
+@MainActor
 protocol ContentContainable: UIViewController {
     var contentType: ContentType { get }
 }
@@ -19,14 +19,10 @@ protocol ContentContainable: UIViewController {
 /// A container for view controllers, currently used to embed content in BrowserViewController
 class ContentContainer: UIView {
     private var type: ContentType?
-    private var contentController: ContentContainable?
+    private(set) var contentController: ContentContainable?
 
     var contentView: Screenshotable? {
         return contentController?.view
-    }
-
-    var hasLegacyHomepage: Bool {
-        return type == .legacyHomepage
     }
 
     var hasPrivateHomepage: Bool {
@@ -38,7 +34,7 @@ class ContentContainer: UIView {
     }
 
     var hasAnyHomepage: Bool {
-        return hasLegacyHomepage || hasHomepage || hasPrivateHomepage
+        return hasHomepage || hasPrivateHomepage
     }
 
     var hasWebView: Bool {
@@ -55,8 +51,6 @@ class ContentContainer: UIView {
     /// - Returns: True when we can add the view controller to the container
     func canAdd(content: ContentContainable) -> Bool {
         switch type {
-        case .legacyHomepage:
-            return !(content is LegacyHomepageViewController)
         case .nativeErrorPage:
             return !(content is NativeErrorPageViewController)
         case .homepage:
@@ -85,6 +79,17 @@ class ContentContainer: UIView {
     func update(content: ContentContainable) {
         removePreviousContent()
         saveContentType(content: content)
+    }
+
+    /// Removes the current content view controller (including the webview) and drops the reference to it.
+    /// Used when an iPad window is closing so the container doesn't keep its content, and everything the
+    /// content references, alive after the BrowserViewController is gone.
+    func removeContent() {
+        contentController?.willMove(toParent: nil)
+        contentController?.view.removeFromSuperview()
+        contentController?.removeFromParent()
+        contentController = nil
+        type = nil
     }
 
     // MARK: - Private

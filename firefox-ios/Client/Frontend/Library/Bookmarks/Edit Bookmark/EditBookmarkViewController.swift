@@ -9,7 +9,7 @@ import MozillaAppServices
 class EditBookmarkViewController: UIViewController,
                                   UITableViewDelegate,
                                   Themeable {
-    private struct UX {
+    private enum UX {
         static let bookmarkCellTopPadding: CGFloat = 25.0
         static let folderHeaderIdentifier = "folderHeaderIdentifier"
         static let folderHeaderHorizontalPadding: CGFloat = 16.0
@@ -18,13 +18,18 @@ class EditBookmarkViewController: UIViewController,
 
     var currentWindowUUID: WindowUUID?
     var themeManager: any ThemeManager
-    var themeObserver: (any NSObjectProtocol)?
+    var themeListenerCancellable: Any?
     var notificationCenter: any NotificationProtocol
+    let shouldUsePrivateOverride: Bool
+    var shouldBeInPrivateTheme: Bool { return false }
+
     private var theme: any Theme {
-        return themeManager.getCurrentTheme(for: currentWindowUUID)
+        return themeManager.resolveTheme(for: currentWindowUUID,
+                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme)
     }
 
-    private lazy var tableView: UITableView = .build { view in
+    private lazy var tableView: UITableView = .build({ view in
         view.delegate = self
         view.register(cellType: EditBookmarkCell.self)
         view.register(cellType: OneLineTableViewCell.self)
@@ -35,11 +40,14 @@ class EditBookmarkViewController: UIViewController,
                                                     size: CGSize(width: 0, height: UX.bookmarkCellTopPadding)))
         view.tableHeaderView = headerSpacerView
         view.keyboardDismissMode = .onDrag
-    }
+    }, {
+        UITableView(frame: .zero, style: .insetGrouped)
+    })
+
     private lazy var saveBarButton: UIBarButtonItem =  {
         let button = UIBarButtonItem(
             title: String.Bookmarks.Menu.EditBookmarkSave,
-            style: .done,
+            style: .plain,
             target: self,
             action: #selector(saveButtonAction)
         )
@@ -60,14 +68,15 @@ class EditBookmarkViewController: UIViewController,
 
     init(viewModel: EditBookmarkViewModel,
          windowUUID: WindowUUID,
+         shouldUsePrivateOverride: Bool = true,
          notificationCenter: NotificationProtocol = NotificationCenter.default,
          themeManager: ThemeManager = AppContainer.shared.resolve()) {
         self.viewModel = viewModel
         self.themeManager = themeManager
         self.notificationCenter = notificationCenter
         self.currentWindowUUID = windowUUID
+        self.shouldUsePrivateOverride = shouldUsePrivateOverride
         super.init(nibName: nil, bundle: nil)
-        listenForThemeChange(view)
     }
 
     required init?(coder: NSCoder) {
@@ -90,13 +99,16 @@ class EditBookmarkViewController: UIViewController,
 
         dataSource.defaultRowAnimation = .fade
         reloadTableViewData()
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         setTheme(theme)
         _ = viewModel.getBackNavigationButtonTitle
-        navigationController?.setNavigationBarHidden(false, animated: true)
+        navigationController?.setNavigationBarHidden(false, animated: false)
         navigationController?.interactivePopGestureRecognizer?.isEnabled = false
         onViewWillAppear?()
     }
@@ -112,17 +124,12 @@ class EditBookmarkViewController: UIViewController,
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         if let isDragging = transitionCoordinator?.isInteractive, !isDragging {
-            navigationController?.setNavigationBarHidden(true, animated: true)
-        }
-        // Save when popping the view off the navigation stack (when in library)
-        if isMovingFromParent {
-            viewModel.saveBookmark()
+            navigationController?.setNavigationBarHidden(true, animated: false)
         }
         onViewWillDisappear?()
     }
 
     // MARK: - Setup
-
     private func setupSubviews() {
         view.addSubview(tableView)
         NSLayoutConstraint.activate([
@@ -142,12 +149,11 @@ class EditBookmarkViewController: UIViewController,
 
     @objc
     func saveButtonAction() {
-        // If we are in the standalone version of edit bookmark, we should save before dismissing
         if navigationController?.viewControllers.first == self {
             viewModel.saveBookmark()
             viewModel.didFinish()
         } else {
-            // If we are in the library, save will happen in viewWillDisappear
+            viewModel.saveBookmark()
             navigationController?.popViewController(animated: true)
         }
     }
@@ -160,18 +166,21 @@ class EditBookmarkViewController: UIViewController,
     }
 
     private func setTheme(_ theme: any Theme) {
-        let appearence = UINavigationBarAppearance()
-        appearence.backgroundColor = theme.colors.layer1
+        let appearance = UINavigationBarAppearance()
+        appearance.backgroundColor = theme.colors.layer1
         // remove divider from navigation bar
-        appearence.shadowColor = .clear
-        appearence.titleTextAttributes = [
+        appearance.shadowColor = .clear
+        appearance.titleTextAttributes = [
             .foregroundColor: theme.colors.textPrimary
         ]
-        navigationController?.navigationBar.standardAppearance = appearence
-        navigationController?.navigationBar.scrollEdgeAppearance = appearence
+        navigationController?.navigationBar.standardAppearance = appearance
+        navigationController?.navigationBar.scrollEdgeAppearance = appearance
         navigationController?.navigationBar.tintColor = theme.colors.actionPrimary
         view.backgroundColor = theme.colors.layer1
         tableView.backgroundColor = theme.colors.layer1
+        if #available(iOS 26.0, *) {
+            saveBarButton.tintColor = theme.colors.textAccent
+        }
     }
 
     // MARK: - Configure Table View Cells

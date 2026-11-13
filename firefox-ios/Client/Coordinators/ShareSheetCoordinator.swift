@@ -6,35 +6,44 @@ import Foundation
 import Common
 import Shared
 import Storage
+import WebEngine
+
+protocol ShareSheetCoordinatorDelegate: AnyObject {
+    @MainActor
+    func showToast(message: String)
+}
 
 class ShareSheetCoordinator: BaseCoordinator,
                              DevicePickerViewControllerDelegate,
                              InstructionsViewDelegate,
-                             JSPromptAlertControllerDelegate {
+                             JavascriptPromptAlertControllerDelegate {
     // MARK: - Properties
 
     private let tabManager: TabManager
     private let themeManager: ThemeManager
     private let profile: Profile
-    private let alertContainer: UIView
     private weak var parentCoordinator: ParentCoordinatorDelegate?
+    private weak var delegate: ShareSheetCoordinatorDelegate?
+    private let shouldUsePrivateOverride: Bool
     var windowUUID: WindowUUID { return tabManager.windowUUID }
 
     // MARK: - Initializers
 
     init(
-        alertContainer: UIView,
         router: Router,
         profile: Profile,
+        tabManager: TabManager,
         parentCoordinator: ParentCoordinatorDelegate? = nil,
         themeManager: ThemeManager = AppContainer.shared.resolve(),
-        tabManager: TabManager
+        delegate: ShareSheetCoordinatorDelegate? = nil,
+        shouldUsePrivateOverride: Bool = false
     ) {
-        self.alertContainer = alertContainer
         self.profile = profile
         self.tabManager = tabManager
         self.themeManager = themeManager
         self.parentCoordinator = parentCoordinator
+        self.delegate = delegate
+        self.shouldUsePrivateOverride = shouldUsePrivateOverride
         super.init(router: router)
     }
 
@@ -89,23 +98,27 @@ class ShareSheetCoordinator: BaseCoordinator,
         // be necessary, but this JS alert code is fragile right now so let's not touch it until FXIOS-10334 is underway.
         switch activityType {
         case CustomActivityAction.sendToDevice.actionType:
-            // Cannot send file:// URLs to another synced device
-            guard !shareType.wrappedURL.isFileURL else {
+            var sendURL: URL = shareType.wrappedURL
+
+            if case .file(_, let remoteURL) = shareType,
+               let remoteURL = remoteURL {
+                // Some files might have a remote URL as a fallback for Send to Device (i.e. PDFs navigated to in a tab, but
+                // not from Downloads Panel).
+                sendURL = remoteURL
+            }
+
+            // Note: Cannot send file:// URLs to another synced device
+            guard !sendURL.isFileURL else {
                 dequeueNotShownJSAlert()
                 return
             }
 
             switch shareType {
             case let .tab(_, tab):
-                showSendToDevice(url: shareType.wrappedURL, relatedTab: tab)
+                showSendToDevice(url: sendURL, relatedTab: tab)
             default:
-                showSendToDevice(url: shareType.wrappedURL, relatedTab: nil)
+                showSendToDevice(url: sendURL, relatedTab: nil)
             }
-        case .copyToPasteboard:
-            if case .file = shareType {
-                showToast(text: .ShareFileCopiedToClipboard)
-            }
-            dequeueNotShownJSAlert()
         default:
             dequeueNotShownJSAlert()
         }
@@ -129,7 +142,9 @@ class ShareSheetCoordinator: BaseCoordinator,
             shareItem = ShareItem(url: url.absoluteString, title: nil)
         }
 
-        let themeColors = themeManager.getCurrentTheme(for: windowUUID).colors
+        let themeColors = themeManager.resolveTheme(for: windowUUID,
+                                                    shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                                    shouldBeInPrivateTheme: false).colors
         let colors = SendToDeviceHelper.Colors(defaultBackground: themeColors.layer1,
                                                textColor: themeColors.textPrimary,
                                                iconColor: themeColors.iconDisabled)
@@ -156,12 +171,6 @@ class ShareSheetCoordinator: BaseCoordinator,
         let alertController = alertInfo.alertController()
         alertController.delegate = self
         router.present(alertController)
-    }
-
-    private func showToast(text: String) {
-        SimpleToast().showAlertWithText(text,
-                                        bottomContainer: self.alertContainer,
-                                        theme: self.themeManager.getCurrentTheme(for: self.windowUUID))
     }
 
     // MARK: DevicePickerViewControllerDelegate
@@ -200,14 +209,16 @@ class ShareSheetCoordinator: BaseCoordinator,
             return
         }
 
-        profile.sendItem(shareItem, toDevices: devices).uponQueue(.main) { [weak self] _ in
-            guard let self = self else { return }
-            self.router.dismiss()
-            self.parentCoordinator?.didFinish(from: self)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.showToast(text: .LegacyAppMenu.AppMenuTabSentConfirmMessage)
+        profile.sendItem(shareItem, toDevices: devices)
+            .uponQueue(.main) { [weak self] _ in
+                // FXIOS-13228 It should be safe to assumeIsolated here because of `.main` queue above
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.router.dismiss()
+                    self.delegate?.showToast(message: .LegacyAppMenu.AppMenuTabSentConfirmMessage)
+                    self.parentCoordinator?.didFinish(from: self)
+                }
             }
-        }
     }
 
     // MARK: - InstructionViewDelegate
@@ -219,7 +230,7 @@ class ShareSheetCoordinator: BaseCoordinator,
 
     // MARK: - JSPromptAlertControllerDelegate
 
-    func promptAlertControllerDidDismiss(_ alertController: JSPromptAlertController) {
+    func promptAlertControllerDidDismiss(_ alertController: JavaScriptPromptAlertController) {
         dequeueNotShownJSAlert()
     }
 }

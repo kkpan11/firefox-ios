@@ -15,6 +15,13 @@ struct TabModel: Equatable, Identifiable, Hashable {
 
     let screenshot: UIImage?
     let hasHomeScreenshot: Bool
+    let hasScreenshotOnDisk: Bool
+
+    /// Hash only the stable identity. `==` intentionally remains synthesized (full content):
+    /// Redux subscriptions rely on content inequality to propagate updates, and the diffable
+    /// data source uses `==` for item identity. Hashing only the UUID avoids O(N) normalized
+    /// string hashing of titles/URLs on the main thread during snapshot applies.
+    func hash(into hasher: inout Hasher) { hasher.combine(tabUUID) }
 
     static func emptyState(
         tabUUID: TabUUID,
@@ -30,7 +37,8 @@ struct TabModel: Equatable, Identifiable, Hashable {
             tabTitle: title,
             url: nil,
             screenshot: nil,
-            hasHomeScreenshot: false
+            hasHomeScreenshot: false,
+            hasScreenshotOnDisk: false
         )
     }
 }

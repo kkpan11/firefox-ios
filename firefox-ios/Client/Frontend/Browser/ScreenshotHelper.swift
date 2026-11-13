@@ -10,8 +10,16 @@ import Common
  * Handles screenshots for a given tab, including pages with non-webview content.
  */
 class ScreenshotHelper {
-    fileprivate weak var controller: BrowserViewController?
+    private weak var controller: BrowserViewController?
     private let logger: Logger
+
+    @MainActor
+    private var usesRegularLayout: Bool {
+        // An additional check for horizontalSizeClass is needed since for iPad in multi windows state
+        // the smallest window possible has horizontalSizeClass equal to compact, thus behave like an iPhone.
+        return controller?.traitCollection.horizontalSizeClass == .regular &&
+               controller?.traitCollection.verticalSizeClass == .regular
+    }
 
     init(controller: BrowserViewController,
          logger: Logger = DefaultLogger.shared) {
@@ -19,10 +27,20 @@ class ScreenshotHelper {
         self.logger = logger
     }
 
-    /// Takes a screenshot of the WebView to be displayed on the tab view page
-    /// If taking a screenshot of the home page, uses our custom screenshot `UIView` extension function
-    /// If taking a screenshot of a website, uses apple's `takeSnapshot` function
-    func takeScreenshot(_ tab: Tab, windowUUID: WindowUUID, completion: (() -> Void)? = nil) {
+    /// Takes a screenshot of the Tab content.
+    ///
+    /// - Parameters:
+    ///    - tab: The tab which needs to be screenshotted
+    ///    - windowUUID: the id of the window in which the screenshot is made
+    ///    - screenshotBounds: the rect that is used to clip the screenshot to the preferred size
+    ///
+    /// The tool used to take a screenshot for a Tab depends on the contentType.
+    /// For the homepage, the controller is used to generate the screenshot.
+    /// For WebView content, the screenshot is captured directly from the view using takeSnapshot.
+    @MainActor
+    func takeScreenshot(_ tab: Tab,
+                        windowUUID: WindowUUID,
+                        screenshotBounds: CGRect) {
         guard let webView = tab.webView else {
             logger.log("Tab Snapshot Error",
                        level: .debug,
@@ -30,19 +48,34 @@ class ScreenshotHelper {
                        description: "Tab webView or url is nil")
             return
         }
-        /// Handle home page snapshots, can not use Apple API snapshot function for this
+        // Handle home page snapshots, can not use Apple API snapshot function for this
         guard controller != nil else { return }
+        let availableSize = controller?.viewIfLoaded?.bounds.size ?? .zero
+        let shouldCropScreenshot = availableSize.height >= availableSize.width && !usesRegularLayout
 
-        /// Added check for native error pages.
+        // Added check for native error pages.
         let isNativeErrorPage = controller?.contentContainer.hasNativeErrorPage ?? false
 
-        /// If the tab is the homepage, take a screenshot of the homepage view.
-        /// This is done by accessing the content view from the content container.
-        /// The screenshot is then set for the tab, and a TabEvent is posted to indicate
-        /// that a screenshot has been set for the homepage.
+        // If the tab is the homepage, take a screenshot of the homepage view.
+        // This is done by accessing the content controller from the content container.
+        // The screenshot is then set for the tab, and a TabEvent is posted to indicate
+        // that a screenshot has been set for the homepage.
         if tab.isFxHomeTab {
-            if let homeview = controller?.contentContainer.contentView {
-                let screenshot = homeview.screenshot(quality: UIConstants.ActiveScreenshotQuality)
+            // Skip the screenshot if this tab is no longer selected to avoid capturing another tab's content.
+            guard controller?.tabManager.selectedTab?.tabUUID == tab.tabUUID else { return }
+
+            // For complex views like homepage the Screenshot tool could be the controller directly
+            // so check the contentController first otherwise fallback to the contentView.
+            let screenshotTool = controller?.contentContainer.contentController as? Screenshotable
+                                 ?? controller?.contentContainer.contentView as? Screenshotable
+            if let screenshotTool {
+                // apply bounds only for iPhone in portrait, as otherwise it results in
+                // bad screenshot view port.
+                let screenshot: UIImage? = if shouldCropScreenshot {
+                    screenshotTool.screenshot(bounds: screenshotBounds)
+                } else {
+                    screenshotTool.screenshot(quality: 1.0)
+                }
                 tab.hasHomeScreenshot = true
                 tab.setScreenshot(screenshot)
                 store.dispatch(
@@ -53,7 +86,6 @@ class ScreenshotHelper {
                             ScreenshotActionType.screenshotTaken
                     )
                 )
-                completion?()
             }
             // Handle error page screenshots
         } else if isNativeErrorPage {
@@ -69,15 +101,22 @@ class ScreenshotHelper {
                             ScreenshotActionType.screenshotTaken
                     )
                 )
-                completion?()
             }
             // Handle webview screenshots
         } else {
             let configuration = WKSnapshotConfiguration()
             configuration.afterScreenUpdates = true
-            configuration.snapshotWidth = 320
-            webView.takeSnapshot(with: configuration) { image, error in
-                if let image = image {
+
+            // apply bounds only for iPhone in portrait, as otherwise it results in
+            // bad screenshot view port.
+            if shouldCropScreenshot {
+                configuration.rect = screenshotBounds
+            }
+            webView.setPullRefreshVisibility(isVisible: false)
+
+            webView.takeSnapshot(with: configuration) { [weak tab] image, error in
+                webView.setPullRefreshVisibility(isVisible: true)
+                if let image, let tab {
                     tab.hasHomeScreenshot = false
                     tab.setScreenshot(image)
                     store.dispatch(
@@ -88,7 +127,6 @@ class ScreenshotHelper {
                                 ScreenshotActionType.screenshotTaken
                         )
                     )
-                    completion?()
                 } else if let error = error {
                     self.logger.log("Tab Snapshot Error",
                                     level: .debug,

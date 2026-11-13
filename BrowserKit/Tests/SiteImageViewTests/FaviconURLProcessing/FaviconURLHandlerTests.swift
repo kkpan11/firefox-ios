@@ -9,13 +9,19 @@ class FaviconURLHandlerTests: XCTestCase {
     let siteURL = URL(string: "https://www.firefox.com")!
     let faviconURL = URL(string: "https://www.firefox.com/image")!
 
-    var mockFetcher: FaviconURLFetcherMock!
-    var mockCache: FaviconURLCacheMock!
+    var mockFetcher: MockFaviconURLFetcher!
+    var mockCache: MockFaviconURLCache!
 
     override func setUp() {
         super.setUp()
-        mockFetcher = FaviconURLFetcherMock()
-        mockCache = FaviconURLCacheMock()
+        mockFetcher = MockFaviconURLFetcher()
+        mockCache = MockFaviconURLCache()
+    }
+
+    override func tearDown() {
+        mockFetcher = nil
+        mockCache = nil
+        super.tearDown()
     }
 
     func testGetFaviconURL_inCache() async throws {

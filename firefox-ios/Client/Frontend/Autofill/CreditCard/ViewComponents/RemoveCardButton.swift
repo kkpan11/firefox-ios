@@ -7,6 +7,12 @@ import Foundation
 import SwiftUI
 
 struct RemoveCardButton: View {
+    private enum UX {
+        static let cornerRadius: CGFloat = 24
+        static let rectangleHeight: CGFloat = 0.7
+        static let padding: CGFloat = 16
+    }
+
     // Theming
     let windowUUID: WindowUUID
     @Environment(\.themeManager)
@@ -34,7 +40,7 @@ struct RemoveCardButton: View {
                 Rectangle()
                     .fill(borderColor)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 0.7)
+                    .frame(height: UX.rectangleHeight)
                 VStack {
                     Button(String.CreditCard.EditCard.RemoveCardButtonTitle) {
                         showAlert.toggle()
@@ -49,21 +55,21 @@ struct RemoveCardButton: View {
                     }
                     .font(.body)
                     .foregroundColor(removeButtonColor)
-                    .padding(.leading, 16)
-                    .padding(.trailing, 16)
+                    .padding(.leading, UX.padding)
+                    .padding(.trailing, UX.padding)
                 }
                 Rectangle()
                     .fill(borderColor)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 0.7)
+                    .frame(height: UX.rectangleHeight)
             }.background(backgroundColor.edgesIgnoringSafeArea(.bottom))
         }
         .onAppear {
-            applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            applyTheme(theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false))
         }
         .onReceive(NotificationCenter.default.publisher(for: .ThemeDidChange)) { notification in
             guard let uuid = notification.windowUUID, uuid == windowUUID else { return }
-            applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            applyTheme(theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false))
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
             // part of FXIOS-6797, if the app goes to the background and
@@ -71,6 +77,10 @@ struct RemoveCardButton: View {
             // prevents the screen dismissal, hiding it is the simplest way to solve the issue.
             showAlert = false
         }
+        .modifier(NewStyleRoundedCorners(topLeadingCorner: UX.cornerRadius,
+                                         topTrailingCorner: UX.cornerRadius,
+                                         bottomLeadingCorner: UX.cornerRadius,
+                                         bottomTrailingCorner: UX.cornerRadius))
     }
 
     func applyTheme(theme: Theme) {

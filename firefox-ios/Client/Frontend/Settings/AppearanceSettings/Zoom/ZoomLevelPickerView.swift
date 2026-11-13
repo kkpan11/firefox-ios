@@ -9,13 +9,14 @@ struct ZoomLevelPickerView: View {
     @State private var selectedZoomLevel: ZoomLevel
     private let theme: Theme
     private let zoomManager: ZoomPageManager
+    private let onZoomLevelChanged: (ZoomLevel) -> Void
 
-    private struct UX {
+    private enum UX {
         static let chevronImageIdentifier = "chevron.down"
-        static var sectionPadding: CGFloat = 16
-        static var verticalPadding: CGFloat = 12
-        static var dividerHeight: CGFloat = 0.5
-        static var pickerLabelSpacing: CGFloat = 4
+        static let sectionPadding: CGFloat = 16
+        static let verticalPadding: CGFloat = 12
+        static let pickerLabelSpacing: CGFloat = 4
+        static let cornerRadius: CGFloat = 24
     }
 
     private var sectionBackground: Color {
@@ -30,77 +31,78 @@ struct ZoomLevelPickerView: View {
         return .Settings.Appearance.PageZoom.ZoomLevelSelectorTitle
     }
 
-    init(theme: Theme, zoomManager: ZoomPageManager) {
+    init(theme: Theme, zoomManager: ZoomPageManager, onZoomLevelChanged: @escaping (ZoomLevel) -> Void) {
         self.theme = theme
         self.zoomManager = zoomManager
+        self.onZoomLevelChanged = onZoomLevelChanged
         let currentZoom = ZoomLevel(from: zoomManager.defaultZoomLevel)
         _selectedZoomLevel = State(initialValue: currentZoom)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            GenericSectionHeaderView(title: .Settings.Appearance.PageZoom.DefaultSectionHeader.uppercased(),
-                                     sectionTitleColor: theme.colors.textSecondary.color)
-                .padding([.leading, .trailing, .top], UX.sectionPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(sectionBackground)
+            if #available(iOS 26.0, *) {
+                GenericSectionView(
+                    theme: theme,
+                    title: .Settings.Appearance.PageZoom.DefaultSectionHeader,
+                    identifier: AccessibilityIdentifiers.Settings.Appearance.pageZoomTitle
+                ) {
+                    pickerContent
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .modifier(SectionStyle(theme: theme, cornerRadius: UX.cornerRadius))
+                }
+            } else {
+                GenericSectionHeaderView(title: .Settings.Appearance.PageZoom.DefaultSectionHeader.uppercased(),
+                                         sectionTitleColor: theme.colors.textSecondary.color)
+                    .padding([.leading, .trailing, .top], UX.sectionPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(sectionBackground)
 
-            defaultZoomPicker
+                defaultZoomPicker
+            }
         }
     }
 
     var defaultZoomPicker: some View {
-        VStack(spacing: 0) {
-            // Top divider
-            Divider()
-                .frame(height: UX.dividerHeight)
-                .background(theme.colors.borderPrimary.color)
+        pickerContent
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(backgroundColor)
+    }
 
-            // Picker content
-            HStack {
-                Text(pickerText)
-                    .font(.body)
-                    .foregroundColor(theme.colors.textPrimary.color)
+    var pickerContent: some View {
+        HStack {
+            Text(pickerText)
+                .font(FXFontStyles.Regular.body.scaledSwiftUIFont())
+                .foregroundColor(theme.colors.textPrimary.color)
 
-                Spacer()
+            Spacer()
 
-                // Right side - picker with current value
-                Menu {
-                    Picker(selection: $selectedZoomLevel, label: EmptyView()) {
-                        ForEach(ZoomLevel.allCases, id: \.self) { item in
-                            Text(item.displayName)
-                                .tag(item)
-                        }
-                    }
-                    .onChange(of: selectedZoomLevel) { newValue in
-                        zoomManager.saveDefaultZoomLevel(defaultZoom: newValue.rawValue)
-                        NotificationCenter.default.post(name: .PageZoomSettingsChanged, object: nil)
-                    }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } label: {
-                    HStack(spacing: UX.pickerLabelSpacing) {
-                        Text(selectedZoomLevel.displayName)
-                            .font(.body)
-                            .foregroundColor(theme.colors.textPrimary.color)
-
-                        Image(systemName: UX.chevronImageIdentifier)
-                            .renderingMode(.template)
-                            .font(.caption)
-                            .foregroundColor(theme.colors.textPrimary.color)
-                            .accessibilityHidden(true)
+            // Right side - picker with current value
+            Menu {
+                Picker(selection: $selectedZoomLevel, label: EmptyView()) {
+                    ForEach(ZoomLevel.allCases, id: \.self) { item in
+                        Text(item.displayName)
+                            .tag(item)
                     }
                 }
-            }
-            .padding(.horizontal, UX.sectionPadding)
-            .padding(.vertical, UX.verticalPadding)
+                .onChange(of: selectedZoomLevel, perform: onZoomLevelChanged)
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                HStack(spacing: UX.pickerLabelSpacing) {
+                    Text(selectedZoomLevel.displayName)
+                        .font(FXFontStyles.Regular.body.scaledSwiftUIFont())
+                        .foregroundColor(theme.colors.textPrimary.color)
 
-            // Bottom divider
-            Divider()
-                .frame(height: UX.dividerHeight)
-                .background(theme.colors.borderPrimary.color)
+                    Image(systemName: UX.chevronImageIdentifier)
+                        .renderingMode(.template)
+                        .font(FXFontStyles.Regular.caption1.scaledSwiftUIFont())
+                        .foregroundColor(theme.colors.textPrimary.color)
+                        .accessibilityHidden(true)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(backgroundColor)
+        .padding(.horizontal, UX.sectionPadding)
+        .padding(.vertical, UX.verticalPadding)
     }
 }

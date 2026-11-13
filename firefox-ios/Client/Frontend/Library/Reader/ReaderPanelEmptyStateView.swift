@@ -5,8 +5,8 @@
 import UIKit
 import Common
 
-final class ReaderPanelEmptyStateView: UIView {
-    private struct UX {
+final class ReaderPanelEmptyStateView: UIView, ThemeApplicable {
+    private enum UX {
         static let WelcomeScreenPadding: CGFloat = 15
         static let WelcomeScreenHorizontalMinPadding: CGFloat = 40
 
@@ -24,35 +24,30 @@ final class ReaderPanelEmptyStateView: UIView {
         label.textAlignment = .center
         label.font = FXFontStyles.Bold.body.scaledFont()
         label.numberOfLines = 0
-        label.textColor = self.currentTheme().colors.textSecondary
     }
 
     private lazy var readerModeLabel: UILabel = .build { label in
         label.text = .ReaderPanelReadingModeDescription
         label.font = FXFontStyles.Regular.body.scaledFont()
         label.numberOfLines = 0
-        label.textColor = self.currentTheme().colors.textSecondary
     }
 
     private lazy var readerModeImageView: UIImageView = .build { imageView in
         imageView.contentMode = .scaleAspectFill
         imageView.image = UIImage(named: StandardImageIdentifiers.Large.readerView)?
             .withRenderingMode(.alwaysTemplate)
-        imageView.tintColor = self.currentTheme().colors.textSecondary
     }
 
     private lazy var readingListLabel: UILabel = .build { label in
         label.text = .ReaderPanelReadingListDescription
         label.font = FXFontStyles.Regular.body.scaledFont()
         label.numberOfLines = 0
-        label.textColor = self.currentTheme().colors.textSecondary
     }
 
     private lazy var readingListImageView: UIImageView = .build { imageView in
         imageView.contentMode = .scaleAspectFill
         imageView.image = UIImage(named: StandardImageIdentifiers.Large.readingListAdd)?
             .withRenderingMode(.alwaysTemplate)
-        imageView.tintColor = self.currentTheme().colors.textSecondary
     }
 
     private lazy var emptyStateViewWrapper: UIView = .build { view in
@@ -131,6 +126,7 @@ final class ReaderPanelEmptyStateView: UIView {
                 readingListLabel.bottomAnchor.constraint(
                     equalTo: emptyStateViewWrapper.bottomAnchor
                 ).priority(.defaultLow),
+                readingListLabel.bottomAnchor.constraint(lessThanOrEqualTo: emptyStateViewWrapper.bottomAnchor),
 
                 // overall positioning of emptyStateViewWrapper
                 emptyStateViewWrapper.leadingAnchor.constraint(
@@ -159,7 +155,12 @@ final class ReaderPanelEmptyStateView: UIView {
         readingListLabel.setContentHuggingPriority(.defaultHigh, for: .vertical)
     }
 
-    private func currentTheme() -> Theme {
-        return themeManager.getCurrentTheme(for: windowUUID)
+    func applyTheme(theme: Theme) {
+        let iconColor = theme.isNova ? theme.colors.iconSecondary : theme.colors.textSecondary
+        welcomeLabel.textColor = theme.colors.textSecondary
+        readerModeLabel.textColor = theme.colors.textSecondary
+        readerModeImageView.tintColor = iconColor
+        readingListLabel.textColor = theme.colors.textSecondary
+        readingListImageView.tintColor = iconColor
     }
 }

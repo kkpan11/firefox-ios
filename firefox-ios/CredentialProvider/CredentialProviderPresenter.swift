@@ -4,10 +4,11 @@
 
 import UIKit
 import Common
-import AuthenticationServices
+@preconcurrency import AuthenticationServices
 
 let CredentialProviderAuthenticationDelay = 0.25
 
+@MainActor
 final class CredentialProviderPresenter {
     weak var view: CredentialProviderViewProtocol?
     public let profile: Profile
@@ -33,9 +34,6 @@ final class CredentialProviderPresenter {
     }
 
     func credentialProvisionRequested(for credentialIdentity: ASPasswordCredentialIdentity) {
-        let maxRetries = 3
-        var currentRetry = 0
-
         guard profile.logins.reopenIfClosed() == nil else {
             cancel(with: .failed)
             return
@@ -43,8 +41,15 @@ final class CredentialProviderPresenter {
 
         guard let id = credentialIdentity.recordIdentifier else { return }
 
-        func attemptProvision() {
-            profile.logins.getLogin(id: id, completionHandler: { [weak self] result in
+        attemptProvision(id: id, currentRetry: 0)
+    }
+
+    /// Helper method to retry provisioning up to 3 times after a delay.
+    private func attemptProvision(id: String, currentRetry: Int) {
+        let maxRetries = 3
+
+        profile.logins.getLogin(id: id, completionHandler: { [weak self] result in
+            ensureMainThread {
                 switch result {
                 case .failure:
                     self?.cancel(with: .failed)
@@ -54,14 +59,14 @@ final class CredentialProviderPresenter {
                             withSelectedCredential: passwordCredential)
                     } else {
                         if currentRetry < maxRetries {
-                            currentRetry += 1
+                            let updatedRetry = currentRetry + 1
                             self?.logger.log(
-                                "Failed to retrieve credentials. Will retry. Retry #\(currentRetry)",
+                                "Failed to retrieve credentials. Will retry. Retry #\(updatedRetry)",
                                 level: .warning,
                                 category: .autofill
                             )
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                attemptProvision()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                                self?.attemptProvision(id: id, currentRetry: updatedRetry)
                             }
                         } else {
                             self?.logger.log(
@@ -73,10 +78,8 @@ final class CredentialProviderPresenter {
                         }
                     }
                 }
-            })
-        }
-
-        attemptProvision()
+            }
+        })
     }
 
     func showCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
@@ -84,23 +87,24 @@ final class CredentialProviderPresenter {
             cancel(with: .failed)
         } else {
             profile.logins.listLogins(completionHandler: { [weak self] result in
-                switch result {
-                case .failure:
-                    self?.cancel(with: .failed)
-                case .success(let loginRecords):
-                    var sortedLogins = loginRecords.sorted(by: <)
-                    for (index, element) in sortedLogins.enumerated() {
-                        if let identifier = serviceIdentifiers
-                            .first?
-                            .identifier.asURL?.domainURL
-                            .absoluteString.titleFromHostname,
-                           element.passwordCredentialIdentity.serviceIdentifier.identifier.contains(identifier) {
-                            sortedLogins.remove(at: index)
-                            sortedLogins.insert(element, at: 0)
+                ensureMainThread {
+                    switch result {
+                    case .failure:
+                        self?.cancel(with: .failed)
+                    case .success(let loginRecords):
+                        var sortedLogins = loginRecords.sorted(by: <)
+                        for (index, element) in sortedLogins.enumerated() {
+                            if let identifier = serviceIdentifiers
+                                .first?
+                                .identifier.asURL?.domainURL
+                                .absoluteString.titleFromHostname,
+                               element.passwordCredentialIdentity.serviceIdentifier.identifier.contains(identifier) {
+                                sortedLogins.remove(at: index)
+                                sortedLogins.insert(element, at: 0)
+                            }
                         }
-                    }
-                    let dataSource = sortedLogins.map { ($0.passwordCredentialIdentity, $0.passwordCredential) }
-                    DispatchQueue.main.async {
+
+                        let dataSource = sortedLogins.map { ($0.passwordCredentialIdentity, $0.passwordCredential) }
                         self?.view?.show(itemList: dataSource)
                     }
                 }
@@ -115,10 +119,7 @@ final class CredentialProviderPresenter {
             self.appAuthenticator.authenticateWithDeviceOwnerAuthentication { result in
                 switch result {
                 case .success:
-                    // Move to the main thread because a state update triggers UI changes.
-                    DispatchQueue.main.async { [unowned self] in
-                        self.showCredentialList(for: serviceIdentifiers)
-                    }
+                    self.showCredentialList(for: serviceIdentifiers)
                 case .failure:
                     self.cancel(with: .userCanceled)
                 }

@@ -47,31 +47,31 @@ private struct DarkColourPalette: ThemeColourPalette {
     var layerSuccess: UIColor = FXColors.Green80
     var layerWarning: UIColor = FXColors.Yellow70.withAlphaComponent(0.77)
     var layerCritical: UIColor = FXColors.Pink80
+    var layerCriticalSubdued: UIColor = FXColors.Red05.withAlphaComponent(0.7)
     var layerSelectedText: UIColor = FXColors.Blue40
     var layerAutofillText: UIColor = FXColors.LightGrey05.withAlphaComponent(0.34)
-    var layerSearch: UIColor = FXColors.DarkGrey80
+    var layerEmphasis: UIColor = FXColors.DarkGrey80
     var layerGradientURL = Gradient(colors: [
         FXColors.DarkGrey80.withAlphaComponent(0),
         FXColors.DarkGrey80.withAlphaComponent(1)
     ])
-
-    // MARK: - Ratings
-    var layerRatingA: UIColor = FXColors.Green20
-    var layerRatingASubdued: UIColor = FXColors.Green05.withAlphaComponent(0.7)
-    var layerRatingB: UIColor = FXColors.Blue10
-    var layerRatingBSubdued: UIColor = FXColors.Blue05.withAlphaComponent(0.4)
-    var layerRatingC: UIColor = FXColors.Yellow20
-    var layerRatingCSubdued: UIColor = FXColors.Yellow05.withAlphaComponent(0.7)
-    var layerRatingD: UIColor = FXColors.Orange20
-    var layerRatingDSubdued: UIColor = FXColors.Orange05.withAlphaComponent(0.7)
-    var layerRatingF: UIColor = FXColors.Red30
-    var layerRatingFSubdued: UIColor = FXColors.Red05.withAlphaComponent(0.6)
+    var layerSurfaceLow = FXColors.DarkGrey60
+    var layerSurfaceMedium = FXColors.DarkGrey80
+    var layerSurfaceMediumAlpha = FXColors.DarkGrey80.withAlphaComponent(0.8)
+    var layerSurfaceMediumAlt = FXColors.DarkGrey40
+    var layerSurfaceMediumAltGlass = FXColors.DarkGrey40
+    var layerGradientSummary = Gradient(colors: [
+        FXColors.Red70,
+        FXColors.Orange50
+    ])
+    var layerToolbarGlass: UIColor = FXColors.DarkGrey60
 
     // MARK: - Actions
     var actionPrimary: UIColor = FXColors.Blue30
     var actionPrimaryHover: UIColor = FXColors.Blue20
     var actionPrimaryDisabled: UIColor = FXColors.Blue30.withAlphaComponent(0.5)
     var actionSecondary: UIColor = FXColors.DarkGrey05
+    var actionSecondaryDisabled: UIColor = FXColors.DarkGrey05.withAlphaComponent(0.5)
     var actionSecondaryHover: UIColor = FXColors.LightGrey90
     var formSurfaceOff: UIColor = FXColors.DarkGrey05
     var formKnob: UIColor = FXColors.White
@@ -83,6 +83,7 @@ private struct DarkColourPalette: ThemeColourPalette {
     var actionInformation: UIColor = FXColors.Blue60
     var actionTabActive: UIColor = FXColors.DarkGrey30
     var actionTabInactive: UIColor = FXColors.DarkGrey80
+    var actionCloseButton: UIColor = FXColors.DarkGrey30
 
     // MARK: - Text
     var textPrimary: UIColor = FXColors.LightGrey05
@@ -112,6 +113,7 @@ private struct DarkColourPalette: ThemeColourPalette {
 
     // MARK: - Border
     var borderPrimary: UIColor = FXColors.DarkGrey05
+    var borderSecondary: UIColor = FXColors.DarkGrey10
     var borderAccent: UIColor = FXColors.Blue30
     var borderAccentNonOpaque: UIColor = FXColors.Blue20.withAlphaComponent(0.2)
     var borderAccentPrivate: UIColor = FXColors.Purple60
@@ -122,4 +124,40 @@ private struct DarkColourPalette: ThemeColourPalette {
     var shadowSubtle: UIColor = FXColors.DarkGrey80.withAlphaComponent(0.10)
     var shadowDefault: UIColor = FXColors.DarkGrey80.withAlphaComponent(0.12)
     var shadowStrong: UIColor = FXColors.DarkGrey80.withAlphaComponent(0.16)
+
+    // MARK: - Gradient
+    var gradientOnboardingStop1: UIColor = FXColors.Yellow50
+    var gradientOnboardingStop2: UIColor = FXColors.Blue50
+    var gradientOnboardingStop3: UIColor = FXColors.Red60
+    var gradientOnboardingStop4: UIColor = FXColors.Orange50
+    var gradientAIStrongStop1: UIColor = FXColors.Violet50
+    var gradientAIStrongStop2: UIColor = FXColors.Pink40
+    var gradientAIStrongStop3: UIColor = FXColors.Yellow50
+
+    var shadowBorder: UIColor = FXColors.DarkGrey50.withAlphaComponent(0.50)
+
+    var faviconLetterColorSet: FaviconLetterColorSet = StandardFaviconColorSet()
+
+    // MARK: - Nova tokens
+    var layerAccentSubtle: UIColor { NovaMissingToken.color("layerAccentSubtle") }
+    var layerInverse: UIColor { NovaMissingToken.color("layerInverse") }
+    var layerGlassTintNova: UIColor { NovaMissingToken.color("layerGlassTintNova") }
+    var layerGlassSelectedFill: UIColor { NovaMissingToken.color("layerGlassSelectedFill") }
+    var textToast: UIColor { NovaMissingToken.color("textToast") }
+    var iconInverted: UIColor { NovaMissingToken.color("iconInverted") }
+    var iconOnColorDisabled: UIColor { NovaMissingToken.color("iconOnColorDisabled") }
+    var iconPrivate: UIColor { NovaMissingToken.color("iconPrivate") }
+    var borderStrong: UIColor { NovaMissingToken.color("borderStrong") }
+    var borderAccentToast: UIColor { NovaMissingToken.color("borderAccentToast") }
+    var borderRadioButtonDefault: UIColor { NovaMissingToken.color("borderRadioButtonDefault") }
+    var gradient: Gradient { NovaMissingToken.gradient("gradient") }
+    var gradientAccent: Gradient { NovaMissingToken.gradient("gradientAccent") }
+    var gradientAccentSubtle: Gradient { NovaMissingToken.gradient("gradientAccentSubtle") }
+    var gradientAIStrong: Gradient { NovaMissingToken.gradient("gradientAIStrong") }
+    var gradientBorder: Gradient { NovaMissingToken.gradient("gradientBorder") }
+    var gradientPrivacy: Gradient { NovaMissingToken.gradient("gradientPrivacy") }
+    var gradientPrivacyMask: Gradient { NovaMissingToken.gradient("gradientPrivacyMask") }
+    var gradientWidgetSurface: Gradient { NovaMissingToken.gradient("gradientWidgetSurface") }
+    var gradientWidgetSurfaceStandard: Gradient { NovaMissingToken.gradient("gradientWidgetSurfaceStandard") }
+    var gradientWidgetSurfacePrivate: Gradient { NovaMissingToken.gradient("gradientWidgetSurfacePrivate") }
 }

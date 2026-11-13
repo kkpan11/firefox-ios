@@ -13,18 +13,18 @@ final class RemoteTabsMiddlewareTests: XCTestCase, StoreTestUtility {
     var mockStore: MockStoreForMiddleware<AppState>!
     var appState: AppState!
 
-    override func setUp() {
-        super.setUp()
-        mockProfile = MockProfile()
+    override func setUp() async throws {
+        try await super.setUp()
+        mockProfile = makeProfile()
         DependencyHelperMock().bootstrapDependencies()
         setupStore()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         mockProfile = nil
         DependencyHelperMock().reset()
         resetStore()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func test_homepageMiddlewareAction_returnsMostRecentTab() throws {
@@ -40,7 +40,7 @@ final class RemoteTabsMiddlewareTests: XCTestCase, StoreTestUtility {
             expectation.fulfill()
         }
 
-        subject.remoteTabsPanelProvider(appState, action)
+        subject.remoteTabsPanelProvider.legacyMiddleware(appState, action)
 
         wait(for: [expectation])
 
@@ -67,7 +67,7 @@ final class RemoteTabsMiddlewareTests: XCTestCase, StoreTestUtility {
             expectation.fulfill()
         }
 
-        subject.remoteTabsPanelProvider(appState, action)
+        subject.remoteTabsPanelProvider.legacyMiddleware(appState, action)
 
         wait(for: [expectation])
 
@@ -94,7 +94,7 @@ final class RemoteTabsMiddlewareTests: XCTestCase, StoreTestUtility {
             expectation.fulfill()
         }
 
-        subject.remoteTabsPanelProvider(appState, action)
+        subject.remoteTabsPanelProvider.legacyMiddleware(appState, action)
 
         wait(for: [expectation])
 
@@ -121,7 +121,7 @@ final class RemoteTabsMiddlewareTests: XCTestCase, StoreTestUtility {
             expectation.fulfill()
         }
 
-        subject.remoteTabsPanelProvider(appState, action)
+        subject.remoteTabsPanelProvider.legacyMiddleware(appState, action)
 
         wait(for: [expectation])
 
@@ -148,7 +148,7 @@ final class RemoteTabsMiddlewareTests: XCTestCase, StoreTestUtility {
             expectation.fulfill()
         }
 
-        subject.remoteTabsPanelProvider(appState, action)
+        subject.remoteTabsPanelProvider.legacyMiddleware(appState, action)
 
         wait(for: [expectation])
 
@@ -194,8 +194,7 @@ final class RemoteTabsMiddlewareTests: XCTestCase, StoreTestUtility {
                                 title: "Mozilla \(index)",
                                 history: [],
                                 lastUsed: UInt64(index),
-                                icon: nil,
-                                inactive: false)
+                                icon: nil)
             remoteTabs.append(tab)
         }
         return remoteTabs
@@ -205,14 +204,5 @@ final class RemoteTabsMiddlewareTests: XCTestCase, StoreTestUtility {
     func setupAppState() -> Client.AppState {
         appState = AppState()
         return appState
-    }
-
-    func setupStore() {
-        mockStore = MockStoreForMiddleware(state: setupAppState())
-        StoreTestUtilityHelper.setupStore(with: mockStore)
-    }
-
-    func resetStore() {
-        StoreTestUtilityHelper.resetStore()
     }
 }

@@ -15,31 +15,28 @@ final class WKEngineSessionTests: XCTestCase {
     private var userScriptManager: MockWKUserScriptManager!
     private var engineSessionDelegate: MockEngineSessionDelegate!
     private var metadataFetcher: MockMetadataFetcherHelper!
-    private var fullscreenDelegate: MockFullscreenDelegate!
     private var scriptResponder: MockEngineSessionScriptResponder!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         configurationProvider = MockWKEngineConfigurationProvider()
         webViewProvider = MockWKWebViewProvider()
         contentScriptManager = MockWKContentScriptManager()
         userScriptManager = MockWKUserScriptManager()
         engineSessionDelegate = MockEngineSessionDelegate()
         metadataFetcher = MockMetadataFetcherHelper()
-        fullscreenDelegate = MockFullscreenDelegate()
         scriptResponder = MockEngineSessionScriptResponder()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         configurationProvider = nil
         webViewProvider = nil
         contentScriptManager = nil
         userScriptManager = nil
         engineSessionDelegate = nil
         metadataFetcher = nil
-        fullscreenDelegate = nil
         scriptResponder = nil
+        try await super.tearDown()
     }
 
     // MARK: Load URL
@@ -135,6 +132,7 @@ final class WKEngineSessionTests: XCTestCase {
         XCTAssertNil(webViewProvider.webView.findInteraction)
     }
 
+    @available(iOS 16, *)
     func testShowFindInPageGivenFindInteractionThenPresentNavigatorCalledWithEmptySearchText() {
         let findInteraction = MockUIFindInteraction()
         let subject = createSubject()
@@ -147,6 +145,7 @@ final class WKEngineSessionTests: XCTestCase {
         XCTAssertEqual(findInteraction.searchText, "")
     }
 
+    @available(iOS 16, *)
     func testShowFindInPageGivenSearchTextThenPresentNavigatorCalled() {
         let searchText = "SearchTerm"
         let findInteraction = MockUIFindInteraction()
@@ -425,61 +424,58 @@ final class WKEngineSessionTests: XCTestCase {
         XCTAssertEqual(engineSessionDelegate.onHasOnlySecureContentCalled, 1)
     }
 
-    func testFullscreeChangeGivenFullscreenStateThenCallsDelegate() {
-        let expectedFullscreenState = true
-        let subject = createSubject()
-        subject?.fullscreenDelegate = fullscreenDelegate
-        subject?.webViewPropertyChanged(.isFullScreen(expectedFullscreenState))
-
-        XCTAssertEqual(fullscreenDelegate.onFullscreeChangeCalled, 1)
-        XCTAssertTrue(fullscreenDelegate.savedFullscreenState)
-    }
-
-    func testFullscreeChangeGivenNotFullscreenStateThenCallsDelegate() {
-        let expectedFullscreenState = false
-        let subject = createSubject()
-        subject?.fullscreenDelegate = fullscreenDelegate
-        subject?.webViewPropertyChanged(.isFullScreen(expectedFullscreenState))
-
-        XCTAssertEqual(fullscreenDelegate.onFullscreeChangeCalled, 1)
-        XCTAssertFalse(fullscreenDelegate.savedFullscreenState)
-    }
-
     // MARK: Page Zoom
-
-    func testIncreaseZoom() {
+    @MainActor
+    func testIncreaseZoom() async {
         let subject = createSubject()
         // Check default zoom of 1.0
         XCTAssertEqual(webViewProvider.webView.pageZoom, 1.0)
         // Increase zoom
         subject?.updatePageZoom(.increase)
+        // Yield the test so that updatePageZoom can cross isolation boundaries to update pageZoom
+        await Task.yield()
         // Assert zoom increased by expected step
         XCTAssertEqual(webViewProvider.webView.pageZoom, 1.0 + ZoomChangeValue.defaultStepIncrease)
     }
 
-    func testDecreaseZoom() {
+    @MainActor
+    func testDecreaseZoom() async {
         let subject = createSubject()
         // Check default zoom of 1.0
         XCTAssertEqual(webViewProvider.webView.pageZoom, 1.0)
         // Increase zoom
         subject?.updatePageZoom(.decrease)
+        // Yield the test so that updatePageZoom can cross isolation boundaries to update pageZoom
+        // await Task.yield()
         // Assert zoom decreased by expected step
         XCTAssertEqual(webViewProvider.webView.pageZoom, 1.0 - ZoomChangeValue.defaultStepIncrease)
     }
 
-    func testSetZoomLevelAndReset() {
+    @MainActor
+    func testSetZoomLevelAndReset() async {
         let subject = createSubject()
         // Check default zoom of 1.0
         XCTAssertEqual(webViewProvider.webView.pageZoom, 1.0)
         // Set explicit zoom level
         subject?.updatePageZoom(.set(0.8))
+        // Yield the test so that updatePageZoom can cross isolation boundaries to update pageZoom
+        await Task.yield()
         // Assert zoom at expected level
         XCTAssertEqual(webViewProvider.webView.pageZoom, 0.8)
 
         // Reset zoom level
         subject?.updatePageZoom(.reset)
+        // Yield the test so that updatePageZoom can cross isolation boundaries to update pageZoom
+        await Task.yield()
         // Check default zoom of 1.0
         XCTAssertEqual(webViewProvider.webView.pageZoom, 1.0)
+    }
+
+    // MARK: Print Formatter
+    func test_viewPrintFormatter_returnsProperValue() {
+        let subject = createSubject()
+        _ = subject?.viewPrintFormatter()
+        XCTAssertEqual(webViewProvider.webView.viewPrintFormatterCalled, 1)
     }
 
     // MARK: Metadata parser
@@ -535,10 +531,12 @@ final class WKEngineSessionTests: XCTestCase {
         _ = createSubject()
 
         XCTAssertEqual(contentScriptManager.addContentScriptCalled, 3)
+        XCTAssertEqual(contentScriptManager.addContentScriptToPageCalled, 1)
         XCTAssertEqual(contentScriptManager.savedContentScriptNames.count, 3)
         XCTAssertEqual(contentScriptManager.savedContentScriptNames[0], AdsTelemetryContentScript.name())
         XCTAssertEqual(contentScriptManager.savedContentScriptNames[1], FocusContentScript.name())
         XCTAssertEqual(contentScriptManager.savedContentScriptNames[2], ReaderModeContentScript.name())
+        XCTAssertEqual(contentScriptManager.savedContentScriptPageNames[0], PrintContentScript.name())
     }
 
     func testContentScriptWhenCloseCalledThenUninstallIsCalled() {
@@ -574,7 +572,7 @@ final class WKEngineSessionTests: XCTestCase {
     }
 
     func testUIHandlerIsActiveSetTrue() {
-        let uiHandler = DefaultUIHandler(sessionDependencies: DefaultTestDependencies().sessionDependencies)
+        let uiHandler = DefaultUIHandler.factory(sessionDependencies: DefaultTestDependencies().sessionDependencies)
 
         let subject = createSubject(uiHandler: uiHandler)
 
@@ -584,7 +582,7 @@ final class WKEngineSessionTests: XCTestCase {
     }
 
     func testUIHandlerIsActiveSetFalse() {
-        let uiHandler = DefaultUIHandler(sessionDependencies: DefaultTestDependencies().sessionDependencies)
+        let uiHandler = DefaultUIHandler.factory(sessionDependencies: DefaultTestDependencies().sessionDependencies)
 
         let subject = createSubject(uiHandler: uiHandler)
 
@@ -595,7 +593,7 @@ final class WKEngineSessionTests: XCTestCase {
     }
 
     func testSettingEngineSessionDelegateSetsUIHandlerDelegate() {
-        let uiHandler = DefaultUIHandler(sessionDependencies: DefaultTestDependencies().sessionDependencies)
+        let uiHandler = DefaultUIHandler.factory(sessionDependencies: DefaultTestDependencies().sessionDependencies)
         let subject = createSubject(uiHandler: uiHandler)
 
         subject?.delegate = engineSessionDelegate
@@ -604,12 +602,12 @@ final class WKEngineSessionTests: XCTestCase {
     }
 
     // MARK: Helper
-
-    func createSubject(file: StaticString = #file,
+    @MainActor
+    func createSubject(file: StaticString = #filePath,
                        line: UInt = #line,
                        uiHandler: WKUIHandler? = nil) -> WKEngineSession? {
         let sessionDependencies = DefaultTestDependencies().sessionDependencies
-        let defaultUIHandler = uiHandler ?? DefaultUIHandler(sessionDependencies: sessionDependencies)
+        let defaultUIHandler = uiHandler ?? DefaultUIHandler.factory(sessionDependencies: sessionDependencies)
         guard let subject = WKEngineSession(userScriptManager: userScriptManager,
                                             dependencies: DefaultTestDependencies().sessionDependencies,
                                             configurationProvider: configurationProvider,

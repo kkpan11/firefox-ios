@@ -36,7 +36,7 @@ struct TPPageStats {
     }
 }
 
-class TPStatsBlocklistChecker {
+final class TPStatsBlocklistChecker {
     static let shared = TPStatsBlocklistChecker()
 
     private var blockLists: TPStatsBlocklists?
@@ -72,7 +72,7 @@ class TPStatsBlocklistChecker {
 
 // The 'unless-domain' and 'if-domain' rules use wildcard expressions, convert this to regex.
 func wildcardContentBlockerDomainToRegex(domain: String) -> NSRegularExpression? {
-    struct Memo { static var domains =  [String: NSRegularExpression]() }
+    enum Memo { static var domains =  [String: NSRegularExpression]() }
     if let memoized = Memo.domains[domain] {
         return memoized
     }
@@ -93,7 +93,7 @@ func wildcardContentBlockerDomainToRegex(domain: String) -> NSRegularExpression?
     }
 }
 
-private class TPStatsBlocklists {
+private final class TPStatsBlocklists {
     class Rule {
         let regex: NSRegularExpression
         let loadType: LoadType

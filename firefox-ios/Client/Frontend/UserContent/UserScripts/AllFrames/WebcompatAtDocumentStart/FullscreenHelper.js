@@ -42,3 +42,42 @@ if (!isFullScreenEnabled && isFullscreenVideosSupported && !/mobile/i.test(navig
         }
     });
 }
+
+/// creating a `<video>` without `playsinline/webkit-playsinline`
+/// that also has `autoplay` will cause it to play fullscreen by default.
+/// In order to prevent this we monkey-patch `document.createElement` to add
+/// `playsinline` to every newly created `<video>` element.
+/// This is a good default because it makes videos less intrusive.
+/// Calling `requestFullscreen()` on the video element still works as expected and
+/// the user can still enter full screen by interacting with the video controls.
+/// FXIOS-12482 has more details on this issue.
+
+const forceInline = (video) => {
+  const inlineAttributes = ["playsinline", "webkit-playsinline"];
+  inlineAttributes.forEach((attr) => {
+    if (!video.hasAttribute(attr)) {
+      video.setAttribute(attr, "");
+    }
+  });
+};
+
+const originalCreateElement = document.createElement;
+document.createElement = function (tag) {
+  const el = originalCreateElement.call(this, tag);
+  if (el.localName === "video") {
+    forceInline(el);
+  }
+  return el;
+};
+
+/// This is also added to all autoplay videos on the page.
+/// FXIOS-15411 explains why thanks to iOS changes over time.
+
+const playInline = () => {
+  document.querySelectorAll("video[autoplay]").forEach((el) => {
+    forceInline(el);
+    el.controls = true;
+  });
+};
+
+window.addEventListener('DOMContentLoaded', playInline);

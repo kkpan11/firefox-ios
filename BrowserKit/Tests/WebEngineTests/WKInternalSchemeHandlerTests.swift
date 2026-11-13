@@ -6,13 +6,14 @@ import XCTest
 import WebKit
 @testable import WebEngine
 
+@MainActor
 final class WKInternalSchemeHandlerTests: XCTestCase {
     func testSchemeStartIsCalledNonPrivilegedURL() throws {
         let subject = createSubject()
         let webview = WKWebView(frame: .zero)
         let url = URL(string: "www.example.com")!
         let request = URLRequest(url: url)
-        let task = WKURLSchemeTaskMock(mockRequest: request)
+        let task = MockWKURLSchemeTask(mockRequest: request)
 
         subject.webView(webview, start: task)
 
@@ -28,7 +29,7 @@ final class WKInternalSchemeHandlerTests: XCTestCase {
         let privilegedURL = WKInternalURL(url)!
         privilegedURL.authorize()
         let request = URLRequest(url: privilegedURL.url)
-        let task = WKURLSchemeTaskMock(mockRequest: request)
+        let task = MockWKURLSchemeTask(mockRequest: request)
 
         subject.webView(webview, start: task)
 
@@ -46,7 +47,7 @@ final class WKInternalSchemeHandlerTests: XCTestCase {
         let privilegedURL = WKInternalURL(url)!
         privilegedURL.authorize()
         let request = URLRequest(url: privilegedURL.url)
-        let task = WKURLSchemeTaskMock(mockRequest: request)
+        let task = MockWKURLSchemeTask(mockRequest: request)
 
         subject.webView(webview, start: task)
 
@@ -55,6 +56,7 @@ final class WKInternalSchemeHandlerTests: XCTestCase {
         XCTAssertEqual(error, WKInternalPageSchemeHandlerError.noResponder)
     }
 
+    @MainActor
     func testSchemeStartIsCalledWithPrivilegedURLWithCorrectResponder() throws {
         setupFakeInternalHandlers()
         let subject = createSubject()
@@ -63,7 +65,7 @@ final class WKInternalSchemeHandlerTests: XCTestCase {
         let privilegedURL = WKInternalURL(url)!
         privilegedURL.authorize()
         let request = URLRequest(url: privilegedURL.url)
-        let task = WKURLSchemeTaskMock(mockRequest: request)
+        let task = MockWKURLSchemeTask(mockRequest: request)
 
         subject.webView(webview, start: task)
 
@@ -80,6 +82,7 @@ final class WKInternalSchemeHandlerTests: XCTestCase {
         return subject
     }
 
+    @MainActor
     func setupFakeInternalHandlers() {
         let responders: [(String, WKInternalSchemeResponse)] = [(MockSchemeHandler.path, MockSchemeHandler())]
         responders.forEach { (path, responder) in

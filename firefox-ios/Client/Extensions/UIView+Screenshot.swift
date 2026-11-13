@@ -5,7 +5,11 @@
 import UIKit
 
 protocol Screenshotable {
+    @MainActor
     func screenshot(quality: CGFloat) -> UIImage?
+
+    @MainActor
+    func screenshot(bounds: CGRect) -> UIImage?
 }
 
 extension UIView: Screenshotable {
@@ -14,18 +18,47 @@ extension UIView: Screenshotable {
     ///   - quality: CGFloat that represents quality of the screenshot.
     ///   The expected value is 0 to 1 and is defaulted to 1
     /// - Returns: The image that represents the screenshot
-    func screenshot(quality: CGFloat = 1) -> UIImage? {
+    func screenshot(
+        quality: CGFloat = CGFloat(UIConstants.ScreenshotQuality)
+    ) -> UIImage? {
         return screenshot(frame.size, offset: nil, quality: quality)
+    }
+
+    /// Takes a screenshot of the view by drawing it's content in the provided bounds.
+    /// - Parameters:
+    ///    - bounds: The area of the view to snapshot
+    /// - Returns: The image representing the snapshot of the view in the provided bounds.
+    func screenshot(bounds: CGRect) -> UIImage? {
+        let renderer = UIGraphicsImageRenderer(size: bounds.size)
+
+        return renderer.image { context in
+            drawHierarchy(
+                in: bounds,
+                afterScreenUpdates: true
+            )
+        }
     }
 
     /// Takes a screenshot of the view with the given size.
     private func screenshot(_ size: CGSize, offset: CGPoint? = nil, quality: CGFloat = 1) -> UIImage? {
         guard 0...1 ~= quality else { return nil }
 
+        let targetScale: CGFloat = 1.0
         let offset = offset ?? .zero
+        // Views outside a window may report an unspecified (0) display scale, which the context would treat
+        // as the screen's native scale instead of the target scale.
+        let displayScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : targetScale
 
-        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale * quality)
-        drawHierarchy(in: CGRect(origin: offset, size: frame.size), afterScreenUpdates: false)
+        UIGraphicsBeginImageContextWithOptions(
+            size,
+            false,
+            min(displayScale, targetScale) * quality
+        )
+        drawHierarchy(
+            in: CGRect(origin: offset, size: frame.size),
+            afterScreenUpdates: false
+        )
+
         let image = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
 

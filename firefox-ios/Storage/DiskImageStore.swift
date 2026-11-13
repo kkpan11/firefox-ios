@@ -5,13 +5,13 @@
 import UIKit
 import Common
 
-enum DiskImageStoreErrorCase: Error {
+public enum DiskImageStoreErrorCase: Error, Equatable {
     case notFound(description: String)
     case invalidImageData(description: String)
     case cannotWrite(description: String)
 }
 
-public protocol DiskImageStore {
+public protocol DiskImageStore: Sendable {
     /// Gets an image for the given key if it is in the store.
     func getImageForKey(_ key: String) async throws -> UIImage
 
@@ -44,9 +44,10 @@ public actor DefaultDiskImageStore: DiskImageStore {
         do {
             self.filesDir = try files.getAndEnsureDirectory(namespace)
         } catch {
-            logger.log("Could not create directory at root path: \(error)",
+            logger.log("Could not create directory at root path",
                        level: .fatal,
-                       category: .storage)
+                       category: .storage,
+                       extra: ["error": "\(error)"])
             fatalError("Could not create directory at root path: \(error)")
         }
 
@@ -73,7 +74,7 @@ public actor DefaultDiskImageStore: DiskImageStore {
 
         let imagePath = URL(fileURLWithPath: filesDir).appendingPathComponent(key)
         let data = try Data(contentsOf: imagePath)
-        if let image = UIImage(data: data) {
+        if let image = UIImage(data: data, scale: 1.0) {
             return image
         } else {
             throw DiskImageStoreErrorCase.invalidImageData(description: "Invalid image data")
@@ -82,11 +83,33 @@ public actor DefaultDiskImageStore: DiskImageStore {
 
     public func saveImageForKey(_ key: String, image: UIImage) async throws {
         let imageURL = URL(fileURLWithPath: filesDir).appendingPathComponent(key)
-        if let data = image.jpegData(compressionQuality: quality) {
-            try data.write(to: imageURL, options: .noFileProtection)
-            keys.insert(key)
-        } else {
+
+        guard let data = scaleImageFrom3xTo1x(image).jpegData(compressionQuality: quality) else {
             throw DiskImageStoreErrorCase.cannotWrite(description: "Could not write image to file")
+        }
+
+        try data.write(to: imageURL, options: .noFileProtection)
+        keys.insert(key)
+    }
+
+    private func scaleImageFrom3xTo1x(_ image: UIImage) -> UIImage {
+        let targetScale: CGFloat = 1.0
+
+        // FXIOS-15902 - Guard against invalid images that would crash UIGraphicsImageRenderer
+        guard image.scale > targetScale,
+              image.size.width > 0,
+              image.size.height > 0,
+              image.cgImage != nil else {
+            return image
+        }
+
+        let newSize = CGSize(
+            width: image.size.width * (targetScale / image.scale),
+            height: image.size.height * (targetScale / image.scale)
+        )
+
+        return UIGraphicsImageRenderer(size: newSize).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
         }
     }
 

@@ -7,12 +7,12 @@ import UIKit
 import Shared
 import SiteImageView
 
-class CustomSearchError: MaybeErrorType {
+struct CustomSearchError: MaybeErrorType {
     enum Reason {
         case DuplicateEngine, FormInput
     }
 
-    var reason: Reason
+    let reason: Reason
 
     internal var description: String {
         return "Search Engine Not Added"
@@ -23,24 +23,34 @@ class CustomSearchError: MaybeErrorType {
     }
 }
 
-class CustomSearchViewController: SettingsTableViewController {
+final class CustomSearchViewController: SettingsTableViewController {
     private let faviconFetcher: SiteImageHandler
+    private let logger: Logger
     private var urlString: String?
     private var engineTitle = ""
-    var successCallback: (() -> Void)?
     private lazy var spinnerView: UIActivityIndicatorView = .build { [self] spinner in
         spinner.style = .medium
-        spinner.color = themeManager.getCurrentTheme(for: windowUUID).colors.iconSpinner
+        spinner.color = currentTheme().colors.iconSpinner
         spinner.hidesWhenStopped = true
     }
 
     let searchEnginesManager: SearchEnginesManager
 
+    /// Keep the private theme override just for Settings, since this is also presented from the
+    /// address bar's "manage search engines" action.
+    private let _shouldUsePrivateOverride: Bool
+    override var shouldUsePrivateOverride: Bool { return _shouldUsePrivateOverride }
+    override var shouldBeInPrivateTheme: Bool { return false }
+
     init(windowUUID: WindowUUID,
          faviconFetcher: SiteImageHandler = DefaultSiteImageHandler.factory(),
-         searchEnginesManager: SearchEnginesManager = AppContainer.shared.resolve()) {
+         searchEnginesManager: SearchEnginesManager = AppContainer.shared.resolve(),
+         logger: Logger = DefaultLogger.shared,
+         shouldUsePrivateOverride: Bool = true) {
         self.faviconFetcher = faviconFetcher
         self.searchEnginesManager = searchEnginesManager
+        self.logger = logger
+        self._shouldUsePrivateOverride = shouldUsePrivateOverride
         super.init(windowUUID: windowUUID)
     }
 
@@ -73,11 +83,7 @@ class CustomSearchViewController: SettingsTableViewController {
                 let engine = try await createEngine(query: trimmedQuery, name: trimmedTitle)
                 spinnerView.stopAnimating()
                 searchEnginesManager.addSearchEngine(engine)
-
-                CATransaction.begin() // Use transaction to call callback after animation has been completed
-                CATransaction.setCompletionBlock(successCallback)
                 _ = navigationController?.popViewController(animated: true)
-                CATransaction.commit()
             } catch {
                 spinnerView.stopAnimating()
                 let alert: UIAlertController
@@ -93,7 +99,7 @@ class CustomSearchViewController: SettingsTableViewController {
     }
 
     func createEngine(query: String, name: String) async throws -> OpenSearchEngine {
-        guard let template = getSearchTemplate(withString: query),
+        guard let template = getSearchTemplate(withString: addingSchemeIfNeeded(to: query)),
               let encodedTemplate = template.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed),
               let url = URL(string: encodedTemplate),
               url.isWebPage()
@@ -113,12 +119,15 @@ class CustomSearchViewController: SettingsTableViewController {
 
         // Previously our custom engines did not have an engineID, however now we generate a unique
         // identifier since our search engine prefs store ID instead of the engine name
-        let engine = OpenSearchEngine(engineID: OpenSearchEngine.generateCustomEngineID(),
+        let customID = OpenSearchEngine.generateCustomEngineID()
+        logger.log("[SEC] Generating custom ID for '\(name)': \(customID)", level: .info, category: .remoteSettings)
+        let engine = OpenSearchEngine(engineID: customID,
                                       shortName: name,
                                       telemetrySuffix: nil,
                                       image: image,
                                       searchTemplate: template,
                                       suggestTemplate: nil,
+                                      trendingTemplate: nil,
                                       isCustomEngine: true)
 
         // Make sure a valid scheme is used
@@ -133,6 +142,12 @@ class CustomSearchViewController: SettingsTableViewController {
         return searchEnginesManager.orderedEngines.contains { (engine) -> Bool in
             return engine.shortName == name || engine.searchTemplate == template
         }
+    }
+
+    func addingSchemeIfNeeded(to query: String) -> String {
+        let lowercasedQuery = query.lowercased()
+        let hasScheme = lowercasedQuery.hasPrefix("http://") || lowercasedQuery.hasPrefix("https://")
+        return hasScheme ? query : "https://" + query
     }
 
     func getSearchTemplate(withString query: String) -> String? {
@@ -162,10 +177,10 @@ class CustomSearchViewController: SettingsTableViewController {
                 if let text = text { return !text.isEmpty }
 
                 return false
-            }, settingDidChange: {fieldText in
+            }, settingDidChange: { [weak self] fieldText in
                 guard let title = fieldText else { return }
-                self.engineTitle = title
-                self.updateSaveButton()
+                self?.engineTitle = title
+                self?.updateSaveButton()
             })
         titleField.textField.text = engineTitle
         titleField.textField.accessibilityIdentifier = "customEngineTitle"
@@ -177,9 +192,9 @@ class CustomSearchViewController: SettingsTableViewController {
             settingIsValid: { text in
                 // Can check url text text validity here.
                 return true
-            }, settingDidChange: {fieldText in
-                self.urlString = fieldText
-                self.updateSaveButton()
+            }, settingDidChange: { [weak self] fieldText in
+                self?.urlString = fieldText
+                self?.updateSaveButton()
             })
 
         urlField.textField.autocapitalizationType = .none
@@ -203,9 +218,12 @@ class CustomSearchViewController: SettingsTableViewController {
             target: self,
             action: #selector(self.addCustomSearchEngine)
         )
+        if #available(iOS 26.0, *) {
+            let theme = currentTheme()
+            self.navigationItem.rightBarButtonItem?.tintColor = theme.colors.textAccent
+        }
         self.navigationItem.rightBarButtonItem?.accessibilityIdentifier = "customEngineSaveButton"
-
-        self.navigationItem.rightBarButtonItem?.isEnabled = false
+        updateSaveButton()
         return settings
     }
 
@@ -230,7 +248,7 @@ class CustomSearchEngineTextView: Setting, UITextViewDelegate {
 
     fileprivate let defaultValue: String?
     fileprivate let placeholder: String
-    fileprivate let settingDidChange: ((String?) -> Void)?
+    fileprivate let settingDidChange: (@MainActor (String?) -> Void)?
     fileprivate let settingIsValid: ((String?) -> Bool)?
 
     let textField: UITextView = .build()
@@ -243,7 +261,7 @@ class CustomSearchEngineTextView: Setting, UITextViewDelegate {
         height: CGFloat = 44,
         keyboardType: UIKeyboardType = .default,
         settingIsValid isValueValid: ((String?) -> Bool)? = nil,
-        settingDidChange: ((String?) -> Void)? = nil
+        settingDidChange: (@MainActor (String?) -> Void)? = nil
     ) {
         self.defaultValue = defaultValue
         self.TextFieldHeight = height

@@ -5,20 +5,24 @@
 import Common
 import Redux
 
+@MainActor
 final class SearchEngineSelectionMiddleware {
-    private let profile: Profile
     private let logger: Logger
     private let searchEnginesManager: SearchEnginesManagerProvider
 
-    init(profile: Profile = AppContainer.shared.resolve(),
-         searchEnginesManager: SearchEnginesManagerProvider = AppContainer.shared.resolve(SearchEnginesManager.self),
+    init(searchEnginesManager: SearchEnginesManagerProvider = AppContainer.shared.resolve(SearchEnginesManager.self),
          logger: Logger = DefaultLogger.shared) {
-        self.profile = profile
         self.logger = logger
         self.searchEnginesManager = searchEnginesManager
     }
 
-    lazy var searchEngineSelectionProvider: Middleware<AppState> = { [self] state, action in
+    lazy var searchEngineSelectionProvider: Middleware<AppState> = (legacyProvider, modernProvider)
+
+    lazy var modernProvider: MiddlewareClosure<AppState> = { [self] state, action, windowUUID in
+        // Does not test any modern actions
+    }
+
+    lazy var legacyProvider: LegacyMiddlewareClosure<AppState> = { [self] state, action in
         guard let action = action as? SearchEngineSelectionAction else { return }
 
         switch action.actionType {

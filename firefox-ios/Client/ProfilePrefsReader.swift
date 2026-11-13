@@ -44,4 +44,24 @@ struct ProfilePrefsReader {
         let key = ProfilePrefsReader.prefix + PrefsKeys.Notifications.TipsAndFeaturesNotifications
         return userDefaults.bool(forKey: key)
     }
+
+    /// Returns `true` if the user has accepted the Terms of Use.
+    func hasAcceptedTermsOfUse() -> Bool {
+        let touKey = ProfilePrefsReader.prefix + PrefsKeys.TermsOfUseAccepted
+        return userDefaults.bool(forKey: touKey)
+    }
+
+    /// Returns `true` if the user has turned off AI Features
+    func hasDisabledAIFeatures() -> Bool {
+        let aiDisabledKey = ProfilePrefsReader.prefix + PrefsKeys.Settings.aiKillSwitchFeature
+        return userDefaults.bool(forKey: aiDisabledKey)
+    }
+
+    /// Delegates calculation to ToUExperiencePointsCalculator
+    /// Parameter region: The user's region code
+    /// Returns: The calculated  points (0, 1, or 2) based on user settings
+    func getTouExperiencePoints(region: String?) -> Int32 {
+        let calculator = ToUExperiencePointsCalculator(userDefaults: userDefaults, region: region)
+        return calculator.calculatePoints()
+    }
 }

@@ -30,7 +30,7 @@ protocol WindowManager {
     func newBrowserWindowConfigured(_ windowInfo: AppWindowInfo, uuid: WindowUUID)
 
     /// Convenience. Returns the TabManager for a specific window.
-    func tabManager(for windowUUID: WindowUUID) -> TabManager
+    func tabManager(for windowUUID: WindowUUID) -> TabManager?
 
     /// Convenience. Returns all TabManagers for all open windows.
     func allWindowTabManagers() -> [TabManager]
@@ -44,6 +44,7 @@ protocol WindowManager {
 
     /// Signals the WindowManager that a window was closed.
     /// - Parameter uuid: the ID of the window.
+    @MainActor
     func windowWillClose(uuid: WindowUUID)
 
     /// Supplies the UUID for the next window the iOS app should open. This
@@ -52,24 +53,28 @@ protocol WindowManager {
     /// is then "reserved" in order to ensure that during app launch if multiple
     /// windows are being restored concurrently, we never supply the same UUID
     /// to more than one window.
+    /// - Parameter supportsMultipleWindows: whether the environment allows multiple windows (like iPad or iPhone Duo).
     /// - Returns: a UUID for the next window to be opened.
-    func reserveNextAvailableWindowUUID(isIpad: Bool) -> ReservedWindowUUID
+    func reserveNextAvailableWindowUUID(supportsMultipleWindows: Bool) -> ReservedWindowUUID
 
     /// Signals the WindowManager that a window event has occurred. Window events
     /// are communicated to any interested Coordinators for _all_ windows, but
     /// any one event is always associated with one window in specific.
     /// - Parameter event: the event that occurred and any associated metadata.
     /// - Parameter windowUUID: the UUID of the window triggering the event.
+    @MainActor
     func postWindowEvent(event: WindowEvent, windowUUID: WindowUUID)
 
     /// Performs a MultiWindowAction.
     /// - Parameter action: the action to perform.
+    @MainActor
     func performMultiWindowAction(_ action: MultiWindowAction)
 
     /// Returns the current window (if available) which hosts a specific tab.
     /// - Parameter tab: the UUID of the tab.
     /// - Returns: the UUID of the window hosting it (if available and open).
-    func window(for tab: TabUUID) -> WindowUUID?
+    @MainActor
+    func windowUUID(forTab tab: TabUUID) -> WindowUUID?
 }
 
 /// Captures state and coordinator references specific to one particular app window.
@@ -127,14 +132,30 @@ final class WindowManagerImplementation: WindowManager {
         clearReservedUUID(uuid)
     }
 
-    func tabManager(for windowUUID: WindowUUID) -> TabManager {
-        guard let tabManager = window(for: windowUUID)?.tabManager else {
-            assertionFailure("Tab Manager unavailable for requested UUID: \(windowUUID). This is a client error.")
-            logger.log("No tab manager for window UUID.", level: .fatal, category: .window)
-            return windows.first!.value.tabManager!
+    func tabManager(for windowUUID: WindowUUID) -> TabManager? {
+        guard let window = window(for: windowUUID) else {
+            if !AppConstants.isRunningUnitTest {
+                assertionFailure("No window for UUID: \(windowUUID). This is a client error. It will return nil in production but querying a non-existent window is always indicative of a bug.")
+                logger.log("No window for UUID",
+                           level: .fatal,
+                           category: .window,
+                           extra: ["windowUUID": "\(windowUUID)"])
+            }
+            return nil
         }
 
-        return tabManager
+        guard let manager = window.tabManager else {
+            if !AppConstants.isRunningUnitTest {
+                assertionFailure("Valid window but no TabManager for UUID: \(windowUUID). This is a client error. It will return nil in production but is indicative of a bug.")
+                logger.log("Window alive, but no TabManager for UUID",
+                           level: .fatal,
+                           category: .window,
+                           extra: ["windowUUID": "\(windowUUID)"])
+            }
+            return nil
+        }
+
+        return manager
     }
 
     func allWindowTabManagers() -> [TabManager] {
@@ -160,7 +181,7 @@ final class WindowManagerImplementation: WindowManager {
         windowOrderingPriority = prefs
     }
 
-    func reserveNextAvailableWindowUUID(isIpad: Bool) -> ReservedWindowUUID {
+    func reserveNextAvailableWindowUUID(supportsMultipleWindows: Bool) -> ReservedWindowUUID {
         // Continue to provide the expected hardcoded UUID for UI tests.
         guard !AppConstants.isRunningUITests else {
             return ReservedWindowUUID(uuid: WindowUUID.DefaultUITestingUUID, isNew: false)
@@ -188,10 +209,10 @@ final class WindowManagerImplementation: WindowManager {
                    level: .debug,
                    category: .window)
 
-        // On iPhone devices, we expect there only to ever be a single window. If there
-        // are >1 windows we've encountered some type of unexpected state.
+        // On devices that don't support multiple windows (like iPhone), we expect there only to ever be
+        // a single window. If there are >1 windows we've encountered some type of unexpected state.
         let result: ReservedWindowUUID
-        if !isIpad {
+        if !supportsMultipleWindows {
             // We should always have either a single UUID on disk or no UUIDs because this is a brand new app install
             if onDiskUUIDs.isEmpty {
                 result = ReservedWindowUUID(uuid: WindowUUID(), isNew: true)
@@ -205,11 +226,14 @@ final class WindowManagerImplementation: WindowManager {
                     // clean up the UUID(s) that we know won't be used. We expect a certain number of
                     // these fatal errors to be logged for users previously impacted by the above, and
                     // then it should fall to zero.
-                    logger.log("Detected multiple window tab files on iPhone (UUID count: \(uuidCount))",
+                    logger.log("Detected multiple window tab files on iPhone",
                                level: .fatal,
-                               category: .window)
+                               category: .window,
+                               extra: ["uuidCount": "\(uuidCount)"])
                     let uuidsToDelete = Array(onDiskUUIDs.dropFirst())
-                    Task { await tabDataStore.removeWindowData(forUUIDs: uuidsToDelete) }
+                    Task { [tabDataStore] in
+                        await tabDataStore.removeWindowData(forUUIDs: uuidsToDelete)
+                    }
                 }
             }
         } else {
@@ -261,7 +285,7 @@ final class WindowManagerImplementation: WindowManager {
         }
     }
 
-    func window(for tab: TabUUID) -> WindowUUID? {
+    func windowUUID(forTab tab: TabUUID) -> WindowUUID? {
         return allWindowTabManagers().first(where: { $0.tabs.contains(where: { $0.tabUUID == tab }) })?.windowUUID
     }
 
@@ -272,6 +296,7 @@ final class WindowManagerImplementation: WindowManager {
         reservedUUIDs.remove(at: reservedUUIDIdx)
     }
 
+    @MainActor
     private func saveSimpleTabs() {
         let providers = allWindowTabManagers() as? [WindowSimpleTabsProvider] ?? []
         widgetSimpleTabsCoordinator.saveSimpleTabs(for: providers)
@@ -283,7 +308,7 @@ final class WindowManagerImplementation: WindowManager {
     /// - Parameter onDiskUUIDs: on-disk UUIDs representing windows that are not
     /// already open or reserved (this is important - these UUIDs should be pre-
     /// filtered).
-    /// - Returns: the UUID for the next window that will be opened on iPad.
+    /// - Returns: the UUID for the next window that will be opened on devices that support multiple windows.
     private func nextWindowUUIDToOpen(_ onDiskUUIDs: [WindowUUID]) -> ReservedWindowUUID {
         func nextUUIDUsingFallbackSorting() -> ReservedWindowUUID {
             let sortedUUIDs = onDiskUUIDs.sorted(by: { return $0.uuidString > $1.uuidString })
@@ -321,6 +346,7 @@ final class WindowManagerImplementation: WindowManager {
     private func window(for windowUUID: WindowUUID, createIfNeeded: Bool = false) -> AppWindowInfo? {
         let windowInfo = windows[windowUUID]
         if windowInfo == nil && createIfNeeded {
+            logger.log("Created new app window info for window UUID: \(windowUUID)", level: .info, category: .window)
             return AppWindowInfo(tabManager: nil)
         }
         return windowInfo

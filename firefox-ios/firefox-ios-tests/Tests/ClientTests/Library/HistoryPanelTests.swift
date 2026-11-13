@@ -7,20 +7,20 @@ import XCTest
 import Common
 @testable import Client
 
+@MainActor
 class HistoryPanelTests: XCTestCase {
     let windowUUID: WindowUUID = .XCTestDefaultUUID
     private var notificationCenter: MockNotificationCenter!
-    override func setUp() {
-        super.setUp()
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: MockProfile())
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
         notificationCenter = MockNotificationCenter()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
         notificationCenter = nil
+        try await super.tearDown()
     }
 
     func testHistoryButtons() {
@@ -100,7 +100,7 @@ class HistoryPanelTests: XCTestCase {
     }
 
     private func createSubject() -> HistoryPanel {
-        let profile = MockProfile()
+        let profile = makeProfile()
         let subject = HistoryPanel(profile: profile, windowUUID: windowUUID)
         trackForMemoryLeaks(subject)
         return subject

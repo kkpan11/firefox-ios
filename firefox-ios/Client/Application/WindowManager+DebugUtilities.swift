@@ -8,13 +8,14 @@ import TabDataStore
 
 extension WindowManagerImplementation {
     /// For developer and internal debugging of Multi-window on iPad
+    @MainActor
     func _debugDiagnostics() -> String {
         func short(_ uuid: UUID) -> String { return String(uuid.uuidString.prefix(4)) }
         guard let del = (UIApplication.shared.delegate as? AppDelegate) else { return "<err>"}
         var result = "----------- Window Debug Info ------------\n"
         result.append("Open windows (\(windows.count)) & normal tabs (via TabManager):\n")
         for (idx, (uuid, _)) in windows.enumerated() {
-            let tabMgr = tabManager(for: uuid)
+            guard let tabMgr = tabManager(for: uuid) else { continue }
             let window = windows[uuid]?.sceneCoordinator?.window
             let frame = window?.frame ?? .zero
             result.append("    \(idx + 1): \(short(uuid)) (\(tabMgr.normalTabs.count) tabs) (frame: \(frame.debugDescription))\n")
@@ -52,6 +53,7 @@ extension WindowManagerImplementation {
 }
 
 /// Convenience. For developer and internal debugging
+@MainActor
 func _wndMgrDebug() -> String {
     let windowMgr: WindowManager = AppContainer.shared.resolve()
     return (windowMgr as? WindowManagerImplementation)?._debugDiagnostics() ?? "<err>"

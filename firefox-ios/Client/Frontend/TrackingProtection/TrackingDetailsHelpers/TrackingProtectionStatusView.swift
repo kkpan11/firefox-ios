@@ -7,7 +7,7 @@ import UIKit
 import Common
 
 class TrackingProtectionStatusView: UIView {
-    private struct UX {
+    private enum UX {
         static let imageMargins: CGFloat = 10
         static let labelsVerticalMargins: CGFloat = 11
         static let connectionStatusLabelConstraintConstant = 16.0
@@ -41,7 +41,7 @@ class TrackingProtectionStatusView: UIView {
 
     // MARK: View Setup
     private func setupView() {
-        layer.cornerRadius = TPMenuUX.UX.viewCornerRadius
+        layer.cornerRadius = TPMenuUX.UX.newStyleCornerRadius
         layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         layer.masksToBounds = true
 
@@ -81,9 +81,19 @@ class TrackingProtectionStatusView: UIView {
         connectionStatusLabel.text = statusText
     }
 
+    func setupAccessibilityIdentifiers(
+        connectionImageA11yId: String,
+        connectionStatusLabelA11yId: String,
+        dividerViewA11yId: String
+    ) {
+        connectionImage.accessibilityIdentifier = connectionImageA11yId
+        connectionStatusLabel.accessibilityIdentifier = connectionStatusLabelA11yId
+        dividerView.accessibilityIdentifier = dividerViewA11yId
+    }
+
     // MARK: ThemeApplicable
     public func applyTheme(theme: Theme) {
-        backgroundColor = theme.colors.layer2
+        backgroundColor = theme.isNova ? theme.colors.layerSurfaceMedium : theme.colors.layer2
         connectionStatusLabel.textColor = theme.colors.textPrimary
         dividerView.backgroundColor = theme.colors.borderPrimary
         connectionImage.tintColor = theme.colors.iconSecondary

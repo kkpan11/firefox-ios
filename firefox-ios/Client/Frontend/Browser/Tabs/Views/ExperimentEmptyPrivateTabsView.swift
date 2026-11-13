@@ -8,21 +8,27 @@ import Foundation
 import Shared
 import ComponentLibrary
 
-protocol EmptyPrivateTabView: UIView, ThemeApplicable {
+@MainActor
+protocol EmptyPrivateTabView: UIView, ThemeApplicable, InsetUpdatable {
+    var needsSafeArea: Bool { get }
     var delegate: EmptyPrivateTabsViewDelegate? { get set }
 }
 
 // View we display when there are no private tabs created
-class ExperimentEmptyPrivateTabsView: UIView, EmptyPrivateTabView {
-    struct UX {
+class ExperimentEmptyPrivateTabsView: UIView,
+                                      EmptyPrivateTabView {
+    enum UX {
         static let paddingInBetweenItems: CGFloat = 15
-        static let verticalPadding: CGFloat = 20
+        static let buttonTopPadding: CGFloat = 24
+        static let topPadding: CGFloat = 55
+        static let bottomPadding: CGFloat = 35
         static let horizontalPadding: CGFloat = 24
         static let imageSize = CGSize(width: 72, height: 72)
     }
 
     // MARK: - Properties
 
+    var needsSafeArea: Bool { true }
     weak var delegate: EmptyPrivateTabsViewDelegate?
 
     // UI
@@ -31,13 +37,13 @@ class ExperimentEmptyPrivateTabsView: UIView, EmptyPrivateTabView {
     }
 
     private lazy var containerView: UIView = .build { _ in }
-    private lazy var centeredView: UIView = .build { _ in }
 
     private let titleLabel: UILabel = .build { label in
         label.adjustsFontForContentSizeCategory = true
         label.font = FXFontStyles.Regular.headline.scaledFont()
         label.text =  .PrivateBrowsingTitle
         label.textAlignment = .center
+        label.numberOfLines = 0
     }
 
     private let descriptionLabel: UILabel = .build { label in
@@ -79,63 +85,55 @@ class ExperimentEmptyPrivateTabsView: UIView, EmptyPrivateTabView {
 
     private func setupLayout() {
         configureLearnMoreButton()
-        centeredView.addSubviews(iconImageView, titleLabel, descriptionLabel, learnMoreButton)
-        containerView.addSubview(centeredView)
+        containerView.addSubviews(iconImageView, titleLabel, descriptionLabel, learnMoreButton)
         scrollView.addSubview(containerView)
         addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor,
-                                                constant: UX.horizontalPadding),
-            scrollView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor,
-                                            constant: UX.verticalPadding),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor,
-                                                 constant: -UX.horizontalPadding),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor,
-                                               constant: -UX.verticalPadding),
+            scrollView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
+            scrollView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            scrollView.frameLayoutGuide.widthAnchor.constraint(equalTo: containerView.widthAnchor),
+            containerView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+            containerView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            containerView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            containerView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            containerView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
 
-            scrollView.contentLayoutGuide.topAnchor.constraint(equalTo: containerView.topAnchor),
-            scrollView.contentLayoutGuide.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            scrollView.contentLayoutGuide.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            scrollView.contentLayoutGuide.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-
-            centeredView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: UX.verticalPadding),
-            centeredView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            centeredView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            centeredView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-
-            iconImageView.topAnchor.constraint(equalTo: centeredView.topAnchor,
-                                               constant: UX.paddingInBetweenItems),
-            iconImageView.centerXAnchor.constraint(equalTo: centeredView.centerXAnchor),
+            iconImageView.topAnchor.constraint(equalTo: containerView.topAnchor,
+                                               constant: UX.topPadding),
+            iconImageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             iconImageView.widthAnchor.constraint(equalToConstant: UX.imageSize.width),
             iconImageView.heightAnchor.constraint(equalToConstant: UX.imageSize.height),
 
             titleLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor,
                                             constant: UX.paddingInBetweenItems),
-            titleLabel.leadingAnchor.constraint(equalTo: centeredView.leadingAnchor),
-            titleLabel.trailingAnchor.constraint(equalTo: centeredView.trailingAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
+                                                constant: UX.horizontalPadding),
+            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
+                                                 constant: -UX.horizontalPadding),
 
             descriptionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor,
                                                   constant: UX.paddingInBetweenItems),
-            descriptionLabel.leadingAnchor.constraint(equalTo: centeredView.leadingAnchor,
+            descriptionLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
                                                       constant: UX.horizontalPadding),
-            descriptionLabel.trailingAnchor.constraint(equalTo: centeredView.trailingAnchor,
+            descriptionLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
                                                        constant: -UX.horizontalPadding),
 
             learnMoreButton.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor,
-                                                 constant: UX.paddingInBetweenItems),
-            learnMoreButton.leadingAnchor.constraint(greaterThanOrEqualTo: centeredView.leadingAnchor),
-            learnMoreButton.trailingAnchor.constraint(lessThanOrEqualTo: centeredView.trailingAnchor),
-            learnMoreButton.centerXAnchor.constraint(equalTo: centeredView.centerXAnchor),
-            learnMoreButton.bottomAnchor.constraint(equalTo: centeredView.bottomAnchor,
-                                                    constant: -UX.paddingInBetweenItems),
+                                                 constant: UX.buttonTopPadding),
+            learnMoreButton.leadingAnchor.constraint(equalTo: containerView.leadingAnchor,
+                                                     constant: UX.horizontalPadding),
+            learnMoreButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor,
+                                                      constant: -UX.horizontalPadding),
+            learnMoreButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor,
+                                                    constant: -UX.bottomPadding)
         ])
     }
 
     func applyTheme(theme: Theme) {
-        backgroundColor = theme.colors.layer3
+        backgroundColor = theme.isNova ? theme.colors.layer1 : theme.colors.layer3
         titleLabel.textColor = theme.colors.textPrimary
         descriptionLabel.textColor = theme.colors.textPrimary
         learnMoreButton.applyTheme(theme: theme)
@@ -144,10 +142,15 @@ class ExperimentEmptyPrivateTabsView: UIView, EmptyPrivateTabView {
 
     @objc
     private func didTapLearnMore() {
-        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        if let langID = Locale.preferredLanguages.first {
-            let learnMoreRequest = URLRequest(url: "https://support.mozilla.org/1/mobile/\(appVersion ?? "0.0")/iOS/\(langID)/private-browsing-ios".asURL!)
-            delegate?.didTapLearnMore(urlRequest: learnMoreRequest)
-        }
+        guard let url = SupportUtils.URLForTopic("private-browsing-ios") else { return }
+        let request = URLRequest(url: url)
+        delegate?.didTapLearnMore(urlRequest: request)
+    }
+
+    // MARK: - InsetUpdatable
+
+    func updateInsets(top: CGFloat, bottom: CGFloat) {
+        scrollView.contentInset.top = top
+        scrollView.contentInset.bottom = bottom
     }
 }

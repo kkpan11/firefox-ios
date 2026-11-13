@@ -10,8 +10,8 @@ struct ZoomLevelCellView: View {
     private let domainZoomLevel: DomainZoomLevel
     private let textColor: Color
 
-    private struct UX {
-        static var textPadding: CGFloat = 16
+    private enum UX {
+        static let textPadding: CGFloat = 16
     }
 
     init(domainZoomLevel: DomainZoomLevel, textColor: Color) {
@@ -22,13 +22,13 @@ struct ZoomLevelCellView: View {
     var body: some View {
         HStack {
             Text(domainZoomLevel.host)
-                .font(.body)
+                .font(FXFontStyles.Regular.body.scaledSwiftUIFont())
                 .foregroundColor(textColor)
 
             Spacer()
 
             Text(ZoomLevel(from: domainZoomLevel.zoomLevel).displayName)
-                .font(.body)
+                .font(FXFontStyles.Regular.body.scaledSwiftUIFont())
                 .foregroundColor(textColor)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -5,17 +5,18 @@
 import XCTest
 @testable import WebEngine
 
+@MainActor
 final class HTTPSchemePolicyDeciderTests: XCTestCase {
     private var mockDecider: MockPolicyDecider!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         mockDecider = MockPolicyDecider()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         mockDecider = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testPolicyForPopupNavigation_allowsHttpScheme() {
@@ -52,15 +53,6 @@ final class HTTPSchemePolicyDeciderTests: XCTestCase {
         let policy = subject.policyForPopupNavigation(action: MockNavigationAction(url: url))
 
         XCTAssertEqual(policy, .allow)
-    }
-
-    func testPolicyForPopupNavigation_blockPayPalPopup() {
-        let subject = createSubject()
-        let url = URL(string: "https://www.paypal.com")!
-
-        let policy = subject.policyForPopupNavigation(action: MockNavigationAction(url: url))
-
-        XCTAssertEqual(policy, .cancel)
     }
 
     func testPolicyForPopupNavigation_blockUnsupportedScheme() {

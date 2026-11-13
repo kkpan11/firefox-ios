@@ -8,9 +8,9 @@ import Shared
 
 public typealias Args = [Any?]
 
-open class BrowserDB {
+public final class BrowserDB: Sendable {
     fileprivate let db: SwiftData
-    private var logger: Logger
+    private let logger: Logger
 
     public let databasePath: String
 
@@ -33,9 +33,10 @@ open class BrowserDB {
 
             self.db = SwiftData(filename: self.databasePath, schema: schema, files: files)
         } catch {
-            logger.log("Could not create directory at root path: \(error)",
+            logger.log("Could not create directory at root path",
                        level: .fatal,
-                       category: .storage)
+                       category: .storage,
+                       extra: ["error": "\(error)"])
             fatalError("Could not create directory at root path: \(error)")
         }
     }
@@ -107,14 +108,15 @@ open class BrowserDB {
     }
 
     func queryReturnsResults(_ sql: String, args: Args? = nil) -> Deferred<Maybe<Bool>> {
-        return runQuery(sql, args: args, factory: { _ in true })
-         >>== { deferMaybe($0[0] ?? false) }
+        return chainDeferred(runQuery(sql, args: args, factory: { _ in true })) { cursor in
+            return deferMaybe(cursor[0] ?? false)
+        }
     }
 }
 
 /// The sqlite-backed implementation of the history protocol.
 /// Currently only supports pinned sites and favicons
-open class BrowserDBSQLite {
+public final class BrowserDBSQLite: Sendable {
     let database: BrowserDB
     let prefs: Prefs
     let notificationCenter: NotificationCenter

@@ -117,6 +117,58 @@ final class ImageHandlerTests: XCTestCase {
         XCTAssertEqual(letterImageGenerator.generateLetterImageCalled, 0)
     }
 
+    func testFaviconFromMemory_whenImageIsBundledUnderCacheKey_returnsBundleImage() {
+        // The cache key for this site url is "google", which is bundled as a default favicon
+        let siteURL = URL(string: "https://www.google.com")!
+        let subject = createSubject()
+        let model = SiteImageModel(id: UUID(), imageType: .favicon, siteURL: siteURL)
+
+        let image = subject.fetchFaviconFromMemory(imageModel: model)
+
+        let siteImageBundle = Bundle.allBundles.first {
+            return $0.bundleIdentifier?.contains("browserkit.SiteImageView.resources") ?? false
+        }!
+        XCTAssertEqual(UIImage(named: "google", in: siteImageBundle, with: nil), image)
+        XCTAssertEqual(siteImageCache.getImageFromMemoryCalled, 0)
+    }
+
+    func testFaviconFromMemory_whenSiteResourceIsBundleAsset_returnsBundleImage() {
+        let siteURL = URL(string: "https://www.facebook.com")!
+        let subject = createSubject()
+        let resource: SiteResource = .bundleAsset(name: "facebook", forRemoteResource: siteURL)
+        let model = SiteImageModel(id: UUID(), imageType: .favicon, siteURL: siteURL, siteResource: resource)
+
+        let image = subject.fetchFaviconFromMemory(imageModel: model)
+
+        let siteImageBundle = Bundle.allBundles.first {
+            return $0.bundleIdentifier?.contains("browserkit.SiteImageView.resources") ?? false
+        }!
+        XCTAssertEqual(UIImage(named: "facebook", in: siteImageBundle, with: nil), image)
+        XCTAssertEqual(siteImageCache.getImageFromMemoryCalled, 0)
+    }
+
+    func testFaviconFromMemory_whenNotBundled_returnsMemoryCachedImage() {
+        let expectedImage = UIImage()
+        siteImageCache.memoryCachedImage = expectedImage
+        let subject = createSubject()
+        let model = createSiteImageModel(resourceURL: faviconURL)
+
+        let image = subject.fetchFaviconFromMemory(imageModel: model)
+
+        XCTAssertEqual(expectedImage, image)
+        XCTAssertEqual(siteImageCache.getImageFromMemoryCalled, 1)
+    }
+
+    func testFaviconFromMemory_whenNotBundledAndNotCached_returnsNil() {
+        let subject = createSubject()
+        let model = createSiteImageModel(resourceURL: faviconURL)
+
+        let image = subject.fetchFaviconFromMemory(imageModel: model)
+
+        XCTAssertNil(image)
+        XCTAssertEqual(siteImageCache.getImageFromMemoryCalled, 1)
+    }
+
     func testFavicon_whenNoImages_returnsFallbackLetterFavicon_forHardcodedFaviconURL() async {
         let subject = createSubject()
         let model = createSiteImageModel(resourceURL: faviconURL)
@@ -363,7 +415,7 @@ private extension ImageHandlerTests {
 }
 
 // MARK: - MockHeroImageFetcher
-private class MockHeroImageFetcher: HeroImageFetcher {
+private final class MockHeroImageFetcher: HeroImageFetcher, @unchecked Sendable {
     var image: UIImage?
     var fetchHeroImageSucceedCalled = 0
     var fetchHeroImageFailedCalled = 0
@@ -382,7 +434,7 @@ private class MockHeroImageFetcher: HeroImageFetcher {
 }
 
 // MARK: - MockSiteImageCache
-private class MockSiteImageCache: SiteImageCache {
+private final class MockSiteImageCache: SiteImageCache, @unchecked Sendable {
     var image: UIImage?
     var getImageFromCacheSucceedCalled = 0
     var getImageFromCacheFailedCalled = 0
@@ -390,6 +442,13 @@ private class MockSiteImageCache: SiteImageCache {
     var cacheImageCalled = 0
     var cachedWithType: SiteImageType?
     var clearCacheCalledCount = 0
+    var memoryCachedImage: UIImage?
+    var getImageFromMemoryCalled = 0
+
+    func getImageFromMemory(cacheKey: String, type: SiteImageType) -> UIImage? {
+        getImageFromMemoryCalled += 1
+        return memoryCachedImage
+    }
 
     func getImage(cacheKey: String, type: SiteImageType) async throws -> UIImage {
         getFromCacheWithType = type
@@ -413,7 +472,7 @@ private class MockSiteImageCache: SiteImageCache {
 }
 
 // MARK: - MockFaviconFetcher
-private class MockFaviconFetcher: FaviconFetcher {
+private final class MockFaviconFetcher: FaviconFetcher, @unchecked Sendable {
     var image: UIImage?
     var fetchImageSucceedCalled = 0
     var fetchImageFailedCalled = 0
@@ -430,7 +489,7 @@ private class MockFaviconFetcher: FaviconFetcher {
 }
 
 // MARK: - MockLetterImageGenerator
-private class MockLetterImageGenerator: LetterImageGenerator {
+private class MockLetterImageGenerator: LetterImageGenerator, @unchecked Sendable {
     var image = UIImage()
     var generateLetterImageCalled = 0
     var capturedSiteString: String?
@@ -439,5 +498,15 @@ private class MockLetterImageGenerator: LetterImageGenerator {
         generateLetterImageCalled += 1
         capturedSiteString = siteString
         return image
+    }
+
+    func generateImage(fromLetter letter: String, color: UIColor) -> UIImage {
+        // Unneeded
+        return UIImage()
+    }
+
+    func generateLetter(fromSiteString siteString: String) throws -> String {
+        // Unneeded
+        return ""
     }
 }

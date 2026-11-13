@@ -10,7 +10,8 @@ import SwiftUI
 
 import struct MozillaAppServices.VisitTransitionSet
 
-class HistoryPanelViewModel: FeatureFlaggable {
+// TODO: FXIOS-13450 Make HistoryPanelViewModel actually sendable
+final class HistoryPanelViewModel: @unchecked Sendable {
     enum Sections: Int, CaseIterable {
         case additionalHistoryActions
         case lastHour
@@ -38,16 +39,20 @@ class HistoryPanelViewModel: FeatureFlaggable {
         }
     }
 
+    enum HistoryItem: Hashable, Sendable {
+        case site(Site)
+        case historyActionables(HistoryActionablesModel)
+    }
+
     // MARK: - Properties
 
     private let profile: Profile
-    private var logger: Logger
+    private let logger: Logger
     // Request limit and offset
     private let queryFetchLimit = 100
     // Is not intended to be use in prod code, only on test
     private(set) var currentFetchOffset = 0
     private let searchQueryFetchLimit = 50
-    private var searchCurrentFetchOffset = 0
 
     // Search
     var isSearchInProgress = false
@@ -73,7 +78,7 @@ class HistoryPanelViewModel: FeatureFlaggable {
 
     let historyPanelNotifications = [Notification.Name.FirefoxAccountChanged,
                                      Notification.Name.PrivateDataClearedHistory,
-                                     Notification.Name.DynamicFontChanged,
+                                     UIContentSizeCategory.didChangeNotification,
                                      Notification.Name.DatabaseWasReopened,
                                      Notification.Name.OpenClearRecentHistory,
                                      Notification.Name.OpenRecentlyClosedTabs]
@@ -87,7 +92,7 @@ class HistoryPanelViewModel: FeatureFlaggable {
     }
 
     /// Begin the process of fetching history data. A prefetch also triggers this.
-    func reloadData(completion: @escaping (Bool) -> Void) {
+    func reloadData(completion: @Sendable @escaping (Bool) -> Void) {
         // Can be called while app backgrounded and the db closed, don't try to reload the data source in this case
         guard !profile.isShutdown, !isFetchInProgress else {
             completion(false)
@@ -99,8 +104,8 @@ class HistoryPanelViewModel: FeatureFlaggable {
         }
 
         fetchData { [weak self] fetchedSites in
-            DispatchQueue.global().async {
-                guard let self = self,
+            DispatchQueue.global().async { [weak self] in
+                guard let self,
                       !fetchedSites.isEmpty else {
                     completion(false)
                     return
@@ -122,7 +127,7 @@ class HistoryPanelViewModel: FeatureFlaggable {
         }
     }
 
-    func performSearch(term: String, completion: @escaping (Bool) -> Void) {
+    func performSearch(term: String, completion: @MainActor @escaping (Bool) -> Void) {
         isFetchInProgress = true
 
         profile.places.interruptReader()
@@ -130,21 +135,24 @@ class HistoryPanelViewModel: FeatureFlaggable {
             matchingSearchQuery: term,
             limit: searchQueryFetchLimit
         ).uponQueue(.main) { result in
-            self.isFetchInProgress = false
+            // FXIOS-13228 It should be safe to assumeIsolated here because of `.main` queue above
+            MainActor.assumeIsolated {
+                self.isFetchInProgress = false
 
-            guard result.isSuccess else {
-                self.logger.log(
-                    "Error searching history panel",
-                    level: .warning,
-                    category: .sync,
-                    description: result.failureValue?.localizedDescription ?? "Unkown error searching history"
-                )
-                completion(false)
-                return
-            }
-            if let result = result.successValue {
-                self.searchResultSites = result.map { Site.createBasicSite(url: $0.url, title: $0.title) }
-                completion(!result.isEmpty)
+                guard result.isSuccess else {
+                    self.logger.log(
+                        "Error searching history panel",
+                        level: .warning,
+                        category: .sync,
+                        description: result.failureValue?.localizedDescription ?? "Unknown error searching history"
+                    )
+                    completion(false)
+                    return
+                }
+                if let result = result.successValue {
+                    self.searchResultSites = result.map { Site.createBasicSite(url: $0.url, title: $0.title) }
+                    completion(!result.isEmpty)
+                }
             }
         }
     }
@@ -184,16 +192,18 @@ class HistoryPanelViewModel: FeatureFlaggable {
     func deleteGroupsFor(dateOption: HistoryDeletionUtilityDateOptions) {
         guard let deletableSections = getDeletableSection(for: dateOption) else { return }
         deletableSections.forEach { section in
-            let sectionItems = dateGroupedSites.itemsForSection(section.rawValue - 1)
+            let sectionItems = dateGroupedSites
+                .itemsForSection(section.rawValue - 1)
+                .map(HistoryItem.site)
             removeHistoryItems(item: sectionItems, at: section.rawValue)
         }
     }
 
     /// This handles removing a Site from the view.
-    func removeHistoryItems(item historyItem: [AnyHashable], at section: Int) {
+    func removeHistoryItems(item historyItem: [HistoryItem], at section: Int) {
         historyItem.forEach { item in
-            if let site = item as? Site {
-                deleteSingle(site: site)
+            if case HistoryItem.site(let site) = item {
+                deleteAllVisits(for: site)
             }
         }
         buildVisibleSections()
@@ -201,7 +211,7 @@ class HistoryPanelViewModel: FeatureFlaggable {
 
     // MARK: - Private helpers
 
-    private func fetchData(completion: @escaping (([Site]) -> Void)) {
+    private func fetchData(completion: @escaping @Sendable ([Site]) -> Void) {
         guard !isFetchInProgress else {
             completion([])
             return
@@ -252,8 +262,10 @@ class HistoryPanelViewModel: FeatureFlaggable {
         }
     }
 
-    private func deleteSingle(site: Site) {
-        dateGroupedSites.remove(site)
+    private func deleteAllVisits(for site: Site) {
+        dateGroupedSites.allItems()
+            .filter { $0.url == site.url }
+            .forEach { dateGroupedSites.remove($0) }
         self.profile.places.deleteVisitsFor(url: site.url).uponQueue(.main) { _ in
             NotificationCenter.default.post(name: .TopSitesUpdated, object: nil)
         }

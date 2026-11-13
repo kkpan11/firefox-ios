@@ -11,9 +11,6 @@ let deleteEndPoint = "http://restmail.net/mail/test-256a5b5b18@restmail.net"
 let userMail = "test-256a5b5b18@restmail.net"
 let password = "nPuPEcoj"
 
-var uid: String!
-var code: String!
-
 class SyncUITests: BaseTestCase {
     //  https://mozilla.testrail.io/index.php?/cases/view/2448597
     func testSyncUIFromBrowserTabMenu() {
@@ -75,10 +72,14 @@ class SyncUITests: BaseTestCase {
         navigator.performAction(Action.FxATapOnContinueButton)
 
         // Enter invalid (too short, it should be at least 8 chars) and incorrect password
+        app.secureTextFields.element(boundBy: 1).waitAndTap()
         userState.fxaPassword = "foo"
         mozWaitForElementToExist(app.secureTextFields.element(boundBy: 0))
         navigator.performAction(Action.FxATypePasswordNewAccount)
         mozWaitForElementToExist(app.webViews.staticTexts["At least 8 characters"])
+        XCTAssertEqual(app.webViews.images.element(boundBy: 0).label,
+                       "failed",
+                       "The password validation image should be failed")
 
         // Enter valid but incorrect, it does not exists, password
         userState.fxaPassword = "atleasteight"
@@ -86,7 +87,10 @@ class SyncUITests: BaseTestCase {
         // Switching to the next text field is required to determine if the message still appears or not
         app.buttons["Done"].tapIfExists()
         app.webViews.secureTextFields.element(boundBy: 0).waitAndTap()
-        mozWaitForElementToNotExist(app.webViews.staticTexts["At least 8 characters"])
+        mozWaitForElementToExist(app.webViews.staticTexts["At least 8 characters"])
+        XCTAssertEqual(app.webViews.images.element(boundBy: 0).label,
+                       "passed",
+                       "The password validation image should be passed")
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2449603
@@ -137,6 +141,7 @@ class SyncUITests: BaseTestCase {
         let passMessage = "Your password is currently hidden."
         mozWaitForElementToExist(app.webViews.switches[passMessage])
         // Remove the password typed, Show (password) option should not be shown
+        app.secureTextFields.element(boundBy: 1).waitAndTap()
         app.keyboards.keys["delete"].waitAndTap()
         mozWaitForElementToNotExist(app.webViews.staticTexts[passMessage])
     }

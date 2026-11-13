@@ -64,6 +64,33 @@
 /* Label used as an item in Settings screen. When touched, it will take user to address autofill settings page to that will allow user to add or modify saved addresses to allow for autofill in a webpage. */
 "Settings.AddressAutofill.Title.v126" = "ທີ່ຢູ່";
 
+/* Section description in Appearance settings for middle button configuration of the bottom toolbar. */
+"Settings.Appearance.NavigationToolbar.Description.v145" = "ປ່ຽນປຸ່ມຢູ່ໃຈກາງແຖບເຄື່ອງມື.";
+
+/* Section header title in Appearance settings that configures the middle button of the bottom toolbar. */
+"Settings.Appearance.NavigationToolbar.SectionHeader.v145" = "ປຸ່ມແຖບເຄື່ອງມື";
+
+/* Default section header title under page zoom settings. Indicates the default value for all websites */
+"Settings.Appearance.Zoom.Default.Title.v140" = "ຄ່າເລີ່ມຕົ້ນ";
+
+/* Button to reset specific zoom site levels back to default */
+"Settings.Appearance.Zoom.Reset.Button.v140" = "ຣີເຊັດການຕັ້ງຄ່າເວັບໄຊ";
+
+/* Page zoom section header title in Appearance settings */
+"Settings.Appearance.Zoom.SectionHeader.v140" = "ຕັ້ງຄ່າການຊູມ";
+
+/* Specific site settings section footer title under page zoom settings. Explain how to add elements to the list */
+"Settings.Appearance.Zoom.SpecificSiteZoom.Footer.v140" = "ເພື່ອເພີ່ມໃສ່ລາຍຊື່ນີ້, ໃຫ້ເຂົ້າໄປທີ່ເວັບໄຊໃດໜຶ່ງ ແລະ ປັບການຊູມໜ້າຈາກເມນູ";
+
+/* Specific site settings section header title under page zoom settings. List all websites with custom zoom level */
+"Settings.Appearance.Zoom.SpecificSiteZoom.Title.v140" = "ການຕັ້ງຄ່າສະເພາະໄຊທ";
+
+/* Page zoom settings title in Appearance settings */
+"Settings.Appearance.Zoom.Title.v140" = "ຊູມໜ້າເວັບ";
+
+/* Zoom level title under page zoom settings to select the default zoom level for all websites */
+"Settings.Appearance.Zoom.ZoomLevelTitle.v140" = "ລະດັບການຊູມ";
+
 /* In the settings menu, in the General section, this is the title for Autofills & Passwords customization section. */
 "Settings.AutofillAndPassword.Title.v137" = "ການຕື່ມຂໍ້ມູນ ແລະ ລະຫັດຜ່ານອັດຕະໂນມັດ";
 
@@ -98,22 +125,13 @@
 "Settings.Browsing.Title.v137" = "ການທ່ອງເວັບ";
 
 /* Title for a link that explains how Mozilla send crash reports. */
-"Settings.CrashReports.Link.v135" = "ຮຽນຮູ້ເພີ່ມເຕີມ.";
-
-/* Title for a link that explains how Mozilla send crash reports. */
 "Settings.CrashReports.Link.v136" = "ຮຽນຮູ້ເພີ່ມເຕີມ";
-
-/* On the Settings screen, this is the subtitle text for a toggle which controls automatically sending crash reports. */
-"Settings.CrashReports.Message.v135" = "ບົດລາຍງານການຂັດຂ້ອງອະນຸຍາດໃຫ້ພວກເຮົາວິນິດໄສ ແລະ ແກ້ໄຂບັນຫາກັບຕົວທ່ອງເວັບ.";
 
 /* On the Settings screen, this is the subtitle text for a toggle which controls automatically sending crash reports. */
 "Settings.CrashReports.Message.v136" = "ນີ້ຈະຊ່ວຍໃຫ້ພວກເຮົາວິນິດໄສ ແລະ ແກ້ໄຂບັນຫາກັບຕົວທ່ອງເວັບ.";
 
 /* On the Settings screen, this is the title text for a toggle which controls automatically sending crash reports. */
 "Settings.CrashReports.Title.v135" = "ສົ່ງລາຍງານການຂັດຂ້ອງໂດຍອັດຕະໂນມັດ";
-
-/* Title for a link that explains how Mozilla send daily usage ping. */
-"Settings.DailyUsagePing.Link.v135" = "ຮຽນຮູ້ເພີ່ມເຕີມ.";
 
 /* Title for a link that explains how Mozilla send daily usage ping. */
 "Settings.DailyUsagePing.Link.v136" = "ຮຽນຮູ້ເພີ່ມເຕີມ";
@@ -223,24 +241,48 @@
 /* Label used as a toggle item in Settings. When this is off, the user is opting out of all studies. */
 "Settings.Studies.Title.v136" = "ຕິດຕັ້ງ ແລະ ດໍາເນີນການສຶກສາ";
 
-/* Title for a link that explains how Mozilla send technical and interaction data. */
-"Settings.TechnicalData.Link.v135" = "ຮຽນຮູ້ເພີ່ມເຕີມ.";
+/* This is the footer text for the setting that toggles the Summarize feature under the Summarize settings section. */
+"Settings.Summarize.FooterTitle.v142" = "ສະຫນອງການເຂົ້າເຖິງເພື່ອສະຫຼຸບຫນ້າ.";
+
+/* This is the footer text for the gestures features under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.FooterTitle.v142" = "ສັ່ນອຸປະກອນຂອງທ່ານຈາກດ້ານຂ້າງເພື່ອສະຫຼຸບຫນ້າ.";
+
+/* This is the title for the setting that toggles the Shake Gesture feature under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.ShakeGestureTitle.v142" = "ສັ່ນເພື່ອສະຫຼຸບ";
+
+/* This is the section title for the gestures features under the Summarize settings section. */
+"Settings.Summarize.GesturesSection.Title.v142" = "ທ່າທາງ";
+
+/* This is the title for the setting that toggles the Summarize feature under the Summarize settings section. */
+"Settings.Summarize.SummarizePagesTitle.v142" = "ສະຫຼຸບໜ້າ";
+
+/* In the settings menu, in the General section, this is the title for the Summarize settings section. */
+"Settings.Summarize.Title.v142" = "ບົດສະຫຼຸບຂອງໜ້າ";
 
 /* Title for a link that explains how Mozilla send technical and interaction data. */
 "Settings.TechnicalData.Link.v136" = "ຮຽນຮູ້ເພີ່ມເຕີມ";
 
-/* On the Settings screen, this is the subtitle text for a toggle which controls sending technical and interaction data. %1$@ is the company name (e.g. Mozilla), %2$@ is the app name (e.g. Firefox). */
-"Settings.TechnicalData.Message.v135" = "%1$@ ພະຍາຍາມເກັບເອົາແຕ່ສິ່ງທີ່ພວກເຮົາຕ້ອງການເພື່ອສະໜອງ ແລະ ປັບປຸງ %2$@ ສໍາລັບທຸກຄົນ.";
-
 /* On the Settings screen, this is the subtitle text for a toggle which controls sending technical and interaction data. %@ is the app name (e.g. Firefox). */
 "Settings.TechnicalData.Message.v136" = "ຂໍ້​ມູນ​ກ່ຽວ​ກັບ​ອຸ​ປະ​ກອນ​ຂອງ​ທ່ານ​, ການ​ຕັ້ງ​ຄ່າ​ຮາດ​ແວ​, ແລະ ​ການ​ນໍາ​ໃຊ້​ຊ່ວຍ​ໃຫ້​ພວກ​ເຮົາ​ປັບ​ປຸງ %@ ຄຸນ​ນະ​ສົມ​ບັດ​, ປະ​ສິດ​ທິ​ພາບ​ ແລະ​ ຄວາມ​ສະຖຽນ.";
-
-/* On the Settings screen, this is the title text for a toggle which controls sending technical and interaction data. */
-"Settings.TechnicalData.Title.v135" = "ຂໍ້ມູນດ້ານເຕັກນິກ ແລະ ການໂຕ້ຕອບ";
 
 /* On the Settings screen, this is the title text for a toggle which controls sending technical and interaction data. */
 "Settings.TechnicalData.Title.v136" = "ສົ່ງຂໍ້ມູນດ້ານວິຊາການ ແລະ ການໂຕ້ຕອບ";
 
 /* Terms of Use settings section title */
 "Settings.TermsOfUse.Title.v137" = "ເງື່ອນໄຂການນໍາໃຊ້";
+
+/* In the Appearance settings menu, in the Toolbar Button section, this label indicates that selecting this will make the home button appear in the middle of the navigation toolbar. */
+"Settings.Toolbar.Navigation.MiddleButton.Home.v145" = "ໜ້າຫຼັກ";
+
+/* In the Appearance settings menu, in the Toolbar Button section, this label indicates that selecting this will make the New Tab button appear in the middle of the navigation toolbar. */
+"Settings.Toolbar.Navigation.MiddleButton.NewTab.v145" = "ແທັບໃຫມ່";
+
+/* In the settings menu, in the General section, this is the text to show next to the Translation setting title and indicates if the translation feature has been disabled. */
+"Settings.Translation.SettingOff.v145" = "ປິດ";
+
+/* In the settings menu, in the General section, this is the text to show next to the Translation setting title and indicates if the translation feature has been enabled. */
+"Settings.Translation.SettingOn.v145" = "ເປີດ";
+
+/* In the settings menu, in the General section, this is the title for the Translation settings section. */
+"Settings.Translation.Title.v145" = "ການແປ";
 

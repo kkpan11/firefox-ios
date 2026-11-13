@@ -34,7 +34,7 @@ struct Folder: Equatable, Hashable {
     }
 }
 
-struct DefaultFolderHierarchyFetcher: FolderHierarchyFetcher, BookmarksRefactorFeatureFlagProvider {
+struct DefaultFolderHierarchyFetcher: FolderHierarchyFetcher {
     let profile: Profile
     let rootFolderGUID: String
 
@@ -126,27 +126,13 @@ struct DefaultFolderHierarchyFetcher: FolderHierarchyFetcher, BookmarksRefactorF
     }
 
     private func countDesktopBookmarks() async -> Int? {
-        // FXIOS-11895 Temporary test for reverting continuation workaround we put in place for iOS 18.0 (beta?) users
-        if ContinuationsChecker.shouldUseCheckedContinuation {
-            return await withCheckedContinuation { continuation in
-                profile.places.countBookmarksInTrees(folderGuids: BookmarkRoots.DesktopRoots.map { $0 }) { result in
-                    switch result {
-                    case .success(let count):
-                        continuation.resume(returning: count)
-                    case .failure:
-                        continuation.resume(returning: nil)
-                    }
-                }
-            }
-        } else {
-            return await withUnsafeContinuation { continuation in
-                profile.places.countBookmarksInTrees(folderGuids: BookmarkRoots.DesktopRoots.map { $0 }) { result in
-                    switch result {
-                    case .success(let count):
-                        continuation.resume(returning: count)
-                    case .failure:
-                        continuation.resume(returning: nil)
-                    }
+        return await withCheckedContinuation { continuation in
+            profile.places.countBookmarksInTrees(folderGuids: BookmarkRoots.DesktopRoots.map { $0 }) { result in
+                switch result {
+                case .success(let count):
+                    continuation.resume(returning: count)
+                case .failure:
+                    continuation.resume(returning: nil)
                 }
             }
         }

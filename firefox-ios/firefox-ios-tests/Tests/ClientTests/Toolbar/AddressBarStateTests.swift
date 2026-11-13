@@ -5,22 +5,29 @@
 import Redux
 import XCTest
 import Common
+import Shared
+import SummarizeKit
 
 @testable import Client
 
 final class AddressBarStateTests: XCTestCase, StoreTestUtility {
-    let storeUtilityHelper = StoreTestUtilityHelper()
+    var mockStore: MockStoreForMiddleware<AppState>!
     let windowUUID: WindowUUID = .XCTestDefaultUUID
+    var mockProfile: MockProfile!
 
-    override func setUp() {
-        super.setUp()
-        DependencyHelperMock().bootstrapDependencies()
+    override func setUp() async throws {
+        try await super.setUp()
+        mockProfile = makeProfile()
+        setIsHostedSummarizerFeatureEnabled(enabled: false)
+        setIsSummarizerLanguageExpansionEnabled(enabled: false)
+        DependencyHelperMock().bootstrapDependencies(injectedTabManager: MockTabManager())
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
         resetStore()
-        super.tearDown()
+        mockProfile = nil
+        try await super.tearDown()
     }
 
     func tests_initialState_returnsExpectedState() {
@@ -28,17 +35,14 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let initialState = createSubject()
 
         XCTAssertEqual(initialState.windowUUID, windowUUID)
-        XCTAssertEqual(initialState.navigationActions, [])
-        XCTAssertEqual(initialState.trailingPageActions, [])
-        XCTAssertEqual(initialState.leadingPageActions, [])
-        XCTAssertEqual(initialState.browserActions, [])
         XCTAssertNil(initialState.borderPosition)
         XCTAssertNil(initialState.url)
         XCTAssertNil(initialState.searchTerm)
-        XCTAssertNil(initialState.lockIconImageName)
+        XCTAssertNil(initialState.hasOnlySecureContent)
+        XCTAssertFalse(initialState.isWebsiteMode)
         XCTAssertNil(initialState.safeListedURLImageName)
         XCTAssertFalse(initialState.isEditing)
-        XCTAssertTrue(initialState.shouldShowKeyboard)
+        XCTAssertFalse(initialState.shouldShowKeyboard)
         XCTAssertFalse(initialState.shouldSelectSearchTerm)
         XCTAssertFalse(initialState.isLoading)
         XCTAssertNil(initialState.readerModeState)
@@ -51,7 +55,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
                 addressBorderPosition: .top,
@@ -61,88 +65,82 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions, [])
-
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
-        XCTAssertEqual(newState.browserActions.count, 0)
 
         XCTAssertEqual(newState.borderPosition, .top)
         XCTAssertNil(newState.url)
         XCTAssertNil(newState.searchTerm)
-        XCTAssertNil(newState.lockIconImageName)
+        XCTAssertNil(newState.hasOnlySecureContent)
+        XCTAssertFalse(newState.isWebsiteMode)
         XCTAssertNil(newState.safeListedURLImageName)
         XCTAssertFalse(newState.isEditing)
-        XCTAssertTrue(newState.shouldShowKeyboard)
+        XCTAssertFalse(newState.shouldShowKeyboard)
         XCTAssertFalse(newState.shouldSelectSearchTerm)
         XCTAssertFalse(newState.isLoading)
         XCTAssertNil(newState.readerModeState)
         XCTAssertFalse(newState.didStartTyping)
         XCTAssertTrue(newState.isEmptySearch)
+        XCTAssertNil(newState.translationConfiguration)
+        XCTAssertNil(newState.editingAccessoryAction)
     }
 
-    func test_numberOfTabsChangedAction_withoutNavToolbar_returnsExpectedState() {
-        setupStore(with: initialToolbarState(isShowingNavigationToolbar: false))
-        let initialState = createSubject()
-        let reducer = addressBarReducer()
-
-        let newState = reducer(
-            initialState,
-            ToolbarAction(
-                numberOfTabs: 2,
-                isShowingTopTabs: false,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.numberOfTabsChanged
-            )
-        )
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.browserActions.count, 2)
-        XCTAssertEqual(newState.browserActions[0].actionType, .menu)
-        XCTAssertEqual(newState.browserActions[1].actionType, .tabs)
-        XCTAssertEqual(newState.browserActions[1].numberOfTabs, 2)
-    }
-
-    func test_readerModeStateChangedAction_onHomepage_returnsExpectedState() {
+    func test_googleLensAvailabilityDidChangeAction_withGoogleLensDisabled_removesEditingAccessoryAction() {
         setupStore()
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let stateWithGoogleLens = reducer.legacyReducer(
             initialState,
-            ToolbarAction(
-                readerModeState: .available,
+            ToolbarMiddlewareAction(
+                isGoogleLensEnabled: true,
                 windowUUID: windowUUID,
-                actionType: ToolbarActionType.readerModeStateChanged
+                actionType: ToolbarMiddlewareActionType.googleLensAvailabilityDidChange
+            )
+        )
+        let newState = reducer.legacyReducer(
+            stateWithGoogleLens,
+            ToolbarMiddlewareAction(
+                isGoogleLensEnabled: false,
+                windowUUID: windowUUID,
+                actionType: ToolbarMiddlewareActionType.googleLensAvailabilityDidChange
             )
         )
 
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
+        XCTAssertNil(newState.editingAccessoryAction)
     }
 
-    func test_readerModeStateChangedAction_onWebsite_returnsExpectedState() {
+    func test_googleLensAvailabilityDidChangeAction_withGoogleLensEnabled_setsEditingAccessoryAction() {
         setupStore()
         let initialState = createSubject()
         let reducer = addressBarReducer()
+        let expectedMenuElements = [
+            ToolbarMenuElementConfiguration(
+                actionType: .googleLensTakePhoto,
+                title: .AddressToolbar.GoogleLens.ContextMenu.TakePhotoActionTitle,
+                imageName: StandardImageIdentifiers.Large.screenshot,
+                a11yIdentifier: AccessibilityIdentifiers.Browser.AddressToolbar.googleLensTakePhotoAction
+            ),
+            ToolbarMenuElementConfiguration(
+                actionType: .googleLensPhotoLibrary,
+                title: .AddressToolbar.GoogleLens.ContextMenu.PhotoLibraryActionTitle,
+                imageName: StandardImageIdentifiers.Large.image,
+                a11yIdentifier: AccessibilityIdentifiers.Browser.AddressToolbar.googleLensPhotoLibraryAction
+            )
+        ]
 
-        let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
-        let newState = reducer(
-            urlDidChangeState,
-            ToolbarAction(
-                readerModeState: .available,
+        let newState = reducer.legacyReducer(
+            initialState,
+            ToolbarMiddlewareAction(
+                isGoogleLensEnabled: true,
                 windowUUID: windowUUID,
-                actionType: ToolbarActionType.readerModeStateChanged
+                actionType: ToolbarMiddlewareActionType.googleLensAvailabilityDidChange
             )
         )
 
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.trailingPageActions.count, 2)
-        XCTAssertEqual(newState.trailingPageActions[0].actionType, .readerMode)
-        XCTAssertEqual(newState.trailingPageActions[0].iconName, StandardImageIdentifiers.Medium.readerView)
-        XCTAssertEqual(newState.trailingPageActions[1].actionType, .reload)
-        XCTAssertEqual(newState.leadingPageActions[0].actionType, .share)
+        XCTAssertEqual(newState.editingAccessoryAction?.actionType, .googleLens)
+        XCTAssertEqual(newState.editingAccessoryAction?.iconName, StandardImageIdentifiers.Medium.logoGoogleLens)
+        XCTAssertEqual(newState.editingAccessoryAction?.contextualHintType, TipKitHintType.googleLens.rawValue)
+        XCTAssertEqual(newState.editingAccessoryAction?.a11yLabel, .AddressToolbar.GoogleLens.A11yLabel)
+        XCTAssertEqual(newState.editingAccessoryAction?.menuElements, expectedMenuElements)
     }
 
     func test_websiteLoadingStateDidChangeAction_withLoadingTrue_returnsExpectedState() {
@@ -151,7 +149,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let reducer = addressBarReducer()
 
         let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             urlDidChangeState,
             ToolbarAction(
                 isLoading: true,
@@ -161,10 +159,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.trailingPageActions.count, 1)
-        XCTAssertEqual(newState.trailingPageActions[0].actionType, .stopLoading)
-        XCTAssertEqual(newState.navigationActions.count, 0)
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
+        XCTAssertTrue(newState.isLoading)
     }
 
     func test_websiteLoadingStateDidChangeAction_withLoadingFalse_returnsExpectedState() {
@@ -173,7 +168,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let reducer = addressBarReducer()
 
         let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             urlDidChangeState,
             ToolbarAction(
                 isLoading: false,
@@ -183,178 +178,100 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.trailingPageActions.count, 1)
-        XCTAssertEqual(newState.trailingPageActions[0].actionType, .reload)
-        XCTAssertEqual(newState.navigationActions.count, 0)
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
+        XCTAssertFalse(newState.isLoading)
     }
 
-    func test_websiteLoadingStateDidChangeAction_withouthNavigationToolbar_returnsExcpectedState() {
-        setupStore()
-
-        let initialState = createSubject()
-        let reducer = addressBarReducer()
-
-        let urlDidChangeState = loadWebsiteAction(state: initialState,
-                                                  reducer: reducer)
-        let newState = reducer(
-            urlDidChangeState,
-            ToolbarAction(
-                isShowingNavigationToolbar: false,
-                isLoading: true,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.websiteLoadingStateDidChange
-            )
-        )
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.trailingPageActions.count, 1)
-        XCTAssertEqual(newState.trailingPageActions[0].actionType, .stopLoading)
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-
-        XCTAssertEqual(newState.navigationActions.count, 2)
-        XCTAssertEqual(newState.navigationActions[0].actionType, .back)
-        XCTAssertEqual(newState.navigationActions[1].actionType, .forward)
-    }
-
-    func test_urlDidChangeAction_withNavigationToolbar_returnsExpectedState() {
+    /// urlDidChange with `.active` config overrides existing Redux state.
+    func test_urlDidChangeAction_withActiveState_overridesExisting() {
+        setTranslationsFeatureEnabled(enabled: true)
         setupStore()
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = loadWebsiteAction(state: initialState, reducer: reducer)
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-
-        XCTAssertEqual(newState.trailingPageActions.count, 1)
-        XCTAssertEqual(newState.trailingPageActions[0].actionType, .reload)
-        XCTAssertEqual(newState.leadingPageActions[0].actionType, .share)
-
-        XCTAssertEqual(newState.browserActions.count, 0)
-    }
-
-    func test_urlDidChangeAction_withoutNavigationToolbar_returnsExpectedState() {
-        setupStore(with: initialToolbarState(isShowingNavigationToolbar: false))
-        let initialState = createSubject()
-        let reducer = addressBarReducer()
-
-        let newState = loadWebsiteAction(state: initialState, isShowingNavigationToolbar: false, reducer: reducer)
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-
-        XCTAssertEqual(newState.trailingPageActions.count, 1)
-        XCTAssertEqual(newState.trailingPageActions[0].actionType, .reload)
-        XCTAssertEqual(newState.leadingPageActions[0].actionType, .share)
-
-        XCTAssertEqual(newState.browserActions.count, 3)
-        XCTAssertEqual(newState.browserActions[0].actionType, .newTab)
-        XCTAssertEqual(newState.browserActions[1].actionType, .menu)
-        XCTAssertEqual(newState.browserActions[2].actionType, .tabs)
-    }
-
-    func test_backForwardButtonStateChangedAction_withNavigationToolbar_returnsExpectedState() {
-        setupStore()
-        let initialState = createSubject()
-        let reducer = addressBarReducer()
-
-        let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
-        let newState = reducer(
-            urlDidChangeState,
-            ToolbarAction(
-                canGoBack: true,
-                canGoForward: false,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.backForwardButtonStateChanged
-            )
-        )
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 0)
-    }
-
-    func test_backForwardButtonStateChangedAction_withoutNavigationToolbar_returnsExpectedState() {
-        setupStore(with: initialToolbarState(isShowingNavigationToolbar: false))
-        let initialState = createSubject()
-        let reducer = addressBarReducer()
-
-        let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
-        let newState = reducer(
-            urlDidChangeState,
-            ToolbarAction(
-                canGoBack: true,
-                canGoForward: false,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.backForwardButtonStateChanged
-            )
-        )
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 2)
-        XCTAssertEqual(newState.navigationActions[0].actionType, .back)
-        XCTAssertEqual(newState.navigationActions[0].isEnabled, true)
-        XCTAssertEqual(newState.navigationActions[1].actionType, .forward)
-        XCTAssertEqual(newState.navigationActions[1].isEnabled, false)
-    }
-
-    func test_traitCollectionDidChangedAction_returnsExpectedState() {
-        setupStore()
-        let initialState = createSubject()
-        let reducer = addressBarReducer()
-
-        // iPhone in landscape
-        let newState = reducer(
+        let stateWithInactiveIcon = reducer.legacyReducer(
             initialState,
-            ToolbarAction(
-                isShowingNavigationToolbar: false,
-                isShowingTopTabs: false,
+            TranslationsAction(
+                translationConfiguration: TranslationConfiguration(prefs: mockProfile.prefs, state: .inactive),
                 windowUUID: windowUUID,
-                actionType: ToolbarActionType.traitCollectionDidChange
+                actionType: TranslationsActionType.receivedTranslationLanguage
             )
         )
 
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 2)
-        XCTAssertEqual(newState.navigationActions[0].actionType, .back)
-        XCTAssertEqual(newState.navigationActions[1].actionType, .forward)
+        let newState = reducer.legacyReducer(
+            stateWithInactiveIcon,
+            ToolbarAction(
+                url: URL(string: "http://mozilla.com"),
+                translationConfiguration: TranslationConfiguration(prefs: mockProfile.prefs, state: .active),
+                windowUUID: windowUUID,
+                actionType: ToolbarActionType.urlDidChange
+            )
+        )
 
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-
-        XCTAssertEqual(newState.browserActions.count, 2)
-        XCTAssertEqual(newState.browserActions[0].actionType, .menu)
-        XCTAssertEqual(newState.browserActions[1].actionType, .tabs)
-
-        XCTAssertEqual(newState.searchTerm, nil)
+        XCTAssertEqual(newState.translationConfiguration?.state, .active)
     }
 
-    func test_showMenuWarningBadgeAction_withoutNavToolbar_returnsExpectedState() {
-        setupStore(with: initialToolbarState(isShowingNavigationToolbar: false))
+    /// urlDidChange with nil config preserves existing Redux state.
+    func test_urlDidChangeAction_withNilActionConfig_preservesExistingTranslationConfig() {
+        setTranslationsFeatureEnabled(enabled: true)
+        setupStore()
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let stateWithInactiveIcon = reducer.legacyReducer(
             initialState,
-            ToolbarAction(
-                showMenuWarningBadge: true,
+            TranslationsAction(
+                translationConfiguration: TranslationConfiguration(prefs: mockProfile.prefs, state: .inactive),
                 windowUUID: windowUUID,
-                actionType: ToolbarActionType.showMenuWarningBadge
+                actionType: TranslationsActionType.receivedTranslationLanguage
             )
         )
 
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 2)
-        XCTAssertEqual(newState.navigationActions[0].actionType, .back)
-        XCTAssertEqual(newState.navigationActions[1].actionType, .forward)
+        let newState = reducer.legacyReducer(
+            stateWithInactiveIcon,
+            ToolbarAction(
+                url: URL(string: "http://mozilla.com"),
+                windowUUID: windowUUID,
+                actionType: ToolbarActionType.urlDidChange
+            )
+        )
 
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
+        XCTAssertEqual(newState.translationConfiguration?.state, .inactive)
+    }
 
-        XCTAssertEqual(newState.browserActions.count, 2)
-        XCTAssertEqual(newState.browserActions[0].actionType, .menu)
-        XCTAssertNotNil(newState.browserActions[0].badgeImageName)
-        XCTAssertNotNil(newState.browserActions[0].maskImageName)
-        XCTAssertEqual(newState.browserActions[1].actionType, .tabs)
+    /// urlDidChange with default config (non-nil, state=nil) clears previous tab's Redux state.
+    func test_urlDidChangeAction_withDefaultActionConfig_clearsPreviousTabState() {
+        setTranslationsFeatureEnabled(enabled: true)
+        setupStore()
+        let initialState = createSubject()
+        let reducer = addressBarReducer()
 
-        XCTAssertEqual(newState.searchTerm, nil)
+        // Simulate the previous tab's `.active` state still in Redux at the moment of switch.
+        let stateWithActiveIcon = reducer.legacyReducer(
+            initialState,
+            TranslationsAction(
+                translationConfiguration: TranslationConfiguration(
+                    prefs: mockProfile.prefs,
+                    state: .active,
+                    translatedToLanguage: "fr"
+                ),
+                windowUUID: windowUUID,
+                actionType: TranslationsActionType.translationCompleted
+            )
+        )
+
+        // Switching to a fresh tab dispatches urlDidChange with a default config (no state).
+        let newState = reducer.legacyReducer(
+            stateWithActiveIcon,
+            ToolbarAction(
+                url: URL(string: "http://mozilla.com"),
+                translationConfiguration: TranslationConfiguration(prefs: mockProfile.prefs),
+                windowUUID: windowUUID,
+                actionType: ToolbarActionType.urlDidChange
+            )
+        )
+
+        XCTAssertNil(newState.translationConfiguration?.state)
+        XCTAssertNil(newState.translationConfiguration?.translatedToLanguage)
     }
 
     func test_borderPositionChangedAction_returnsExpectedState() {
@@ -362,7 +279,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
                 addressBorderPosition: .bottom,
@@ -380,7 +297,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
                 toolbarPosition: .bottom,
@@ -401,26 +318,16 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let reducer = addressBarReducer()
         let searchTerm = "mozilla"
 
-        let newState = reducer(
+        let newState = reducer.modernReducer(
             initialState,
-            ToolbarAction(
-                searchTerm: searchTerm,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.didPasteSearchTerm
-            )
+            ToolbarModernAction.didPasteSearchTerm(searchTerm: searchTerm),
+            windowUUID
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 0)
-
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
-        XCTAssertEqual(newState.browserActions.count, 1)
-        XCTAssertEqual(newState.browserActions[0].actionType, .cancelEdit)
 
         XCTAssertEqual(newState.searchTerm, searchTerm)
         XCTAssertTrue(newState.isEditing)
-        XCTAssertTrue(newState.shouldShowKeyboard)
         XCTAssertFalse(newState.shouldSelectSearchTerm)
         XCTAssertFalse(newState.didStartTyping)
         XCTAssertFalse(newState.isEmptySearch)
@@ -431,7 +338,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
                 searchTerm: nil,
@@ -441,12 +348,6 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 0)
-
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
-        XCTAssertEqual(newState.browserActions.count, 1)
-        XCTAssertEqual(newState.browserActions[0].actionType, .cancelEdit)
 
         XCTAssertEqual(newState.searchTerm, nil)
         XCTAssertTrue(newState.isEditing)
@@ -462,7 +363,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let reducer = addressBarReducer()
 
         let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             urlDidChangeState,
             ToolbarAction(
                 searchTerm: nil,
@@ -472,12 +373,6 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 0)
-
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
-        XCTAssertEqual(newState.browserActions.count, 1)
-        XCTAssertEqual(newState.browserActions[0].actionType, .cancelEdit)
 
         XCTAssertEqual(newState.searchTerm, nil)
         XCTAssertTrue(newState.isEditing)
@@ -485,6 +380,144 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         XCTAssertTrue(newState.shouldSelectSearchTerm)
         XCTAssertFalse(newState.didStartTyping)
         XCTAssertFalse(newState.isEmptySearch)
+    }
+
+    func test_lockIconChangedAction_returnsExpectedState() {
+        setupStore()
+        let initialState = createSubject()
+        let reducer = addressBarReducer()
+
+        let newState = reducer.modernReducer(
+            initialState,
+            ToolbarModernAction.lockIconChanged(hasOnlySecureContent: true, isWebsiteMode: true),
+            windowUUID
+        )
+
+        XCTAssertEqual(newState.windowUUID, windowUUID)
+        XCTAssertEqual(newState.hasOnlySecureContent, true)
+        XCTAssertTrue(newState.isWebsiteMode)
+    }
+
+    func test_urlDidChangeAction_withLockIconInputs_returnsExpectedState() {
+        setupStore()
+        let initialState = createSubject()
+        let reducer = addressBarReducer()
+
+        let newState = reducer.legacyReducer(
+            initialState,
+            ToolbarAction(
+                url: URL(string: "http://mozilla.com"),
+                hasOnlySecureContent: false,
+                isWebsiteMode: true,
+                windowUUID: windowUUID,
+                actionType: ToolbarActionType.urlDidChange
+            )
+        )
+
+        XCTAssertEqual(newState.hasOnlySecureContent, false)
+        XCTAssertTrue(newState.isWebsiteMode)
+    }
+
+    func test_urlDidChangeAction_withoutLockIconInputs_keepsPreviousValues() {
+        setupStore()
+        let reducer = addressBarReducer()
+        let secureState = reducer.modernReducer(
+            createSubject(),
+            ToolbarModernAction.lockIconChanged(hasOnlySecureContent: true, isWebsiteMode: true),
+            windowUUID
+        )
+
+        let newState = reducer.legacyReducer(
+            secureState,
+            ToolbarAction(
+                url: URL(string: "http://mozilla.com"),
+                windowUUID: windowUUID,
+                actionType: ToolbarActionType.urlDidChange
+            )
+        )
+
+        XCTAssertEqual(newState.hasOnlySecureContent, true)
+        XCTAssertTrue(newState.isWebsiteMode)
+    }
+
+    func test_userDidScrollAction_returnsExpectedState() {
+        setupStore()
+        let initialState = ToolbarState(windowUUID: windowUUID)
+        let reducer = ToolbarState.reducer
+
+        let newState = reducer.modernReducer(
+            initialState,
+            ToolbarModernAction.userDidScroll(minimizeAddressBar: true),
+            windowUUID
+        )
+
+        XCTAssertEqual(newState.windowUUID, windowUUID)
+        XCTAssertEqual(newState.isAddressBarMinimized, true)
+        XCTAssertNotEqual(initialState.isAddressBarMinimized, newState.isAddressBarMinimized)
+    }
+
+    func test_keyboardDidHideAction_returnsExpectedState() {
+        setupStore()
+        var initialState = ToolbarState(windowUUID: windowUUID)
+        let reducer = ToolbarState.reducer
+
+        // Minimize toolbar first
+        initialState = reducer.modernReducer(
+            initialState,
+            ToolbarModernAction.userDidScroll(minimizeAddressBar: true),
+            windowUUID
+        )
+        XCTAssertEqual(initialState.isAddressBarMinimized, true)
+
+        let newState = reducer.modernReducer(
+            initialState,
+            ToolbarModernAction.keyboardDidHide,
+            windowUUID
+        )
+
+        XCTAssertEqual(newState.windowUUID, windowUUID)
+        XCTAssertEqual(newState.isAddressBarMinimized, false)
+        XCTAssertNotEqual(initialState.isAddressBarMinimized, newState.isAddressBarMinimized)
+    }
+
+    func test_accessoryViewVisibilityChangedAction_whenVisible_returnsExpectedState() {
+        setupStore()
+        let initialState = ToolbarState(windowUUID: windowUUID)
+        let reducer = ToolbarState.reducer
+
+        let newState = reducer.modernReducer(
+            initialState,
+            ToolbarModernAction.accessoryViewVisibilityChanged(isVisible: true),
+            windowUUID
+        )
+
+        XCTAssertEqual(newState.windowUUID, windowUUID)
+        XCTAssertEqual(newState.isAccessoryViewVisible, true)
+        XCTAssertEqual(newState.isAddressBarMinimized, true)
+        XCTAssertNotEqual(initialState.isAddressBarMinimized, newState.isAddressBarMinimized)
+    }
+
+    func test_accessoryViewVisibilityChangedAction_whenNotVisible_doesNotRestoreMinimizedState() {
+        setupStore()
+        var initialState = ToolbarState(windowUUID: windowUUID)
+        let reducer = ToolbarState.reducer
+
+        // Minimize the toolbar first, independently of the accessory view
+        initialState = reducer.modernReducer(
+            initialState,
+            ToolbarModernAction.userDidScroll(minimizeAddressBar: true),
+            windowUUID
+        )
+
+        let newState = reducer.modernReducer(
+            initialState,
+            ToolbarModernAction.accessoryViewVisibilityChanged(isVisible: false),
+            windowUUID
+        )
+
+        XCTAssertEqual(newState.windowUUID, windowUUID)
+        XCTAssertEqual(newState.isAccessoryViewVisible, false)
+        XCTAssertEqual(newState.isAddressBarMinimized, true)
     }
 
     func test_cancelEditOnHomepageAction_withURL_returnsExpectedState() {
@@ -496,14 +529,12 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
                                                actionType: ToolbarActionType.urlDidChange
         )
 
-        let stateWithURL = reducer(initialState, didChangeURLAction)
+        let stateWithURL = reducer.legacyReducer(initialState, didChangeURLAction)
 
-        let newState = reducer(
+        let newState = reducer.modernReducer(
             stateWithURL,
-            ToolbarAction(
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.cancelEditOnHomepage
-            )
+            ToolbarModernAction.cancelEditOnHomepage,
+            windowUUID
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
@@ -516,17 +547,15 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.modernReducer(
             initialState,
-            ToolbarAction(
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.cancelEditOnHomepage
-            )
+            ToolbarModernAction.cancelEditOnHomepage,
+            windowUUID
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
         XCTAssertFalse(newState.isEditing)
-        XCTAssertTrue(newState.shouldShowKeyboard)
+        XCTAssertFalse(newState.shouldShowKeyboard)
     }
 
     func test_cancelEditAction_withWebsite_returnsExpectedState() {
@@ -535,7 +564,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let reducer = addressBarReducer()
 
         let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             urlDidChangeState,
             ToolbarAction(
                 searchTerm: nil,
@@ -545,17 +574,10 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 0)
-
-        XCTAssertEqual(newState.trailingPageActions.count, 1)
-        XCTAssertEqual(newState.trailingPageActions[0].actionType, .reload)
-
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-        XCTAssertEqual(newState.browserActions.count, 0)
 
         XCTAssertEqual(newState.searchTerm, nil)
         XCTAssertFalse(newState.isEditing)
-        XCTAssertTrue(newState.shouldShowKeyboard)
+        XCTAssertFalse(newState.shouldShowKeyboard)
         XCTAssertFalse(newState.shouldSelectSearchTerm)
         XCTAssertFalse(newState.didStartTyping)
         XCTAssertFalse(newState.isEmptySearch)
@@ -567,7 +589,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         let reducer = addressBarReducer()
         let searchTerm = "mozilla"
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
                 searchTerm: searchTerm,
@@ -577,125 +599,144 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.navigationActions.count, 0)
-        XCTAssertEqual(newState.leadingPageActions.count, 0)
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
-        XCTAssertEqual(newState.browserActions.count, 1)
-        XCTAssertEqual(newState.browserActions[0].actionType, .cancelEdit)
 
         XCTAssertEqual(newState.searchTerm, searchTerm)
         XCTAssertTrue(newState.isEditing)
-        XCTAssertFalse(newState.shouldShowKeyboard)
+        XCTAssertTrue(newState.shouldShowKeyboard)
         XCTAssertFalse(newState.shouldSelectSearchTerm)
         XCTAssertFalse(newState.didStartTyping)
         XCTAssertFalse(newState.isEmptySearch)
 }
 
-    func test_hideKeyboardAction_returnsExpectedState() {
+    func test_keyboardRequestChangeAction_whenHiding_returnsExpectedState() {
         setupStore()
-        let initialState = createSubject()
+        let initialState = createSubject().copy(shouldShowKeyboard: true)
         let reducer = addressBarReducer()
 
         XCTAssertTrue(initialState.shouldShowKeyboard)
 
-        let newState = reducer(
+        let newState = reducer.modernReducer(
             initialState,
-            ToolbarAction(
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.hideKeyboard
-            )
+            ToolbarModernAction.didKeyboardRequestChange(shouldShow: false),
+            windowUUID
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
         XCTAssertFalse(newState.shouldShowKeyboard)
     }
 
-    func test_clearSearchAction_returnsExpectedState() {
-        let initialState = createSubject()
+    func test_keyboardRequestChangeAction_whenShowing_returnsExpectedState() {
+        setupStore()
+        let initialState = createSubject().copy(shouldShowKeyboard: false)
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        XCTAssertFalse(initialState.shouldShowKeyboard)
+
+        let newState = reducer.modernReducer(
             initialState,
-            ToolbarAction(
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.clearSearch
-            )
+            ToolbarModernAction.didKeyboardRequestChange(shouldShow: true),
+            windowUUID
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
+        XCTAssertTrue(newState.shouldShowKeyboard)
+    }
 
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
+    /// Regression test for FXIOS-16741: scrolling the homepage while still editing hides the
+    /// keyboard (`cancelEditOnHomepage`) but must not permanently leave `shouldShowKeyboard` at
+    /// `false`, once the keyboard genuinely finishes presenting again while still editing
+    /// (`BrowserViewController.keyboardHelper(_:keyboardDidShowWithState:)` dispatches
+    /// `didKeyboardRequestChange(shouldShow: true)`), it must be restored.
+    func test_cancelEditOnHomepageThenKeyboardDidShow_restoresShouldShowKeyboard() {
+        setupStore()
+        let initialState = createSubject()
+        let reducer = addressBarReducer()
 
+        let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
+        let editingState = reducer.legacyReducer(
+            urlDidChangeState,
+            ToolbarAction(
+                searchTerm: nil,
+                windowUUID: windowUUID,
+                actionType: ToolbarActionType.didStartEditingUrl
+            )
+        )
+        XCTAssertTrue(editingState.isEditing)
+        XCTAssertTrue(editingState.shouldShowKeyboard)
+
+        let scrolledState = reducer.modernReducer(
+            editingState,
+            ToolbarModernAction.cancelEditOnHomepage,
+            windowUUID
+        )
+        XCTAssertTrue(scrolledState.isEditing)
+        XCTAssertFalse(scrolledState.shouldShowKeyboard)
+
+        let resumedState = reducer.modernReducer(
+            scrolledState,
+            ToolbarModernAction.didKeyboardRequestChange(shouldShow: true),
+            windowUUID
+        )
+
+        XCTAssertTrue(resumedState.isEditing)
+        XCTAssertTrue(resumedState.shouldShowKeyboard)
+    }
+
+    func test_searchTermDidClearAction_returnsExpectedState() {
+        let initialState = createSubject().copy(searchTerm: "text").copy(isEmptySearch: false)
+        let reducer = addressBarReducer()
+
+        let newState = reducer.modernReducer(
+            initialState,
+            ToolbarModernAction.searchTermDidClear,
+            windowUUID
+        )
+
+        XCTAssertEqual(newState.windowUUID, windowUUID)
+        XCTAssertNil(newState.searchTerm)
         XCTAssertTrue(newState.isEditing)
         XCTAssertTrue(newState.isEmptySearch)
     }
 
-    func test_didDeleteSearchTermAction_returnsExpectedState() {
+    func test_searchTermDidChangeAction_whenEmpty_returnsExpectedState() {
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.modernReducer(
             initialState,
-            ToolbarAction(
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.didDeleteSearchTerm
-            )
+            ToolbarModernAction.searchTermDidChange(isEmpty: true),
+            windowUUID
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
-
         XCTAssertTrue(newState.isEditing)
         XCTAssertTrue(newState.didStartTyping)
         XCTAssertTrue(newState.isEmptySearch)
         XCTAssertFalse(newState.shouldSelectSearchTerm)
     }
 
-    func test_didEnterSearchTermAction_returnsExpectedState() {
+    func test_searchTermDidChangeAction_whenNotEmpty_returnsExpectedState() {
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.modernReducer(
             initialState,
-            ToolbarAction(
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.didEnterSearchTerm
-            )
+            ToolbarModernAction.searchTermDidChange(isEmpty: false),
+            windowUUID
         )
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.trailingPageActions.count, 0)
         XCTAssertTrue(newState.isEditing)
         XCTAssertTrue(newState.didStartTyping)
         XCTAssertFalse(newState.isEmptySearch)
         XCTAssertFalse(newState.shouldSelectSearchTerm)
-    }
-
-    func test_didSetSearchTermAction_returnsExpectedState() {
-        let initialState = createSubject()
-        let reducer = addressBarReducer()
-        let searchTerm = "Search Term"
-
-        let newState = reducer(
-            initialState,
-            ToolbarAction(
-                searchTerm: searchTerm,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.didSetSearchTerm
-            )
-        )
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.searchTerm, searchTerm)
-        XCTAssertFalse(newState.didStartTyping)
     }
 
     func test_didStartTypingAction_returnsExpectedState() {
         let initialState = createSubject()
         let reducer = addressBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
                 windowUUID: windowUUID,
@@ -721,7 +762,7 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
                                    isShowingNavigationToolbar: Bool = true,
                                    reducer: Reducer<AddressBarState>
     ) -> AddressBarState {
-        return reducer(
+        return reducer.legacyReducer(
             state,
             ToolbarAction(
                 url: URL(string: "http://mozilla.com"),
@@ -729,7 +770,8 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
                 isShowingNavigationToolbar: isShowingNavigationToolbar,
                 canGoBack: true,
                 canGoForward: false,
-                lockIconImageName: StandardImageIdentifiers.Large.lockFill,
+                hasOnlySecureContent: true,
+                isWebsiteMode: true,
                 safeListedURLImageName: nil,
                 windowUUID: windowUUID,
                 actionType: ToolbarActionType.urlDidChange
@@ -737,56 +779,29 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
         )
     }
 
-    // MARK: Helper
-    func setupAppState(with initialToolbarState: ToolbarState) -> AppState {
-        return AppState(
-            activeScreens: ActiveScreensState(
-                screens: [
-                    .browserViewController(
-                        BrowserViewControllerState(
-                            windowUUID: windowUUID
-                        )
-                    ),
-                    .toolbar(initialToolbarState)
-                ]
-            )
-        )
+    private func setIsHostedSummarizerFeatureEnabled(enabled: Bool) {
+        FxNimbus.shared.features.hostedSummarizerFeature.with { _ in
+            return HostedSummarizerFeature(enabled: enabled, toolbarEntrypoint: enabled)
+        }
     }
 
-    func setupStore(with initialToolbarState: ToolbarState) {
-        StoreTestUtilityHelper.setupStore(
-            with: setupAppState(with: initialToolbarState),
-            middlewares: [ToolbarMiddleware().toolbarProvider]
-        )
+    private func setIsSummarizerLanguageExpansionEnabled(enabled: Bool) {
+        FxNimbus.shared.features.summarizerLanguageExpansionFeature.with { _ in
+            return SummarizerLanguageExpansionFeature(enabled: enabled)
+        }
     }
 
-    func initialToolbarState(isShowingNavigationToolbar: Bool) -> ToolbarState {
-        let toolbarState = ToolbarState(windowUUID: windowUUID)
-        return ToolbarState(
-            windowUUID: windowUUID,
-            toolbarPosition: toolbarState.toolbarPosition,
-            toolbarLayout: toolbarState.toolbarLayout,
-            isPrivateMode: toolbarState.isPrivateMode,
-            addressToolbar: toolbarState.addressToolbar,
-            navigationToolbar: toolbarState.navigationToolbar,
-            isShowingNavigationToolbar: isShowingNavigationToolbar,
-            isShowingTopTabs: toolbarState.isShowingTopTabs,
-            canGoBack: toolbarState.canGoBack,
-            canGoForward: toolbarState.canGoForward,
-            numberOfTabs: toolbarState.numberOfTabs,
-            showMenuWarningBadge: toolbarState.showMenuWarningBadge,
-            isNewTabFeatureEnabled: toolbarState.isNewTabFeatureEnabled,
-            canShowDataClearanceAction: toolbarState.canShowDataClearanceAction,
-            canShowNavigationHint: toolbarState.canShowNavigationHint,
-            shouldAnimate: toolbarState.shouldAnimate,
-            isTranslucent: toolbarState.isTranslucent)
+    private func setTranslationsFeatureEnabled(enabled: Bool) {
+        FxNimbus.shared.features.translationsFeature.with { _ in
+            return TranslationsFeature(enabled: enabled)
+        }
     }
 
     // MARK: StoreTestUtility
     func setupAppState() -> AppState {
         return AppState(
-            activeScreens: ActiveScreensState(
-                screens: [
+            presentedComponents: PresentedComponentsState(
+                components: [
                     .browserViewController(
                         BrowserViewControllerState(
                             windowUUID: windowUUID
@@ -800,18 +815,5 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
                 ]
             )
         )
-    }
-
-    func setupStore() {
-        StoreTestUtilityHelper.setupStore(
-            with: setupAppState(),
-            middlewares: [ToolbarMiddleware().toolbarProvider]
-        )
-    }
-
-    // In order to avoid flaky tests, we should reset the store
-    // similar to production
-    func resetStore() {
-        StoreTestUtilityHelper.resetStore()
     }
 }

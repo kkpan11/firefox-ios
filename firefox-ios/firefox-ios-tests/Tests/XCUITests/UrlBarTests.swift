@@ -2,73 +2,248 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import Common
 import Foundation
 import XCTest
 
 class UrlBarTests: BaseTestCase {
+    private var browserScreen: BrowserScreen!
+    private var toolbarScreen: ToolbarScreen!
+    private var mainMenuScreen: MainMenuScreen!
+    private var tabTrayScreen: TabTrayScreen!
+    private var settingScreen: SettingScreen!
+    private var homePageScreen: HomePageScreen!
+
+    override func setUp() async throws {
+        if name.contains("testSearchEngineLogo") {
+            // The engine is verified through the host shown in the address bar
+            launchArguments += [
+                "\(LaunchArguments.LoadExperiment)searchTermInAddressBarOff",
+                "\(LaunchArguments.ExperimentFeatureName)toolbar-refactor-feature"
+            ]
+        }
+        try await super.setUp()
+        browserScreen = BrowserScreen(app: app)
+        toolbarScreen = ToolbarScreen(app: app)
+        mainMenuScreen = MainMenuScreen(app: app)
+        tabTrayScreen = TabTrayScreen(app: app)
+        settingScreen = SettingScreen(app: app)
+        homePageScreen = HomePageScreen(app: app)
+    }
+
     // https://mozilla.testrail.io/index.php?/cases/view/2306888
+    // Regression
     func testNewTabUrlBar() {
         // Visit any website and select the URL bar
-        navigator.openURL("http://localhost:\(serverPort)/test-fixture/find-in-page-test.html")
+        browserScreen.navigateToURL("http://localhost:\(serverPort)/test-fixture/\(TestPages.findInPage)")
         waitUntilPageLoad()
-        app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField].waitAndTap()
+        browserScreen.tapOnAddressBar()
         // The keyboard is brought up.
-        XCTAssertTrue(urlBarAddress.value(forKey: "hasKeyboardFocus") as? Bool ?? false)
-        // Scroll on the page
-        app.swipeUp()
-        // The keyboard is dismissed
-        XCTAssertFalse(urlBarAddress.value(forKey: "hasKeyboardFocus") as? Bool ?? true)
+        browserScreen.assertAddressBarHasKeyboardFocus()
+        // Tap cancel button
+        browserScreen.tapCancelButtonOnUrlBarExist()
+        // The keyboard is dismissed and edit mode is fully left
+        browserScreen.assertAddressBarLeftEditMode()
+        // The address bar is still usable afterwards
+        browserScreen.assertAddressBarRegainsKeyboardFocus()
+        browserScreen.tapCancelButtonOnUrlBarExist()
+        browserScreen.assertAddressBarLeftEditMode()
         // Select the tab tray and add a new tab
-        navigator.goto(TabTray)
-        navigator.performAction(Action.OpenNewTabFromTabTray)
+        waitForTabsButton()
+        toolbarScreen.tapOnTabsButton()
+        tabTrayScreen.tapOnNewTabButton()
         // The URL bar is empty on the new tab
-        let url = app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField]
-        XCTAssertEqual(url.value as? String, "Search or enter address")
+        browserScreen.assertAddressBarContains(value: "Search or enter address")
     }
 
     // https://mozilla.testrail.io/index.php?/cases/view/2306887
+    // Regression
     func testSearchEngineLogo() {
         tapUrlBarValidateKeyboardAndIcon()
         // Type a search term and hit "go"
         typeSearchTermAndHitGo(searchTerm: "Firefox")
-        // The search is conducted correctly trough the default search engine
-        mozWaitForValueContains(app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField], value: "google.com")
-        // Add a custom search engine and add it as default search engine
-        navigator.goto(SearchSettings)
+        // The search is conducted correctly through the default search engine
+        browserScreen.assertAddressBarContains(value: "google.com")
+        // Navigate to SearchSettings
+        toolbarScreen.tapSettingsMenuButton()
+        mainMenuScreen.tapSettings()
+        settingScreen.navigateToSearchSettings()
+        // Change default search engine
         let defaultSearchEngine = app.tables.cells.element(boundBy: 0)
         mozWaitForElementToExist(app.tables.cells.staticTexts[defaultSearchEngine1])
         defaultSearchEngine.waitAndTap()
         app.tables.staticTexts[defaultSearchEngine2].waitAndTap()
         mozWaitForElementToExist(app.tables.cells.staticTexts[defaultSearchEngine2])
-        navigator.goto(SettingsScreen)
-        app.navigationBars.buttons["Done"].waitAndTap()
-        if iPad() {
-            app.buttons[AccessibilityIdentifiers.Toolbar.addNewTabButton].waitAndTap()
-        } else {
-            app.buttons[AccessibilityIdentifiers.Toolbar.homeButton].waitAndTap()
-        }
+		// Close settings and add a new tab
+        settingScreen.tapBackToSettings()
+        settingScreen.closeSettingsWithDoneButton()
+        toolbarScreen.tapOnNewTabButton()
         tapUrlBarValidateKeyboardAndIcon()
+        // Type a search term and hit "go"
         typeSearchTermAndHitGo(searchTerm: "Firefox")
-        // The search is conducted correctly trough the default search engine
-        mozWaitForValueContains(app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField], value: "bing.com")
+        // The search is conducted correctly through the default search engine
+        browserScreen.assertAddressBarContains(value: "bing.com")
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3167400
+    // https://mozilla.testrail.io/index.php?/cases/view/3167424
+    // Regression
+    func testCopyURLFromAddressBar() {
+        // A decoy on the pasteboard makes the assertion meaningful: if "Copy Address" silently does
+        // nothing, the paste below yields the decoy instead of the page URL and the test fails.
+        UIPasteboard.general.string = "decoy-clipboard-contents"
+
+        // Open a website
+        browserScreen.navigateToURL(urlExample)
+        waitUntilPageLoad()
+
+        // Long press the URL in the toolbar and copy it
+        browserScreen.longPressAddressBar()
+        browserScreen.tapContextMenuCopyAddress()
+
+        // Open a new tab and paste the previously copied URL
+        waitForTabsButton()
+        toolbarScreen.tapOnTabsButton()
+        tabTrayScreen.tapOnNewTabButton()
+
+        // The URL is pasted without issues
+        browserScreen.pasteAndAssertAddressBarContains(urlValueLongExample)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3167548
+    // Regression
+    func testClearTextInAddressBar() {
+        // Tap on the address bar of a new tab
+        browserScreen.tapOnAddressBar()
+        browserScreen.assertAddressBarHasKeyboardFocus()
+
+        // Start typing a search query
+        browserScreen.typeOnSearchBar(text: "mozilla")
+        browserScreen.assertAddressBarContains(value: "mozilla")
+
+        // Tap the X button in the address bar
+        browserScreen.clearURL()
+
+        // The text is removed from the address bar, and it stays in edit mode so the user can keep
+        // typing without tapping again.
+        browserScreen.assertAddressBarContains(value: "Search or enter address")
+        browserScreen.assertAddressBarHasKeyboardFocus()
+
+        // Start typing a search query again
+        browserScreen.typeOnSearchBar(text: "firefox")
+        browserScreen.assertAddressBarContains(value: "firefox")
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3279353
+    // Regression
+    func testEditURLInAddressBar() {
+        // Open a website
+        browserScreen.navigateToURL(urlExample)
+        waitUntilPageLoad()
+        browserScreen.assertExampleDomainTextExists()
+
+        // Unfocused, the toolbar shows only the domain
+        browserScreen.assertAddressBarValueEquals(urlValueLong)
+
+        // Tap on the URL bar: the full URL has to be handed over for editing, otherwise the user
+        // cannot edit anything but the domain.
+        browserScreen.tapOnAddressBar()
+        browserScreen.assertAddressBarContains(value: urlValueLongExample)
+
+        // Edit the URL and submit it. Tapping the address bar leaves the URL selected, so typing
+        // replaces it.
+        browserScreen.typeOnSearchBar(text: path(forTestPage: TestPages.mozillaBook))
+        browserScreen.typeOnSearchBar(text: "\r")
+        waitUntilPageLoad()
+
+        // The webpage is correctly loaded with the newly edited website
+        XCTAssertTrue(browserScreen.bookOfMozillaPageContentExists(), "The edited URL did not load")
+        browserScreen.assertAddressBarValueEquals(urlValueLong)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3167399
+    // Regression
+    func testTappingAddressBarFromWebsite() {
+        let websiteURL = "localhost:\(serverPort)/test-fixture/\(TestPages.mozillaBook)"
+
+        // Step 1: open a website
+        browserScreen.navigateToURL(path(forTestPage: TestPages.mozillaBook))
+        waitUntilPageLoad()
+        XCTAssertTrue(browserScreen.bookOfMozillaPageContentExists(), "The website did not load")
+
+        // Step 2: tapping the address bar shows the URL, the X button and the keyboard
+        tapAddressBarAndAssertURLIsReadyToEdit(websiteURL)
+
+        // Step 3: the X button clears the URL and the address bar stays focused with the keyboard up
+        browserScreen.clearURL()
+        browserScreen.assertAddressBarContains(value: "Search or enter address")
+        browserScreen.assertAddressBarFocusedWithKeyboard()
+
+        // Step 4: with the URL selected again, typing replaces it and shows the X button and suggestions.
+        browserScreen.tapCancelButtonOnUrlBarExist()
+        tapAddressBarAndAssertURLIsReadyToEdit(websiteURL)
+        browserScreen.typeOnSearchBar(text: "localhost")
+        browserScreen.assertAddressBarReplaced(websiteURL, byTyping: "localhost")
+        browserScreen.assertClearButtonExists()
+        browserScreen.assertSuggestionRow(titled: TestLabels.mozillaBook)
+    }
+
+    // https://mozilla.testrail.io/index.php?/cases/view/3167407
+    // Regression
+    func testHomepageAndNewTabButtonsFromWebsite() throws {
+        guard !iPad() else {
+            throw XCTSkip("The navigation toolbar middle button cannot be configured on iPad")
+        }
+        // Step 1: open a website
+        openMozillaBookFromNewTab()
+
+        // Step 2 (1): the default "+" middle button creates a new tab
+        toolbarScreen.tapOnNewTabButton()
+        homePageScreen.assertHomepageIsDisplayed()
+        toolbarScreen.assertTabsButtonValue(expectedCount: "2", message: "The + button did not open a new tab")
+        // The new tab focuses the address bar, and the keyboard hides the toolbar's menu button
+        browserScreen.tapCancelButtonOnUrlBarExist()
+
+        // Step 2 (2): with the Home middle button, the homepage opens on the same tab
+        navigator.nowAt(NewTabScreen)
+        navigator.goto(SettingsScreen)
+        settingScreen.navigateToToolbarSettings()
+        settingScreen.selectNavigationToolbarMiddleButton(.home)
+        settingScreen.tapBackToSettings()
+        settingScreen.closeSettingsWithDoneButton()
+        openMozillaBookFromNewTab()
+        toolbarScreen.tapHomeButton()
+        homePageScreen.assertHomepageIsDisplayed()
+        toolbarScreen.assertTabsButtonValue(expectedCount: "2", message: "The Home button opened a new tab")
+    }
+
+    private func openMozillaBookFromNewTab() {
+        navigator.nowAt(NewTabScreen)
+        navigator.openURL(path(forTestPage: TestPages.mozillaBook))
+        waitUntilPageLoad()
+        waitForTabsButton()
+        XCTAssertTrue(browserScreen.bookOfMozillaPageContentExists(), "The website did not load")
+    }
+
+    /// Tapping the address bar of a loaded page hands over the full URL, selected, for editing.
+    private func tapAddressBarAndAssertURLIsReadyToEdit(_ url: String) {
+        browserScreen.tapOnAddressBar()
+        browserScreen.assertAddressBarContains(value: url)
+        browserScreen.assertClearButtonExists()
+        browserScreen.assertAddressBarFocusedWithKeyboard()
     }
 
     private func tapUrlBarValidateKeyboardAndIcon() {
         // Tap on the URL bar
         waitForTabsButton()
-        app.textFields[AccessibilityIdentifiers.Browser.AddressToolbar.searchTextField].waitAndTap()
+        browserScreen.tapOnAddressBar()
         // The keyboard pops up and the default search icon is correctly displayed in the URL bar
-        XCTAssertTrue(urlBarAddress.value(forKey: "hasKeyboardFocus") as? Bool ?? false)
-        let keyboardCount = app.keyboards.count
-        XCTAssert(keyboardCount > 0, "The keyboard is not shown")
-        let searchEngineLogo = app.images[AccessibilityIdentifiers.Browser.AddressToolbar.searchEngine]
-        mozWaitForElementToExist(searchEngineLogo)
-        XCTAssertTrue(searchEngineLogo.isLeftOf(rightElement: urlBarAddress))
+        browserScreen.assertAddressBarHasKeyboardFocus()
+        browserScreen.assertSearchEngineLogoExists()
     }
 
     private func typeSearchTermAndHitGo(searchTerm: String) {
-        urlBarAddress.typeText(searchTerm)
-        waitUntilPageLoad()
+		browserScreen.typeOnSearchBar(text: searchTerm)
         app.buttons["Go"].waitAndTap()
     }
 }

@@ -9,31 +9,55 @@ import XCTest
 @testable import Client
 
 final class RemoteTabPanelTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
-        DependencyHelperMock().bootstrapDependencies()
+    override func setUp() async throws {
+        try await super.setUp()
+        await DependencyHelperMock().bootstrapDependencies()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
+        try await super.tearDown()
     }
 
+    @MainActor
     func testTableView_emptyStateNoRows() {
         let remotePanel = createSubject(state: generateEmptyState())
-        let tableView = remotePanel.tableViewController.tableView
+        let tableView = remotePanel.tabsDisplayViewController.tableView
 
         XCTAssertNotNil(tableView)
-        XCTAssertEqual(tableView!.numberOfSections, 0)
+        XCTAssertEqual(tableView.numberOfSections, 0)
     }
 
+    @MainActor
     func testTableView_oneClientTwoRows() {
         let remotePanel = createSubject(state: generateStateOneClientTwoTabs())
-        let tableView = remotePanel.tableViewController.tableView
+        let tableView = remotePanel.tabsDisplayViewController.tableView
 
         XCTAssertNotNil(tableView)
-        XCTAssertEqual(tableView!.numberOfSections, 1)
-        XCTAssertEqual(tableView!.numberOfRows(inSection: 0), 2)
+        XCTAssertEqual(tableView.numberOfSections, 1)
+        XCTAssertEqual(tableView.numberOfRows(inSection: 0), 2)
+    }
+
+    @MainActor
+    func testNewState_whenOnlyContentStateChanges_reloadsTableView() {
+        let tabsState = generateStateOneClientTwoTabs()
+        let subject = RemoteTabsViewController(state: tabsState, windowUUID: .XCTestDefaultUUID)
+        let tableView = MockRemoteTabsTableView()
+        subject.tableView = tableView
+        trackForMemoryLeaks(subject)
+
+        let emptyState = RemoteTabsPanelState(windowUUID: .XCTestDefaultUUID,
+                                              refreshState: .idle,
+                                              allowsRefresh: true,
+                                              clientAndTabs: tabsState.clientAndTabs,
+                                              contentState: .empty(.failedToSync),
+                                              devices: [])
+
+        subject.newState(state: emptyState)
+        XCTAssertEqual(tableView.reloadDataCallCount, 1)
+
+        subject.newState(state: tabsState)
+        XCTAssertEqual(tableView.reloadDataCallCount, 2)
     }
 
     // MARK: - Private
@@ -48,15 +72,13 @@ final class RemoteTabPanelTests: XCTestCase {
                              title: "Mozilla Homepage",
                              history: [],
                              lastUsed: 0,
-                             icon: nil,
-                             inactive: false)
+                             icon: nil)
         let tab2 = RemoteTab(clientGUID: "123",
                              URL: URL(string: "https://google.com")!,
                              title: "Google Homepage",
                              history: [],
                              lastUsed: 0,
-                             icon: nil,
-                             inactive: false)
+                             icon: nil)
         let fakeTabs: [RemoteTab] = [tab1, tab2]
         let client = RemoteClient(guid: "123",
                                   name: "Client",
@@ -71,17 +93,26 @@ final class RemoteTabPanelTests: XCTestCase {
                                     refreshState: .idle,
                                     allowsRefresh: true,
                                     clientAndTabs: fakeData,
-                                    showingEmptyState: nil,
+                                    contentState: .tabs,
                                     devices: [])
     }
 
+    @MainActor
     private func createSubject(state: RemoteTabsPanelState,
-                               file: StaticString = #file,
+                               file: StaticString = #filePath,
                                line: UInt = #line) -> RemoteTabsPanel {
         let subject = RemoteTabsPanel(windowUUID: .XCTestDefaultUUID)
         subject.newState(state: state)
 
         trackForMemoryLeaks(subject, file: file, line: line)
         return subject
+    }
+}
+
+private final class MockRemoteTabsTableView: UITableView {
+    private(set) var reloadDataCallCount = 0
+
+    override func reloadData() {
+        reloadDataCallCount += 1
     }
 }

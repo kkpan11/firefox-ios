@@ -7,6 +7,7 @@ import WidgetKit
 import UIKit
 import Combine
 import SiteImageView
+import Common
 
 // Tab provider for Widgets
 struct TabProvider: TimelineProvider {
@@ -17,15 +18,17 @@ struct TabProvider: TimelineProvider {
         OpenTabsEntry(date: Date(), favicons: [String: Image](), tabs: [])
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (OpenTabsEntry) -> Void) {
+    func getSnapshot(in context: Context, completion: @escaping @Sendable (OpenTabsEntry) -> Void) {
         let openTabs = SimpleTab.getSimpleTabs().values.filter {
             !$0.isPrivate
         }
 
         let simpleTabs = SimpleTab.getSimpleTabs()
-        let siteImageFetcher = DefaultSiteImageHandler.factory()
 
         Task {
+            let siteImageFetcher = await MainActor.run {
+                DefaultSiteImageHandler.factory(themeManager: WidgetKitThemeManager())
+            }
             let tabFaviconDictionary = await withTaskGroup(of: (String, UIImage).self,
                                                            returning: [String: Image].self) { group in
                 for (_, tab) in simpleTabs {
@@ -33,12 +36,13 @@ struct TabProvider: TimelineProvider {
                         continue
                     }
 
+                    let imageKey = tab.imageKey
                     let siteImageModel = SiteImageModel(id: UUID(),
                                                         imageType: .favicon,
                                                         siteURL: siteURL)
                     group.addTask {
                         let image = await siteImageFetcher.getImage(model: siteImageModel)
-                        return (tab.imageKey, image)
+                        return (imageKey, image)
                     }
                 }
 
@@ -50,7 +54,7 @@ struct TabProvider: TimelineProvider {
         }
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<OpenTabsEntry>) -> Void) {
+    func getTimeline(in context: Context, completion: @Sendable @escaping (Timeline<OpenTabsEntry>) -> Void) {
         getSnapshot(in: context, completion: { openTabsEntry in
             let timeline = Timeline(entries: [openTabsEntry], policy: .atEnd)
             completion(timeline)

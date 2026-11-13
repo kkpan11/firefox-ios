@@ -8,55 +8,50 @@ on:
         type: string
         default: "main"
   schedule:
-    - cron: "0 4 * * 1"
+    - cron: "0 22 * * 6"
 
 jobs:
   determine-locales:
     name: Determine lists of locales
-    runs-on: macos-15
+    runs-on: xcode-27
     outputs:
-      group1: ${{ steps.my_locales.outputs.group1 }}
-      group2: ${{ steps.my_locales.outputs.group2 }}
-      group3: ${{ steps.my_locales.outputs.group3 }}
+      locales: ${{ steps.my_locales.outputs.locales }}
     steps:
       - name: Clone firefoxios-l10n repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: mozilla-l10n/firefoxios-l10n
       - name: Determine locales needed
         id: my_locales
         run: |
           ls | grep -e "^..$" -e "^..-..$" > locales.txt
-          split -n 3 locales.txt locales-
-          group1=`tr '\n' ' ' < locales-aa`
-          group2=`tr '\n' ' ' < locales-ab`
-          group3=`tr '\n' ' ' < locales-ac`
-          echo "group1=$group1" >> $GITHUB_OUTPUT
-          echo "group2=$group2" >> $GITHUB_OUTPUT
-          echo "group3=$group3" >> $GITHUB_OUTPUT
-  
+          # Convert to JSON array format properly
+          locales=$(cat locales.txt | jq -R -s -c 'split("\n")[:-1]')
+          echo "locales=$locales" >> $GITHUB_OUTPUT
+          echo "Generated locales: $locales"
+
   compile:
     name: Compile Focus for L10n
-    runs-on: macos-15
+    runs-on: xcode-27
     steps:
       - name: Clone firefox-ios repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: mozilla-mobile/firefox-ios
           ref: ${{ inputs.branch }}
       - name: Setup Xcode
         run: |
           sudo rm -rf /Applications/Xcode.app
-          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+          sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
           xcodebuild -version
       - name: Run setup scripts for Focus
         run: |
-          ./checkout.sh
+          ./bootstrap.sh focus
       - name: Compile Focus iOS
         run: |
           xcodebuild build-for-testing -scheme FocusSnapshotTests \
             -project focus-ios/Blockzilla.xcodeproj \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.2' \
+            -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
             -derivedDataPath l10n-screenshots-dd
       - name: Targzip Derived Data
         run: |
@@ -64,7 +59,7 @@ jobs:
           ls -la *.tar.gz
       - name: Save Derived Data
         id: upload-derived-data
-        uses: actions/upload-artifact@v4.6.0
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: xcode-l10n-focus-cache-deriveddata-${{ github.workflow }}-${{ github.sha }}
           path: l10n-screenshots-dd.tar.gz
@@ -75,25 +70,23 @@ jobs:
     needs: [determine-locales, compile]
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
-        locales: [ 
-          "${{ needs.determine-locales.outputs.group1 }}", 
-          "${{ needs.determine-locales.outputs.group2 }}",
-          "${{ needs.determine-locales.outputs.group3 }}"]  
+        locale: ${{ fromJson(needs.determine-locales.outputs.locales) }}
     uses: ./.github/workflows/focus-ios-l10n-locales.yml
     with:
-      locales: "${{ matrix.locales }}"
+      locale: "${{ matrix.locale }}"
       branch: "${{ inputs.branch }}"
       derived-data: "xcode-l10n-focus-cache-deriveddata-${{ github.workflow }}-${{ github.sha }}"
 
   merge-screenshots:
     name: Merge all screenshots
     needs: generate-screenshots
-    runs-on: macOS-15
+    if: always()
+    runs-on: xcode-27
     steps:
       - name: Merge screenshots
-        uses: actions/upload-artifact/merge@v4
+        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: FocusL10nScreenshots
           pattern: Screenshots-*

@@ -10,15 +10,18 @@ import WebEngine
 
 /// Delegate that contains callbacks that we have added on top of the built-in WKWebViewDelegate
 protocol ReaderModeDelegate: AnyObject {
+    @MainActor
     func readerMode(
         _ readerMode: ReaderMode,
         didChangeReaderModeState state: ReaderModeState,
         forTab tab: Tab
     )
+    @MainActor
     func readerMode(
         _ readerMode: ReaderMode,
         didDisplayReaderizedContentForTab tab: Tab
     )
+    @MainActor
     func readerMode(
         _ readerMode: ReaderMode,
         didParseReadabilityResult readabilityResult: ReadabilityResult,
@@ -48,21 +51,36 @@ class ReaderMode: TabContentScript {
         return ["readerModeMessageHandler"]
     }
 
+    @MainActor
     fileprivate func handleReaderPageEvent(_ readerPageEvent: ReaderPageEvent) {
         switch readerPageEvent {
         case .pageShow:
             if let tab = tab {
+                let webView = tab.webView
+                let nightMode = tab.nightMode
+                webView?.evaluateJavaScript(
+                    NightModeHelper.jsCallbackBuilder(nightMode),
+                    in: nil,
+                    in: .world(name: NightModeHelper.name())
+                ) { [weak webView] _ in
+                    guard !nightMode else { return }
+                    webView?.evaluateJavascriptInDefaultContentWorld(
+                        "\(ReaderModeInfo.namespace.rawValue).restoreStyle()"
+                    )
+                }
                 delegate?.readerMode(self, didDisplayReaderizedContentForTab: tab)
             }
         }
     }
 
+    @MainActor
     fileprivate func handleReaderModeStateChange(_ state: ReaderModeState) {
         self.state = state
         guard let tab else { return }
         delegate?.readerMode(self, didChangeReaderModeState: state, forTab: tab)
     }
 
+    @MainActor
     fileprivate func handleReaderContentParsed(_ readabilityResult: ReadabilityResult) {
         guard let tab = tab else { return }
         logger.log("Reader content parsed",
@@ -97,8 +115,12 @@ class ReaderMode: TabContentScript {
         }
     }
 
+    @MainActor
     lazy var style = ReaderModeStyle.defaultStyle(for: tab?.windowUUID) {
         didSet {
+            guard tab?.url?.absoluteString.hasPrefix(ReaderModeSchemeHandler.currentBaseURL) == true else {
+                return
+            }
             if state == ReaderModeState.active {
                 tab?.webView?.evaluateJavascriptInDefaultContentWorld(
                     "\(ReaderModeInfo.namespace.rawValue).setStyle(\(style.encode()))"

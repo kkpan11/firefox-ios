@@ -19,6 +19,7 @@ window.__firefox__.includeOnce("LoginsHelper", function() {
   var gStoreWhenAutocompleteOff = true;
   var gAutofillForms = true;
   var gDebug = false;
+  var pendingRelayEmailField = null;
 
   var KEYCODE_ARROW_DOWN = 40;
 
@@ -478,6 +479,16 @@ window.__firefox__.includeOnce("LoginsHelper", function() {
     LoginManagerContent.fromFill = false
   }
 
+  function fillRelayEmail(email) {
+      LoginManagerContent.fromFill = true
+      this.yieldFocusBackToField();
+      // Only fill if the pending field is still focused
+      if (pendingRelayEmailField?.isConnected && pendingRelayEmailField === LoginManagerContent.activeField) {
+          pendingRelayEmailField.setUserInput(email);
+      }
+      LoginManagerContent.fromFill = false
+  }
+
   function isUpdatedPasswordManagerEnabled(enabled) {
     LoginManagerContent.updatedPasswordManagerEnabled = enabled
   }
@@ -490,7 +501,8 @@ window.__firefox__.includeOnce("LoginsHelper", function() {
   // define the field types for focus events
   const FocusFieldType = {
     username: "username",
-    password: "password"
+    password: "password",
+    email: "email"
   };
 
   function getUsernameAndPassword(field, isSubmission) {
@@ -504,7 +516,10 @@ window.__firefox__.includeOnce("LoginsHelper", function() {
   }
 
   function onFocusIn(event) {
-    const form = event.target?.form;
+    if (!HTMLInputElement.isInstance(event.target)) {
+      return;
+    }
+    const form = event.target.form;
     // Only allow formless and passwordless logins with new updated password manager
     const updatedPasswordManagerEnabled = LoginManagerContent.updatedPasswordManagerEnabled;
     if (!updatedPasswordManagerEnabled && !form) {
@@ -517,8 +532,9 @@ window.__firefox__.includeOnce("LoginsHelper", function() {
       password && Logic.isProbablyANewPasswordField(password);
     const isPasswordField = field === password;
     const isLoginField = field === username || isPasswordField;
+    let isEmail = Logic.isInferredEmailField(field);
 
-    if(!isLoginField) {
+    if(!isLoginField && !isEmail) {
       return ;
     }
 
@@ -533,12 +549,18 @@ window.__firefox__.includeOnce("LoginsHelper", function() {
       webkit.messageHandlers.loginsManagerMessageHandler.postMessage({
         type: "generatePassword",
       });
-    } else if (!formHasNewPassword && (password || updatedPasswordManagerEnabled)) {
+    } else if (isLoginField && !formHasNewPassword && (password || updatedPasswordManagerEnabled)) {
       webkit.messageHandlers.loginsManagerMessageHandler.postMessage({
         type: "fieldType",
         fieldType:
           field === username ? FocusFieldType.username : FocusFieldType.password,
       });
+    } else if (isEmail) {
+        pendingRelayEmailField = field;
+        webkit.messageHandlers.loginsManagerMessageHandler.postMessage({
+            type: "fieldType",
+            fieldType: FocusFieldType.email,
+        });
     }
   }
 
@@ -588,6 +610,7 @@ window.__firefox__.includeOnce("LoginsHelper", function() {
     this.yieldFocusBackToField = yieldFocusBackToField;
     this.generatePassword = generatePassword;
     this.fillGeneratedPassword = fillGeneratedPassword;
+    this.fillRelayEmail = fillRelayEmail;
     this.isUpdatedPasswordManagerEnabled = isUpdatedPasswordManagerEnabled;
   }
 

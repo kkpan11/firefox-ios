@@ -23,10 +23,10 @@ struct DarkModeToggleView: View {
     }
 
     var backgroundColor: Color {
-        return Color(theme?.colors.layer2 ?? UIColor.clear)
+        return Color(theme?.colors.layer5 ?? UIColor.clear)
     }
 
-    private struct UX {
+    private enum UX {
         static let horizontalSpacing: CGFloat = 16
         static let verticalSpacing: CGFloat = 8
         static let dividerHeight: CGFloat = 0.7
@@ -37,7 +37,7 @@ struct DarkModeToggleView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text(String.WebsiteDarkModeToggleTitle)
-                        .font(.body)
+                        .font(FXFontStyles.Regular.body.scaledSwiftUIFont())
                         .foregroundColor(textColor)
                 }
                 Spacer()
@@ -56,6 +56,7 @@ struct DarkModeToggleView: View {
         .padding(.vertical, UX.verticalSpacing)
         .background(backgroundColor)
         .accessibilityElement()
+        .accessibilityIdentifier(AccessibilityIdentifiers.Settings.Appearance.darkModeToggle)
         .accessibilityLabel("\(String.WebsiteDarkModeToggleTitle)")
         .accessibilityValue("\(isEnabled ? 1 : 0)")
         .accessibilityAddTraits(traits)

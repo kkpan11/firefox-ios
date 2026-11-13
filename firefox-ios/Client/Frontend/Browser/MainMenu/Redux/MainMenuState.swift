@@ -4,33 +4,61 @@
 
 import Common
 import MenuKit
+import ModifiedCopy
 import Redux
+import SummarizeKit
 
 struct AccountData: Equatable {
     let title: String
     let subtitle: String?
     let warningIcon: String?
+    let needsReAuth: Bool?
     let iconURL: URL?
+
+    init(title: String, subtitle: String?, warningIcon: String? = nil, needsReAuth: Bool? = nil, iconURL: URL? = nil) {
+        self.title = title
+        self.subtitle = subtitle
+        self.warningIcon = warningIcon
+        self.needsReAuth = needsReAuth
+        self.iconURL = iconURL
+    }
+}
+
+enum SiteProtectionsState {
+    case on
+    case off
+    case notSecure
+}
+
+struct SiteProtectionsData: Equatable {
+    let title: String?
+    let subtitle: String?
+    let image: String?
+    let state: SiteProtectionsState
 }
 
 struct TelemetryInfo: Equatable {
     let isHomepage: Bool
     let isActionOn: Bool?
-    let submenuType: MainMenuDetailsViewType?
     let isDefaultUserAgentDesktop: Bool?
     let hasChangedUserAgent: Bool?
 
     init(isHomepage: Bool,
          isActionOn: Bool? = nil,
-         submenuType: MainMenuDetailsViewType? = nil,
          isDefaultUserAgentDesktop: Bool? = nil,
          hasChangedUserAgent: Bool? = nil) {
         self.isHomepage = isHomepage
         self.isActionOn = isActionOn
-        self.submenuType = submenuType
         self.isDefaultUserAgentDesktop = isDefaultUserAgentDesktop
         self.hasChangedUserAgent = hasChangedUserAgent
     }
+}
+
+struct ReaderModeConfiguration: Equatable {
+    /// Whether Reader mode is supported by the web page.
+    let isAvailable: Bool
+    /// Whether Reader mode is activated on the web page.
+    let isActive: Bool
 }
 
 struct MainMenuTabInfo: Equatable {
@@ -41,29 +69,40 @@ struct MainMenuTabInfo: Equatable {
     let isDefaultUserAgentDesktop: Bool
     let hasChangedUserAgent: Bool
     let zoomLevel: CGFloat
-    let readerModeIsAvailable: Bool
+    let readerModeConfiguration: ReaderModeConfiguration
+    let summaryIsAvailable: Bool
+    let summarizerConfig: SummarizerConfig?
     let isBookmarked: Bool
     let isInReadingList: Bool
     let isPinned: Bool
+    let accountData: AccountData
+    let translationConfiguration: TranslationConfiguration?
 }
 
-struct MainMenuState: ScreenState, Equatable {
-    var windowUUID: WindowUUID
-    var menuElements: [MenuSection]
+@Copyable
+struct MainMenuState: ScreenState, Sendable {
+    let windowUUID: WindowUUID
+    let menuElements: [MenuSection]
 
-    var shouldDismiss: Bool
+    let shouldDismiss: Bool
 
-    var accountData: AccountData?
-    var accountIcon: UIImage?
+    let accountData: AccountData?
+    let accountProfileImage: UIImage?
+    let isBrowserDefault: Bool
+    let isPhoneLandscape: Bool
+    let moreCellTapped: Bool
+
+    let siteProtectionsData: SiteProtectionsData?
 
     var navigationDestination: MenuNavigationDestination?
     var currentTabInfo: MainMenuTabInfo?
-    var currentSubmenuView: MainMenuDetailsViewType?
 
-    private let menuConfigurator = MainMenuConfigurationUtility()
+    private var menuConfigurator: MainMenuConfigurationUtility {
+        MainMenuConfigurationUtility()
+    }
 
     init(appState: AppState, uuid: WindowUUID) {
-        guard let mainMenuState = store.state.screenState(
+        guard let mainMenuState = appState.componentState(
             MainMenuState.self,
             for: .mainMenu,
             window: uuid
@@ -75,12 +114,15 @@ struct MainMenuState: ScreenState, Equatable {
         self.init(
             windowUUID: mainMenuState.windowUUID,
             menuElements: mainMenuState.menuElements,
-            currentTabInfo: mainMenuState.currentTabInfo,
-            submenuDestination: mainMenuState.currentSubmenuView,
-            navigationDestination: mainMenuState.navigationDestination,
             shouldDismiss: mainMenuState.shouldDismiss,
             accountData: mainMenuState.accountData,
-            accountIcon: mainMenuState.accountIcon
+            accountProfileImage: mainMenuState.accountProfileImage,
+            isBrowserDefault: mainMenuState.isBrowserDefault,
+            isPhoneLandscape: mainMenuState.isPhoneLandscape,
+            moreCellTapped: mainMenuState.moreCellTapped,
+            siteProtectionsData: mainMenuState.siteProtectionsData,
+            navigationDestination: mainMenuState.navigationDestination,
+            currentTabInfo: mainMenuState.currentTabInfo
         )
     }
 
@@ -88,38 +130,58 @@ struct MainMenuState: ScreenState, Equatable {
         self.init(
             windowUUID: windowUUID,
             menuElements: [],
-            currentTabInfo: nil,
-            submenuDestination: nil,
-            navigationDestination: nil,
             shouldDismiss: false,
             accountData: nil,
-            accountIcon: nil
+            accountProfileImage: nil,
+            isBrowserDefault: false,
+            isPhoneLandscape: false,
+            moreCellTapped: false,
+            siteProtectionsData: nil,
+            navigationDestination: nil,
+            currentTabInfo: nil
         )
     }
 
     private init(
         windowUUID: WindowUUID,
         menuElements: [MenuSection],
-        currentTabInfo: MainMenuTabInfo?,
-        submenuDestination: MainMenuDetailsViewType? = nil,
-        navigationDestination: MenuNavigationDestination? = nil,
-        shouldDismiss: Bool = false,
+        shouldDismiss: Bool,
         accountData: AccountData?,
-        accountIcon: UIImage?
+        accountProfileImage: UIImage?,
+        isBrowserDefault: Bool,
+        isPhoneLandscape: Bool,
+        moreCellTapped: Bool,
+        siteProtectionsData: SiteProtectionsData?,
+        navigationDestination: MenuNavigationDestination?,
+        currentTabInfo: MainMenuTabInfo?
     ) {
         self.windowUUID = windowUUID
         self.menuElements = menuElements
-        self.currentSubmenuView = submenuDestination
-        self.currentTabInfo = currentTabInfo
-        self.navigationDestination = navigationDestination
         self.shouldDismiss = shouldDismiss
         self.accountData = accountData
-        self.accountIcon = accountIcon
+        self.accountProfileImage = accountProfileImage
+        self.isBrowserDefault = isBrowserDefault
+        self.isPhoneLandscape = isPhoneLandscape
+        self.moreCellTapped = moreCellTapped
+        self.siteProtectionsData = siteProtectionsData
+        self.navigationDestination = navigationDestination
+        self.currentTabInfo = currentTabInfo
     }
 
-    static let reducer: Reducer<Self> = { state, action in
-        guard action.windowUUID == .unavailable || action.windowUUID == state.windowUUID
-        else {
+    static let reducer: Reducer<Self> = (legacyReducer, modernReducer)
+
+    static let modernReducer: ReducerMethod<Self> = { state, action, actionWindowUUID in
+        // Does not handle any modern actions
+        return defaultState(from: state)
+    }
+
+    static let legacyReducer: LegacyReducerMethod<Self> = { state, action in
+        return handleReducer(state: state, action: action)
+    }
+
+    @MainActor
+    private static func handleReducer(state: MainMenuState, action: Action) -> MainMenuState {
+        guard action.windowUUID == .unavailable || action.windowUUID == state.windowUUID else {
             return defaultState(from: state)
         }
 
@@ -128,17 +190,33 @@ struct MainMenuState: ScreenState, Equatable {
             return handleViewDidLoadAction(state: state)
         case MainMenuMiddlewareActionType.updateAccountHeader:
             return handleUpdateAccountHeaderAction(state: state, action: action)
+        case MainMenuMiddlewareActionType.updateBannerVisibility:
+            return handleUpdateBannerVisibilityAction(state: state, action: action)
+        case MainMenuMiddlewareActionType.updateMenuAppearance:
+            return handleUpdateMenuAppearanceAction(state: state, action: action)
+        case MainMenuActionType.updateSiteProtectionsHeader:
+            return handleUpdateSiteProtectionsHeaderAction(state: state, action: action)
         case MainMenuActionType.updateCurrentTabInfo:
             return handleUpdateCurrentTabInfoAction(state: state, action: action)
+        case MainMenuActionType.updateProfileImage:
+            return handleUpdateProfileImageAction(state: state, action: action)
         case MainMenuActionType.tapMoreOptions:
             return handleShowMoreOptions(state: state, action: action)
-        case MainMenuActionType.tapShowDetailsView:
-            return handleTapShowDetailsViewAction(state: state, action: action)
         case MainMenuActionType.tapNavigateToDestination:
             return handleTapNavigateToDestinationAction(state: state, action: action)
         case MainMenuActionType.tapToggleUserAgent,
             MainMenuActionType.tapCloseMenu:
             return handleTapToggleUserAgentAndTapCloseMenuAction(state: state)
+        case MainMenuActionType.tapAddToBookmarks:
+            return handleDismissMenuAction(state: state)
+        case MainMenuActionType.tapEditBookmark:
+            return handleTapEditBookmarkAction(state: state, action: action)
+        case MainMenuActionType.tapZoom:
+            return handleTapZoomAction(state: state)
+        case MainMenuActionType.tapToggleNightMode:
+            return handleDismissMenuAction(state: state)
+        case MainMenuActionType.tapAddToShortcuts, MainMenuActionType.tapRemoveFromShortcuts:
+            return handleDismissMenuAction(state: state)
         default:
             return defaultState(from: state)
         }
@@ -148,106 +226,136 @@ struct MainMenuState: ScreenState, Equatable {
         return MainMenuState(
             windowUUID: state.windowUUID,
             menuElements: state.menuElements,
-            currentTabInfo: state.currentTabInfo,
+            shouldDismiss: false,
             accountData: state.accountData,
-            accountIcon: state.accountIcon
+            accountProfileImage: state.accountProfileImage,
+            isBrowserDefault: state.isBrowserDefault,
+            isPhoneLandscape: state.isPhoneLandscape,
+            moreCellTapped: state.moreCellTapped,
+            siteProtectionsData: state.siteProtectionsData,
+            navigationDestination: nil,
+            currentTabInfo: state.currentTabInfo
         )
     }
 
     private static func handleViewDidLoadAction(state: MainMenuState) -> MainMenuState {
-        return MainMenuState(
-            windowUUID: state.windowUUID,
-            menuElements: state.menuElements,
-            currentTabInfo: state.currentTabInfo,
-            accountData: state.accountData,
-            accountIcon: state.accountIcon
-        )
+        return state
+            .resetTransientState()
     }
 
     private static func handleUpdateAccountHeaderAction(state: MainMenuState, action: Action) -> MainMenuState {
         guard let action = action as? MainMenuAction else { return defaultState(from: state) }
 
-        return MainMenuState(
-            windowUUID: state.windowUUID,
-            menuElements: state.menuElements,
-            currentTabInfo: state.currentTabInfo,
-            accountData: action.accountData,
-            accountIcon: action.accountIcon
-        )
+        return state
+            .resetTransientState()
+            .copy(accountData: action.accountData)
     }
 
+    private static func handleUpdateBannerVisibilityAction(state: MainMenuState, action: Action) -> MainMenuState {
+        guard let action = action as? MainMenuAction else { return defaultState(from: state) }
+
+        return state
+            .resetTransientState()
+            .copy(isBrowserDefault: action.isBrowserDefault)
+    }
+
+    private static func handleUpdateMenuAppearanceAction(state: MainMenuState, action: Action) -> MainMenuState {
+        guard let action = action as? MainMenuAction else { return defaultState(from: state) }
+
+        return state
+            .resetTransientState()
+            .copy(isPhoneLandscape: action.isPhoneLandscape)
+    }
+
+    private static func handleUpdateSiteProtectionsHeaderAction(state: MainMenuState, action: Action) -> MainMenuState {
+        guard let action = action as? MainMenuAction else { return defaultState(from: state) }
+
+        return state
+            .resetTransientState()
+            .copy(siteProtectionsData: action.siteProtectionsData)
+    }
+
+    @MainActor
     private static func handleUpdateCurrentTabInfoAction(state: MainMenuState, action: Action) -> MainMenuState {
         guard let action = action as? MainMenuAction,
               let currentTabInfo = action.currentTabInfo
         else { return defaultState(from: state) }
 
-        return MainMenuState(
-            windowUUID: state.windowUUID,
-            menuElements: state.menuConfigurator.generateMenuElements(
+        return state
+            .resetTransientState()
+            .copy(menuElements: state.menuConfigurator.generateMenuElements(
                 with: currentTabInfo,
-                for: state.currentSubmenuView,
-                and: state.windowUUID
-            ),
-            currentTabInfo: currentTabInfo,
-            accountData: state.accountData,
-            accountIcon: state.accountIcon
-        )
+                and: state.windowUUID,
+                isExpanded: state.moreCellTapped
+            ))
+            .copy(currentTabInfo: currentTabInfo)
     }
 
+    @MainActor
+    private static func handleUpdateProfileImageAction(state: MainMenuState, action: Action) -> MainMenuState {
+        guard let action = action as? MainMenuAction,
+              let accountProfileImage = action.accountProfileImage,
+              let currentTabInfo = state.currentTabInfo
+        else { return defaultState(from: state) }
+
+        return state
+            .resetTransientState()
+            .copy(menuElements: state.menuConfigurator.generateMenuElements(
+                with: currentTabInfo,
+                and: state.windowUUID,
+                isExpanded: state.moreCellTapped,
+                profileImage: accountProfileImage
+            ))
+            .copy(accountProfileImage: accountProfileImage)
+    }
+
+    @MainActor
     private static func handleShowMoreOptions(state: MainMenuState, action: Action) -> MainMenuState {
         guard let action = action as? MainMenuAction,
               let currentTabInfo = state.currentTabInfo,
               let isExpanded = action.isExpanded
         else { return defaultState(from: state) }
 
-        return MainMenuState(
-            windowUUID: state.windowUUID,
-            menuElements: state.menuConfigurator.generateMenuElements(
+        return state
+            .resetTransientState()
+            .copy(menuElements: state.menuConfigurator.generateMenuElements(
                 with: currentTabInfo,
-                for: state.currentSubmenuView,
                 and: state.windowUUID,
-                isExpanded: !isExpanded
-            ),
-            currentTabInfo: state.currentTabInfo,
-            accountData: state.accountData,
-            accountIcon: state.accountIcon
-        )
-    }
-
-    private static func handleTapShowDetailsViewAction(state: MainMenuState, action: Action) -> MainMenuState {
-        guard let action = action as? MainMenuAction else { return defaultState(from: state) }
-
-        return MainMenuState(
-            windowUUID: state.windowUUID,
-            menuElements: state.menuElements,
-            currentTabInfo: state.currentTabInfo,
-            submenuDestination: action.detailsViewToShow,
-            accountData: state.accountData,
-            accountIcon: state.accountIcon
-        )
+                isExpanded: !isExpanded,
+                profileImage: state.accountProfileImage
+            ))
+            .copy(moreCellTapped: true)
     }
 
     private static func handleTapNavigateToDestinationAction(state: MainMenuState, action: Action) -> MainMenuState {
         guard let action = action as? MainMenuAction else { return defaultState(from: state) }
 
-        return MainMenuState(
-            windowUUID: state.windowUUID,
-            menuElements: state.menuElements,
-            currentTabInfo: state.currentTabInfo,
-            navigationDestination: action.navigationDestination,
-            accountData: state.accountData,
-            accountIcon: state.accountIcon
-        )
+        return state
+            .resetTransientState()
+            .copy(navigationDestination: action.navigationDestination)
     }
 
     private static func handleTapToggleUserAgentAndTapCloseMenuAction(state: MainMenuState) -> MainMenuState {
-        return MainMenuState(
-            windowUUID: state.windowUUID,
-            menuElements: state.menuElements,
-            currentTabInfo: state.currentTabInfo,
-            shouldDismiss: true,
-            accountData: state.accountData,
-            accountIcon: state.accountIcon
-        )
+        return state
+            .resetTransientState()
+            .copy(shouldDismiss: true)
+    }
+
+    private static func handleDismissMenuAction(state: MainMenuState) -> MainMenuState {
+        return state
+            .resetTransientState()
+            .copy(shouldDismiss: true)
+    }
+
+    private static func handleTapEditBookmarkAction(state: MainMenuState, action: Action) -> MainMenuState {
+        return state
+            .resetTransientState()
+            .copy(navigationDestination: MenuNavigationDestination(.editBookmark))
+    }
+
+    private static func handleTapZoomAction(state: MainMenuState) -> MainMenuState {
+        return state
+            .resetTransientState()
+            .copy(navigationDestination: MenuNavigationDestination(.zoom))
     }
 }

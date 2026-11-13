@@ -4,17 +4,17 @@
 
 import Foundation
 import Common
+import Redux
 
 enum ToastType: Equatable {
     case addBookmark(urlString: String)
     case addToReadingList
     case clearCookies
-    case closedSingleTab
-    case closedSingleInactiveTab
-    case closedAllTabs(count: Int)
-    case closedAllInactiveTabs(count: Int)
+    case openNewTab
     case removeFromReadingList
     case removeShortcut
+    case retryTranslatingPage
+    case shakeToSummarizeNotAvailable
 
     var title: String {
         switch self {
@@ -24,39 +24,46 @@ enum ToastType: Equatable {
             return .LegacyAppMenu.AddToReadingListConfirmMessage
         case .clearCookies:
             return .Menu.EnhancedTrackingProtection.clearDataToastMessage
-        case .closedSingleTab, .closedSingleInactiveTab:
-            return .TabsTray.CloseTabsToast.SingleTabTitle
-        case let .closedAllInactiveTabs(tabsCount),
-            let .closedAllTabs(count: tabsCount):
-            return String.localizedStringWithFormat(
-                .TabsTray.CloseTabsToast.Title,
-                tabsCount)
+        case .openNewTab:
+            return .ContextMenuButtonToastNewTabOpenedLabelText
         case .removeFromReadingList:
             return .LegacyAppMenu.RemoveFromReadingListConfirmMessage
         case .removeShortcut:
             return .LegacyAppMenu.RemovePinFromShortcutsConfirmMessage
+        case .retryTranslatingPage:
+            return .Translations.Sheet.Error.GeneralTitle
+        case .shakeToSummarizeNotAvailable:
+            return .Summarizer.ToastLabel
         }
     }
 
     var buttonText: String {
-        return .TabsTray.CloseTabsToast.Action
+        switch self {
+        case .openNewTab:
+            return .ContextMenuButtonToastNewTabOpenedButtonText
+        case .retryTranslatingPage:
+            return .Translations.Banner.RetryButton
+        default:
+            return .TabsTray.CloseTabsToast.Action
+        }
     }
 
-    func reduxAction(for uuid: WindowUUID) -> TabPanelViewAction? {
-        var actionType: TabPanelViewActionType
+    func reduxAction(for uuid: WindowUUID) -> Action? {
         switch self {
-        case .closedSingleTab: actionType = TabPanelViewActionType.undoClose
-        case .closedSingleInactiveTab: actionType = TabPanelViewActionType.undoCloseInactiveTab
-        case .closedAllTabs: actionType = TabPanelViewActionType.undoCloseAllTabs
-        case .closedAllInactiveTabs: actionType = TabPanelViewActionType.undoCloseAllInactiveTabs
+        case .retryTranslatingPage:
+            return TranslationsAction(windowUUID: uuid, actionType: TranslationsActionType.didTapRetryFailedTranslation)
         case .clearCookies,
                 .addBookmark,
                 .addToReadingList,
+                .openNewTab,
                 .removeFromReadingList,
-                .removeShortcut:
+                .removeShortcut,
+                .shakeToSummarizeNotAvailable:
             return nil
         }
+    }
 
+    private func tabPanelAction(for actionType: TabPanelViewActionType, uuid: WindowUUID) -> TabPanelViewAction {
         // None of the above handled toast actions require a specific panelType
         return TabPanelViewAction(panelType: nil,
                                   windowUUID: uuid,

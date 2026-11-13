@@ -12,6 +12,7 @@ class ThemedTableViewCell: UITableViewCell, ReusableCell, ThemeApplicable {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         self.cellStyle = style
         super.init(style: style, reuseIdentifier: reuseIdentifier)
+        textLabel?.font = FXFontStyles.Regular.body.scaledFont()
     }
 
     required init?(coder aDecoder: NSCoder) {
@@ -50,6 +51,9 @@ class ThemedTableViewCell: UITableViewCell, ReusableCell, ThemeApplicable {
 
     override func prepareForReuse() {
         super.prepareForReuse()
+        accessibilityElements = nil
+        accessibilityLabel = nil
+        contentConfiguration = nil
         textLabel?.text = nil
         textLabel?.textAlignment = .natural
         textLabel?.font = FXFontStyles.Regular.body.scaledFont()
@@ -74,7 +78,8 @@ class ThemedTableViewCell: UITableViewCell, ReusableCell, ThemeApplicable {
         if let detailColor = viewModel?.detailTextColor {
             detailTextLabel?.textColor = detailColor
         }
-        backgroundColor = viewModel?.backgroundColor ?? theme.colors.layer5
+        let defaultBackgroundColor = theme.isNova ? theme.colors.layerSurfaceMedium : theme.colors.layer5
+        backgroundColor = viewModel?.backgroundColor ?? defaultBackgroundColor
         tintColor = viewModel?.tintColor ?? theme.colors.actionPrimary
     }
 

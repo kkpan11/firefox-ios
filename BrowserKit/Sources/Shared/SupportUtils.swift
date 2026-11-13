@@ -7,15 +7,10 @@ import Foundation
 import UIKit
 
 /// Utility functions related to SUMO and Webcompat
-public struct SupportUtils {
+public enum SupportUtils {
     public static var URLForPrivateBrowsingLearnMore: URL? {
         // Returns the predefined URL associated to private homepage message card learn more action.
         return URL(string: "https://support.mozilla.org/en-US/kb/common-myths-about-private-browsing?as=u&utm_source=inproduct")
-    }
-
-    public static var URLForWhatsNew: URL? {
-        // Returns the predefined URL associated to what's new button action.
-        return URL(string: "https://www.mozilla.org/en-US/firefox/ios/notes/")
     }
 
     public static var URLForGetHelp: URL? {
@@ -28,7 +23,35 @@ public struct SupportUtils {
         return URL(string: "https://www.mozilla.org/firefox/pocket/?utm_source=ff_ios")
     }
 
-    public static func URLForTopic(_ topic: String) -> URL? {
+    public static var URLForTermsOfUse: URL? {
+        return URL(string: "https://www.mozilla.org/about/legal/terms/firefox/")
+    }
+
+    public static var URLForPrivacyNotice: URL? {
+        return URL(string: "https://www.mozilla.org/privacy/firefox/")
+    }
+
+    public static var URLForUpdatedPrivacyNotice: URL? {
+        return URL(string: "https://www.mozilla.org/privacy/firefox/next/")
+    }
+
+    public static var URLForUpdatedPrivacyNoticeDiff: URL? {
+        return URL(string: "https://www.mozilla.org/privacy/firefox/update/")
+    }
+
+    public static var URLForRelayAccountManagement: URL? {
+        return URL(string: "https://relay.firefox.com/accounts/profile")
+    }
+
+    public static var URLForRelayMaskLearnMoreArticle: URL? {
+        return URL(string: "https://support.mozilla.org/en-US/kb/relay-masks-ios")
+    }
+
+    public static var URLForConnectionNotSecureLearnMore: URL? {
+        return URL(string: "https://support.mozilla.org/en-US/kb/what-does-your-connection-is-not-secure-mean")
+    }
+
+    public static func URLForTopic(_ topic: String, useMobilePath: Bool = true) -> URL? {
         // Construct a NSURL pointing to a specific topic on SUMO. The topic should be a non-escaped string. It will
         // be properly escaped by this function.
         //
@@ -39,7 +62,8 @@ public struct SupportUtils {
         else {
             return nil
         }
-        return URL(string: "https://support.mozilla.org/1/mobile/\(AppInfo.appVersion)/iOS/\(languageIdentifier)/\(escapedTopic)")
+        let productPath = useMobilePath ? "mobile" : "firefox"
+        return URL(string: "https://support.mozilla.org/1/\(productPath)/\(AppInfo.appVersion)/iOS/\(languageIdentifier)/\(escapedTopic)")
     }
 
     public static func URLForPrivacyNotice(source: String, campaign: String, content: String?) -> URL? {
@@ -57,25 +81,5 @@ public struct SupportUtils {
         }
 
         return URL(string: privacyNoticeString) ?? defaultURL
-    }
-
-    public static func URLForReportSiteIssue(_ siteUrl: String?) -> URL? {
-        // Construct a NSURL pointing to the webcompat.com server to report an issue.
-        //
-        // It specifies the source as mobile-reporter. This helps the webcompat server to classify the issue.
-        // It also adds browser-firefox-ios to the labels in the URL to make it clear
-        // that this about Firefox on iOS. It makes it easier for webcompat people doing triage and diagnostics.
-        // It adds a device-type label to help discriminating in between tablet and mobile devices.
-        let deviceType: String
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            deviceType = "device-tablet"
-        } else {
-            deviceType = "device-mobile"
-        }
-        guard let escapedUrl = siteUrl?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
-        else {
-            return nil
-        }
-        return URL(string: "https://webcompat.com/issues/new?src=mobile-reporter&label=browser-firefox-ios&label=\(deviceType)&url=\(escapedUrl)")
     }
 }

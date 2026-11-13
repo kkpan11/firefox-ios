@@ -129,6 +129,18 @@ final class URLExtensionTests: XCTestCase {
         urls.forEach { XCTAssertEqual(URL(string: $0.0)!.domainURL.absoluteString, $0.1) }
     }
 
+    func testBaseURLWithPath() {
+        let urls = [
+            ("https://example.com/articles/some-post?token=abc123&ref=email#section2", "https://example.com/articles/some-post"),
+            ("https://user:pass@example.com/path", "https://example.com/path"),
+            ("https://example.com/path", "https://example.com/path"),
+            ("https://example.com", "https://example.com"),
+            ("https://example.com/path?query=1", "https://example.com/path"),
+            ("https://example.com/path#fragment", "https://example.com/path")
+        ]
+        urls.forEach { XCTAssertEqual(URL(string: $0.0)!.baseURLWithPath?.absoluteString, $0.1) }
+    }
+
     func testnormalizedHostAndPath() {
         let goodurls = [
             ("https://www.example.com/index.html", "example.com/index.html"),
@@ -149,7 +161,9 @@ final class URLExtensionTests: XCTestCase {
         let testCases = [
             ("https://www.google.com", (nil, "google.com")),
             ("https://blog.engineering.company.com", ("blog.engineering.", "blog.engineering.company.com")),
-            ("https://long-extended-subdomain-name-containing-many-letters-and-dashes.badssl.com", ("long-extended-subdomain-name-containing-many-letters-and-dashes.", "long-extended-subdomain-name-containing-many-letters-and-dashes.badssl.com")),
+            ("https://long-extended-subdomain-name-containing-many-letters-and-dashes.badssl.com",
+             ("long-extended-subdomain-name-containing-many-letters-and-dashes.",
+              "long-extended-subdomain-name-containing-many-letters-and-dashes.badssl.com")),
             ("http://com:org@m.canadacomputers.co.uk", (nil, "canadacomputers.co.uk")),
             ("https://www.wix.com/blog/what-is-a-subdomain", (nil, "wix.com")),
             ("nothing", (nil, "nothing")),
@@ -301,5 +315,420 @@ final class URLExtensionTests: XCTestCase {
     func testOriginGivenDataURLThenOriginIsNil() {
         let givenURL = URL(string: "data://google.com")!
         XCTAssertNil(givenURL.origin)
+    }
+
+    // MARK: isReaderModeURL tests
+
+    func testIsReaderModeURLGivenGoogleURLThenFalse() {
+        let url = URL(string: "https://google.com")!
+        XCTAssertFalse(url.isReaderModeURL)
+    }
+
+    func testIsReaderModeURLGivenHTTPSchemeURLThenFalse() {
+        let url = URL(string: "http://google.com")!
+        XCTAssertFalse(url.isReaderModeURL)
+    }
+
+    func testIsReaderModeURLGivenLocalHostURLThenFalse() {
+        let url = URL(string: "http://localhost")!
+        XCTAssertFalse(url.isReaderModeURL)
+    }
+
+    func testIsReaderModeURLGivenReaderModeURLThenTrue() {
+        let url = URL(string: "http://localhost:\(webServerPort)/reader-mode/page")!
+        XCTAssertTrue(url.isReaderModeURL)
+    }
+
+    func testIsReaderModeURLGivenCustomSchemeURLThenTrue() {
+        let url = URL(string: "readermode://app/page")!
+        XCTAssertTrue(url.isReaderModeURL)
+    }
+
+    func testIsReaderModeURLGivenCustomSchemeWrongHostThenFalse() {
+        let url = URL(string: "readermode://other/page")!
+        XCTAssertFalse(url.isReaderModeURL)
+    }
+
+    // MARK: isSyncedReaderModeURL tests
+
+    func testIsSyncedReaderModeURLWhenEmptyURLThenIsTrue() {
+        let url = "about:reader?url="
+        XCTAssertTrue(URL(string: url)!.isSyncedReaderModeURL)
+    }
+
+    func testIsSyncedReaderModeURLWhenSimpleURLThenIsTrue() {
+        let url = "about:reader?url=http://example.com"
+        XCTAssertTrue(URL(string: url)!.isSyncedReaderModeURL)
+    }
+
+    func testIsSyncedReaderModeURLWhenComplicatedURLThenIsTrue() {
+        let url = "about:reader?url=https%3A%2F%2Fen%2Em%2Ewikipedia%2Eorg%2Fwiki%2FMain%5FPage"
+        XCTAssertTrue(URL(string: url)!.isSyncedReaderModeURL)
+    }
+
+    func testIsSyncedReaderModeURLWhenGoogleURLThenIsFalse() {
+        let url = "http://google.com"
+        XCTAssertFalse(URL(string: url)!.isSyncedReaderModeURL)
+    }
+
+    func testIsSyncedReaderModeURLWhenLocalHostURLThenIsFalse() {
+        let url = "http://localhost:\(webServerPort)/sessionrestore.html"
+        XCTAssertFalse(URL(string: url)!.isSyncedReaderModeURL)
+    }
+
+    func testIsSyncedReaderModeURLWhenAboutURLThenIsFalse() {
+        let url = "about:reader"
+        XCTAssertFalse(URL(string: url)!.isSyncedReaderModeURL)
+    }
+
+    // MARK: decodeReaderModeURL tests
+
+    func testDecodeReaderModeURLWhenLocalReaderModeThenGivesWikiPage() {
+        let readerModeURL = "http://localhost:\(webServerPort)/reader-mode/page?url=https%3A%2F%2Fen%2Em%2Ewikipedia%2Eorg%2Fwiki%2FMain%5FPage&uuidkey=AAAAA"
+        let url = URL(string: "https://en.m.wikipedia.org/wiki/Main_Page")
+
+        XCTAssertEqual(URL(string: readerModeURL)!.decodeReaderModeURL, url)
+    }
+
+    func testDecodeReaderModeURLWhenReaderModeThenGivesWikiPage() {
+        let readerModeURL = "about:reader?url=https%3A%2F%2Fen%2Em%2Ewikipedia%2Eorg%2Fwiki%2FMain%5FPage&uuidkey=AAAAA"
+        let url = URL(string: "https://en.m.wikipedia.org/wiki/Main_Page")
+
+        XCTAssertEqual(URL(string: readerModeURL)!.decodeReaderModeURL, url)
+    }
+
+    func testDecodeReaderModeURLWhenParameterURLThenGivesCorrectParameterURL() {
+        let readerModeURL = "about:reader?url=http%3A%2F%2Fexample%2Ecom%3Furl%3Dparam%26key%3Dvalue&uuidkey=AAAAA"
+        let url = URL(string: "http://example.com?url=param&key=value")
+
+        XCTAssertEqual(URL(string: readerModeURL)!.decodeReaderModeURL, url)
+    }
+
+    func testDecodeReaderModeURLPreservesQueryItems() throws {
+        for query in ["foo", "foo=", "foo=bar"] {
+            let url = try XCTUnwrap(URL(string: "https://example.com/?\(query)"))
+            let encoded = try XCTUnwrap(url.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics))
+            let readerURL = try XCTUnwrap(URL(string: "about:reader?url=\(encoded)"))
+            XCTAssertEqual(readerURL.decodeReaderModeURL, url, query)
+        }
+    }
+
+    func testDecodeReaderModeURLPreservesHTTPSURL() throws {
+        let url = try XCTUnwrap(URL(string: "https://example.com/page?foo=bar"))
+        let encoded = try XCTUnwrap(url.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics))
+
+        for readerURL in [
+            "http://localhost:\(webServerPort)/reader-mode/page",
+            "about:reader",
+            "readermode://app/page"
+        ] {
+            let readerURL = try XCTUnwrap(URL(string: "\(readerURL)?url=\(encoded)"))
+            XCTAssertEqual(readerURL.decodeReaderModeURL, url, readerURL.absoluteString)
+        }
+    }
+
+    func testDecodeReaderModeURLEscapesHTMLInPathAndQuery() throws {
+        let payload = "<script>alert(\"XSS\")</script><img src='x' onerror='alert(1)'>&"
+        let escaped = "&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;"
+            + "&lt;img src=&#39;x&#39; onerror=&#39;alert(1)&#39;&gt;&amp;"
+        var components = try XCTUnwrap(URLComponents(string: "https://example.com"))
+        components.path = "/\(payload)"
+        components.queryItems = [URLQueryItem(name: "value", value: payload)]
+        let url = try XCTUnwrap(components.url)
+        let encoded = try XCTUnwrap(url.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics))
+        let readerURL = try XCTUnwrap(URL(string: "about:reader?url=\(encoded)"))
+        let decodedURL = try XCTUnwrap(readerURL.decodeReaderModeURL)
+        let decodedComponents = try XCTUnwrap(URLComponents(url: decodedURL, resolvingAgainstBaseURL: false))
+
+        XCTAssertEqual(decodedComponents.path, "/\(escaped)")
+        XCTAssertEqual(decodedComponents.queryItems, [URLQueryItem(name: "value", value: escaped)])
+    }
+
+    func testDecodeReaderModeURLRejectsXSSPayloads() throws {
+        let payloads = [
+            "javascript:alert(1)",
+            "javascript:alert('XSS')",
+            "data:text/html,<script>alert(1)</script>"
+        ]
+        let readerURLs = [
+            "http://localhost:\(webServerPort)/reader-mode/page",
+            "about:reader",
+            "readermode://app/page"
+        ]
+
+        for payload in payloads {
+            let encoded = try XCTUnwrap(payload.addingPercentEncoding(withAllowedCharacters: .alphanumerics))
+            for readerURL in readerURLs {
+                for value in [payload, encoded] {
+                    let url = try XCTUnwrap(URL(string: "\(readerURL)?url=\(value)"))
+                    XCTAssertNil(url.decodeReaderModeURL, url.absoluteString)
+                }
+            }
+        }
+    }
+
+    func testDecodeReaderModeURLGivenNotAReaderModeURLThenNil() {
+        let url = "http://google.com"
+        XCTAssertNil(URL(string: url)!.decodeReaderModeURL)
+    }
+
+    func testDecodeReaderModeURLWhenLocalHostSessionRestoreURLThenNil() {
+        let url = "http://localhost:\(webServerPort)/sessionrestore.html"
+        XCTAssertNil(URL(string: url)!.decodeReaderModeURL)
+    }
+
+    func testDecodeReaderModeURLWhenLocalAboutHomeURLThenNil() {
+        let url = "http://localhost:1234/about/home/#panel=0"
+        XCTAssertNil(URL(string: url)!.decodeReaderModeURL)
+    }
+
+    func testDecodeReaderModeURLWhenLocalHostReaderModePageThenNil() {
+        let url = "http://localhost:\(webServerPort)/reader-mode/page"
+        XCTAssertNil(URL(string: url)!.decodeReaderModeURL)
+    }
+
+    func testDecodeReaderModeURLWhenAboutReaderURLThenNil() {
+        let url = "about:reader?url="
+        XCTAssertNil(URL(string: url)!.decodeReaderModeURL)
+    }
+
+    // MARK: safeEncodedUrl tests
+
+    func testSafeEncodedUrlGivenJavaScriptSanitization() {
+        // reader mode generic url sanitized JS to prevent XSS alert
+        let url = URL(string: "http://localhost:1234/reader-mode/page?url=javascript:alert('ALERT')")!
+        let genericUrl = url.safeEncodedUrl
+        XCTAssertNotNil(genericUrl)
+        XCTAssertTrue(
+            genericUrl!.absoluteString.contains("javascript:alert(%26%2339;ALERT%26%2339;)")
+        )
+    }
+
+    func testSafeEncodedUrlGivenScriptInnerHtmlTextSanitization() {
+        // reader mode generic url script tags are sanitized to prevent body change
+        let url = URL(string: "http://localhost:1234/reader-mode/page?url=javascript:document.body.innerText='Hello';")!
+        let genericUrl = url.safeEncodedUrl
+        XCTAssertNotNil(genericUrl)
+        XCTAssertTrue(
+            genericUrl!.absoluteString.contains("javascript:document.body.innerText%3D%26%2339;Hello%26%2339;;")
+        )
+    }
+
+    func testSafeEncodedUrlGivenHTMLFontSanitization() {
+        // reader mode generic url with HTML is sanitized
+        let url = URL(string: "http://localhost:1234/reader-mode/page?url=javascript:document.body.style.fontSize='50px';")!
+        let genericUrl = url.safeEncodedUrl
+        XCTAssertNotNil(genericUrl)
+        XCTAssertTrue(
+            genericUrl!.absoluteString.contains("javascript:document.body.style.fontSize%3D%26%2339;50px%26%2339;;")
+        )
+    }
+
+    func testSafeEncodedUrlGivenJavaScriptSanitizationNonLocalhost() {
+        // Check if JavaScript code in a non-localhost URL is sanitized
+        let url = URL(string: "http://example.com/reader-mode/page?url=javascript:alert('XSS')")!
+        let genericUrl = url.safeEncodedUrl
+        XCTAssertNotNil(genericUrl)
+        XCTAssertTrue(genericUrl!.absoluteString.contains("javascript:alert(%26%2339;XSS%26%2339;)"))
+    }
+
+    func testSafeEncodedUrlPreservesQuery() throws {
+        for query in ["foo&empty=&bar=value", "percent=100%25", "encoded=%2541"] {
+            let url = try XCTUnwrap(URL(string: "https://example.com/?\(query)"))
+            XCTAssertEqual(url.safeEncodedUrl?.absoluteString, url.absoluteString, query)
+        }
+    }
+
+    func testSafeEncodedUrlRejectsHostlessXSSURLs() throws {
+        for payload in [
+            "javascript:alert(1)",
+            "javascript:alert('XSS')",
+            "data:text/html,<script>alert(1)</script>"
+        ] {
+            let url = try XCTUnwrap(URL(string: payload))
+            XCTAssertNil(url.safeEncodedUrl, payload)
+        }
+    }
+
+    func testSafeEncodedUrlEscapesHTMLInPathAndQuery() throws {
+        let payload = "<script>alert(\"XSS\")</script><img src='x' onerror='alert(1)'>&"
+        let escaped = "&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;"
+            + "&lt;img src=&#39;x&#39; onerror=&#39;alert(1)&#39;&gt;&amp;"
+        var components = URLComponents(string: "https://example.com")!
+        components.path = "/\(payload)"
+        components.queryItems = [URLQueryItem(name: "value", value: payload)]
+        let url = try XCTUnwrap(components.url)
+        let safeURL = try XCTUnwrap(url.safeEncodedUrl)
+        let safeComponents = try XCTUnwrap(URLComponents(url: safeURL, resolvingAgainstBaseURL: false))
+
+        XCTAssertEqual(safeComponents.path, "/\(escaped)")
+        XCTAssertEqual(safeComponents.queryItems, [URLQueryItem(name: "value", value: escaped)])
+    }
+
+    func testSafeEncodedUrlGivenEmptyPath() {
+        let url = URL(string: "http://localhost:1234")!
+        let safeUrl = url.safeEncodedUrl
+        XCTAssertNotNil(safeUrl)
+    }
+
+    func testSafeEncodedUrlGivenEmptyScheme() {
+        let url = URL(string: "//localhost:1234/page")!
+        let safeUrl = url.safeEncodedUrl
+        XCTAssertNil(safeUrl)
+    }
+
+    func testSafeEncodedUrlGivenMissingComponentsJS() {
+        let url = URL(string: "javascript:blob")!
+        let safeUrl = url.safeEncodedUrl
+        XCTAssertNil(safeUrl)
+    }
+
+    func testSafeEncodedUrlGivenMissingComponents() {
+        let url = URL(string: "/page?url=javascript")!
+        let safeUrl = url.safeEncodedUrl
+        XCTAssertNil(safeUrl)
+    }
+
+    func testFaviconRootDirectoryURL() {
+        let url1 = URL(string: "https://some.domain.com/path/subpath")
+        let favicon1 = url1?.faviconUrl()
+        XCTAssertEqual(favicon1, URL(string: "https://some.domain.com/favicon.ico")!)
+
+        let url2 = URL(string: "http://website.org////")
+        let favicon2 = url2?.faviconUrl()
+        XCTAssertEqual(favicon2, URL(string: "http://website.org/favicon.ico")!)
+
+        let url3 = URL(string: "scheme://another.website.net/path/")
+        let favicon3 = url3?.faviconUrl()
+        XCTAssertEqual(favicon3, URL(string: "scheme://another.website.net/favicon.ico")!)
+    }
+
+    func testFaviconRootDirectoryURLPreservesPort() {
+        let url = URL(string: "https://some.domain.com:8443/path/subpath")
+
+        XCTAssertEqual(url?.faviconUrl(), URL(string: "https://some.domain.com:8443/favicon.ico")!)
+    }
+
+    func testFaviconRootDirectoryURLPreservesIPv6HostAndPort() {
+        let url = URL(string: "http://[::1]:8080/path/subpath")
+
+        XCTAssertEqual(url?.faviconUrl(), URL(string: "http://[::1]:8080/favicon.ico")!)
+    }
+
+    func testFaviconRootDirectoryURLWithoutHostReturnsNil() {
+        let url = URL(string: "file:///Users/a/b.html")
+
+        XCTAssertNil(url?.faviconUrl())
+    }
+
+    // MARK: normalizedHostWithLRI
+    func testNormalizedHostWithLRIHandlesRTLDomainAppropriately() throws {
+        let testURL = "https://xn--mgb.google.com.xn--mgb.suspicious-domain.abc/download.apk"
+        let url = try XCTUnwrap(URL(string: testURL))
+        let displayDomain = url.normalizedHostWithLRI ?? url.absoluteString
+        XCTAssertEqual(displayDomain, "\u{2066}ا.google.com.ا.suspicious-domain.abc\u{2069}")
+    }
+
+    func testNormalizedHostWithLRIPreservesSubdomainsAndStripsMobile() throws {
+        // LRI+PDI doesn't hurt regular LTR domains (just harmless wrapping)
+        let testCases: [(String, String)] = [
+            ("https://www.example.com/path", "\u{2066}example.com\u{2069}"),
+            ("https://m.example.com/path", "\u{2066}example.com\u{2069}"),
+            ("https://mobile.example.com/path", "\u{2066}example.com\u{2069}"),
+            ("https://www.news.example.com/path", "\u{2066}news.example.com\u{2069}")
+        ]
+
+        try testCases.forEach {
+            let url = try XCTUnwrap(URL(string: $0.0))
+            XCTAssertEqual(url.normalizedHostWithLRI, $0.1)
+        }
+    }
+
+    // MARK: isDomain
+
+    func testIsDomainBasicMatch() throws {
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://www.google.com")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.com")).isDomain("google"))
+    }
+
+    func testIsDomainSubdomains() throws {
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://mail.google.com")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://accounts.google.com")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://a.b.c.google.com")).isDomain("google"))
+    }
+
+    func testIsDomainVariousTLDs() throws {
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.de")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.co.uk")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.com.au")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.co.jp")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.fr")).isDomain("google"))
+    }
+
+    func testIsDomainPathQueryFragment() throws {
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.com/search?q=test")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.com#anchor")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://google.com:443/path")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://user:pass@google.com/path")).isDomain("google"))
+    }
+
+    func testIsDomainSchemeAgnostic() throws {
+        XCTAssertTrue(try XCTUnwrap(URL(string: "http://google.com")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "ftp://google.com")).isDomain("google"))
+    }
+
+    func testIsDomainEvilLookalikes() throws {
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://notgoogle.com")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://evil-google.com")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://mygoogle.com")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://gooogle.com")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://goog1e.com")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://xn--googl-fsa.com")).isDomain("google"))
+    }
+
+    func testIsDomainSubdomainSpoofing() throws {
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://google.evil.com")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://google.com.evil.com")).isDomain("google"))
+    }
+
+    func testIsDomainDifferentDomain() throws {
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://facebook.com")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://mail.facebook.com")).isDomain("google"))
+        XCTAssertTrue(try XCTUnwrap(URL(string: "https://mail.facebook.com")).isDomain("facebook"))
+    }
+
+    func testIsDomainIPAddresses() throws {
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://1.2.3.4")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "http://[::1]")).isDomain("google"))
+    }
+
+    func testIsDomainNonWebSchemes() throws {
+        XCTAssertFalse(try XCTUnwrap(URL(string: "about:blank")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "javascript:void(0)")).isDomain("google"))
+    }
+
+    func testIsDomainEmptyInput() throws {
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://google.com")).isDomain(""))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://.")).isDomain("google"))
+    }
+
+    func testIsDomainGoogleTLD() throws {
+        // .google TLD is not in the bundled PSL snapshot, baseDomain returns nil
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://mail.google")).isDomain("google"))
+    }
+
+    func testIsDomainCaseInsensitive() throws {
+        // URLComponents lowercases hosts per RFC — uppercase inputs don't occur in practice
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://GOOGLE.COM")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://Google.com")).isDomain("google"))
+    }
+
+    func testIsDomainUnknownTLDs() throws {
+        // TLDs not in the PSL snapshot cause baseDomain to return nil,
+        // so isDomain correctly returns false — fine for our use case.
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://google.local")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://google.internal")).isDomain("google"))
+        XCTAssertFalse(try XCTUnwrap(URL(string: "https://google.corp")).isDomain("google"))
     }
 }

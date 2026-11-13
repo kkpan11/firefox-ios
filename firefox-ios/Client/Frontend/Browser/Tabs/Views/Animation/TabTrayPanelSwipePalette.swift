@@ -34,6 +34,10 @@ struct TabTrayPanelSwipePalette: ThemeColourPalette {
         return partialOverrides.layer3
     }
 
+    var layerEmphasis: UIColor {
+        return partialOverrides.layerEmphasis
+    }
+
     var textOnDark: UIColor {
         return partialOverrides.textOnDark
     }
@@ -58,6 +62,26 @@ struct TabTrayPanelSwipePalette: ThemeColourPalette {
         return partialOverrides.iconDisabled
     }
 
+    var layer2: UIColor {
+        return partialOverrides.layer2
+    }
+
+    var layerSurfaceLow: UIColor {
+        return partialOverrides.layerSurfaceLow
+    }
+
+    var layerGlassTintNova: UIColor {
+        return partialOverrides.layerGlassTintNova
+    }
+
+    var iconInverted: UIColor {
+        return partialOverrides.iconInverted
+    }
+
+    var actionPrimary: UIColor {
+        return partialOverrides.actionPrimary
+    }
+
     struct PartialOverrides {
         var layer1: UIColor
         var iconPrimary: UIColor
@@ -65,15 +89,20 @@ struct TabTrayPanelSwipePalette: ThemeColourPalette {
         var actionSecondary: UIColor
         var layerScrim: UIColor
         var layer3: UIColor
+        var layerEmphasis: UIColor
         var textOnDark: UIColor
         var borderPrimary: UIColor
         var borderAccent: UIColor
         var borderAccentPrivate: UIColor
         var shadowDefault: UIColor
         var iconDisabled: UIColor
+        var layer2: UIColor
+        var layerSurfaceLow: UIColor
+        var layerGlassTintNova: UIColor
+        var iconInverted: UIColor
+        var actionPrimary: UIColor
     }
 
-    var layer2: UIColor { base.layer2 }
     var layer4: UIColor { base.layer4 }
     var layer5: UIColor { base.layer5 }
     var layer5Hover: UIColor { base.layer5Hover }
@@ -88,25 +117,20 @@ struct TabTrayPanelSwipePalette: ThemeColourPalette {
     var layerSuccess: UIColor { base.layerSuccess }
     var layerWarning: UIColor { base.layerWarning }
     var layerCritical: UIColor { base.layerCritical }
+    var layerCriticalSubdued: UIColor { base.layerCriticalSubdued }
     var layerSelectedText: UIColor { base.layerSelectedText }
     var layerAutofillText: UIColor { base.layerAutofillText }
-    var layerSearch: UIColor { base.layerSearch }
     var layerGradientURL: Gradient { base.layerGradientURL }
+    var layerSurfaceMedium: UIColor { base.layerSurfaceMedium }
+    var layerSurfaceMediumAlpha: UIColor { base.layerSurfaceMediumAlpha }
+    var layerSurfaceMediumAlt: UIColor { base.layerSurfaceMediumAlt }
+    var layerSurfaceMediumAltGlass: UIColor { base.layerSurfaceMediumAltGlass }
+    var layerGradientSummary: Gradient { base.layerGradientSummary }
+    var layerToolbarGlass: UIColor { base.layerToolbarGlass }
 
-    var layerRatingA: UIColor { base.layerRatingA }
-    var layerRatingASubdued: UIColor { base.layerRatingASubdued }
-    var layerRatingB: UIColor { base.layerRatingB }
-    var layerRatingBSubdued: UIColor { base.layerRatingBSubdued }
-    var layerRatingC: UIColor { base.layerRatingC }
-    var layerRatingCSubdued: UIColor { base.layerRatingCSubdued }
-    var layerRatingD: UIColor { base.layerRatingD }
-    var layerRatingDSubdued: UIColor { base.layerRatingDSubdued }
-    var layerRatingF: UIColor { base.layerRatingF }
-    var layerRatingFSubdued: UIColor { base.layerRatingFSubdued }
-
-    var actionPrimary: UIColor { base.actionPrimary }
     var actionPrimaryHover: UIColor { base.actionPrimaryHover }
     var actionPrimaryDisabled: UIColor { base.actionPrimaryDisabled }
+    var actionSecondaryDisabled: UIColor { base.actionSecondaryDisabled }
     var actionSecondaryHover: UIColor { base.actionSecondaryHover }
     var formSurfaceOff: UIColor { base.formSurfaceOff }
     var formKnob: UIColor { base.formKnob }
@@ -118,6 +142,7 @@ struct TabTrayPanelSwipePalette: ThemeColourPalette {
     var actionInformation: UIColor { base.actionInformation }
     var actionTabActive: UIColor { base.actionTabActive }
     var actionTabInactive: UIColor { base.actionTabInactive }
+    var actionCloseButton: UIColor { base.actionCloseButton }
 
     var textSecondary: UIColor { base.textSecondary }
     var textDisabled: UIColor { base.textDisabled }
@@ -139,12 +164,45 @@ struct TabTrayPanelSwipePalette: ThemeColourPalette {
     var iconAccentYellow: UIColor { base.iconAccentYellow }
     var iconRatingNeutral: UIColor { base.iconRatingNeutral }
 
+    var borderSecondary: UIColor { base.borderSecondary }
     var borderAccentNonOpaque: UIColor { base.borderAccentNonOpaque }
     var borderInverted: UIColor { base.borderInverted }
     var borderToolbarDivider: UIColor { base.borderToolbarDivider }
 
     var shadowSubtle: UIColor { base.shadowSubtle }
     var shadowStrong: UIColor { base.shadowStrong }
+    var shadowBorder: UIColor { base.shadowBorder }
+
+    var gradientOnboardingStop1: UIColor { base.gradientOnboardingStop1 }
+    var gradientOnboardingStop2: UIColor { base.gradientOnboardingStop2 }
+    var gradientOnboardingStop3: UIColor { base.gradientOnboardingStop3 }
+    var gradientOnboardingStop4: UIColor { base.gradientOnboardingStop4 }
+    var gradientAIStrongStop1: UIColor { base.gradientAIStrongStop1 }
+    var gradientAIStrongStop2: UIColor { base.gradientAIStrongStop2 }
+    var gradientAIStrongStop3: UIColor { base.gradientAIStrongStop3 }
+
+    var faviconLetterColorSet: FaviconLetterColorSet { base.faviconLetterColorSet }
+
+    // MARK: - Nova only tokens
+    var layerAccentSubtle: UIColor { base.layerAccentSubtle }
+    var layerInverse: UIColor { base.layerInverse }
+    var layerGlassSelectedFill: UIColor { base.layerGlassSelectedFill }
+    var textToast: UIColor { base.textToast }
+    var iconOnColorDisabled: UIColor { base.iconOnColorDisabled }
+    var iconPrivate: UIColor { base.iconPrivate }
+    var borderStrong: UIColor { base.borderStrong }
+    var borderAccentToast: UIColor { base.borderAccentToast }
+    var borderRadioButtonDefault: UIColor { base.borderRadioButtonDefault }
+    var gradient: Gradient { base.gradient }
+    var gradientAccent: Gradient { base.gradientAccent }
+    var gradientAccentSubtle: Gradient { base.gradientAccentSubtle }
+    var gradientAIStrong: Gradient { base.gradientAIStrong }
+    var gradientBorder: Gradient { base.gradientBorder }
+    var gradientPrivacy: Gradient { base.gradientPrivacy }
+    var gradientPrivacyMask: Gradient { base.gradientPrivacyMask }
+    var gradientWidgetSurface: Gradient { base.gradientWidgetSurface }
+    var gradientWidgetSurfaceStandard: Gradient { base.gradientWidgetSurfaceStandard }
+    var gradientWidgetSurfacePrivate: Gradient { base.gradientWidgetSurfacePrivate }
 
     init(base: ThemeColourPalette, overrides: PartialOverrides) {
         self.base = base

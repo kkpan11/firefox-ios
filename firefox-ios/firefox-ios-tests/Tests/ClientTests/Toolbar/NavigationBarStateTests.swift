@@ -9,29 +9,28 @@ import Common
 @testable import Client
 
 final class NavigationBarStateTests: XCTestCase, StoreTestUtility {
-    let storeUtilityHelper = StoreTestUtilityHelper()
     let windowUUID: WindowUUID = .XCTestDefaultUUID
     var mockStore: MockStoreForMiddleware<AppState>!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         DependencyHelperMock().bootstrapDependencies()
 
         // We must reset the global mock store prior to each test
         setupStore()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         DependencyHelperMock().reset()
         resetStore()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func tests_initialState_returnsExpectedState() {
         let initialState = createSubject()
 
         XCTAssertEqual(initialState.windowUUID, windowUUID)
-        XCTAssertEqual(initialState.actions, [])
+        XCTAssertEqual(initialState.middleButton, .newTab)
         XCTAssertFalse(initialState.displayBorder)
     }
 
@@ -39,10 +38,15 @@ final class NavigationBarStateTests: XCTestCase, StoreTestUtility {
         let initialState = createSubject()
         let reducer = navigationBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
+                toolbarPosition: .bottom,
+                toolbarLayout: .version1,
+                isTranslucent: true,
+                addressBorderPosition: .none,
                 displayNavBorder: true,
+                middleButton: .newTab,
                 windowUUID: windowUUID,
                 actionType: ToolbarActionType.didLoadToolbars
             )
@@ -50,106 +54,14 @@ final class NavigationBarStateTests: XCTestCase, StoreTestUtility {
 
         XCTAssertEqual(newState.windowUUID, windowUUID)
         XCTAssertEqual(newState.displayBorder, true)
-
-        XCTAssertEqual(newState.actions.count, 5)
-        XCTAssertEqual(newState.actions[0].actionType, .back)
-        XCTAssertEqual(newState.actions[0].isEnabled, false)
-        XCTAssertEqual(newState.actions[1].actionType, .forward)
-        XCTAssertEqual(newState.actions[1].isEnabled, false)
-        XCTAssertEqual(newState.actions[2].actionType, .search)
-        XCTAssertEqual(newState.actions[3].actionType, .tabs)
-        XCTAssertEqual(newState.actions[4].actionType, .menu)
-    }
-
-    func test_urlDidChangeAction_returnsExpectedState() {
-        let initialState = createSubject()
-        let reducer = navigationBarReducer()
-
-        let newState = loadWebsiteAction(state: initialState, reducer: reducer)
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-
-        XCTAssertEqual(newState.actions.count, 5)
-        XCTAssertEqual(newState.actions[0].actionType, .back)
-        XCTAssertEqual(newState.actions[0].isEnabled, true)
-        XCTAssertEqual(newState.actions[1].actionType, .forward)
-        XCTAssertEqual(newState.actions[1].isEnabled, false)
-        XCTAssertEqual(newState.actions[2].actionType, .home)
-        XCTAssertEqual(newState.actions[3].actionType, .menu)
-        XCTAssertEqual(newState.actions[4].actionType, .tabs)
-    }
-
-    func test_numberOfTabsChangedAction_returnsExpectedState() {
-        let initialState = createSubject()
-        let reducer = navigationBarReducer()
-
-        let newState = reducer(
-            initialState,
-            ToolbarAction(
-                numberOfTabs: 2,
-                isShowingTopTabs: false,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.numberOfTabsChanged
-            )
-        )
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.actions.count, 5)
-        XCTAssertEqual(newState.actions[0].actionType, .back)
-        XCTAssertEqual(newState.actions[1].actionType, .forward)
-        XCTAssertEqual(newState.actions[2].actionType, .search)
-        XCTAssertEqual(newState.actions[3].actionType, .menu)
-        XCTAssertEqual(newState.actions[4].actionType, .tabs)
-        XCTAssertEqual(newState.actions[4].numberOfTabs, 2)
-    }
-
-    func test_backForwardButtonStateChangedAction_returnsExpectedState() {
-        let initialState = createSubject()
-        let reducer = navigationBarReducer()
-
-        let urlDidChangeState = loadWebsiteAction(state: initialState, reducer: reducer)
-        let newState = reducer(
-            urlDidChangeState,
-            ToolbarAction(
-                canGoBack: true,
-                canGoForward: false,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.backForwardButtonStateChanged
-            )
-        )
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-        XCTAssertEqual(newState.actions[0].actionType, .back)
-        XCTAssertEqual(newState.actions[0].isEnabled, true)
-        XCTAssertEqual(newState.actions[1].actionType, .forward)
-        XCTAssertEqual(newState.actions[1].isEnabled, false)
-    }
-
-    func test_showMenuWarningBadgeAction_returnsExpectedState() {
-        let initialState = createSubject()
-        let reducer = navigationBarReducer()
-
-        let newState = reducer(
-            initialState,
-            ToolbarAction(
-                showMenuWarningBadge: true,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.showMenuWarningBadge
-            )
-        )
-
-        XCTAssertEqual(newState.windowUUID, windowUUID)
-
-        XCTAssertEqual(newState.actions[3].actionType, .menu)
-        XCTAssertNotNil(newState.actions[3].badgeImageName)
-        XCTAssertNotNil(newState.actions[3].maskImageName)
+        XCTAssertEqual(newState.middleButton, .newTab)
     }
 
     func test_borderPositionChangedAction_returnsExpectedState() {
         let initialState = createSubject()
         let reducer = navigationBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
                 addressBorderPosition: .top,
@@ -167,7 +79,7 @@ final class NavigationBarStateTests: XCTestCase, StoreTestUtility {
         let initialState = createSubject()
         let reducer = navigationBarReducer()
 
-        let newState = reducer(
+        let newState = reducer.legacyReducer(
             initialState,
             ToolbarAction(
                 toolbarPosition: .top,
@@ -182,6 +94,23 @@ final class NavigationBarStateTests: XCTestCase, StoreTestUtility {
         XCTAssertEqual(newState.displayBorder, true)
     }
 
+    func test_navigationMiddleButtonDidChangeAction_updatesMiddleButton() {
+        let initialState = createSubject()
+        let reducer = navigationBarReducer()
+
+        let newState = reducer.legacyReducer(
+            initialState,
+            ToolbarAction(
+                middleButton: .home,
+                windowUUID: windowUUID,
+                actionType: ToolbarActionType.navigationMiddleButtonDidChange
+            )
+        )
+
+        XCTAssertEqual(newState.windowUUID, windowUUID)
+        XCTAssertEqual(newState.middleButton, .home)
+    }
+
     // MARK: - Private
     private func createSubject() -> NavigationBarState {
         return NavigationBarState(windowUUID: windowUUID)
@@ -191,28 +120,11 @@ final class NavigationBarStateTests: XCTestCase, StoreTestUtility {
         return NavigationBarState.reducer
     }
 
-    private func loadWebsiteAction(state: NavigationBarState, reducer: Reducer<NavigationBarState>) -> NavigationBarState {
-        return reducer(
-            state,
-            ToolbarAction(
-                url: URL(string: "http://mozilla.com"),
-                isPrivate: false,
-                isShowingNavigationToolbar: true,
-                canGoBack: true,
-                canGoForward: false,
-                lockIconImageName: StandardImageIdentifiers.Large.lockFill,
-                safeListedURLImageName: nil,
-                windowUUID: windowUUID,
-                actionType: ToolbarActionType.urlDidChange
-            )
-        )
-    }
-
     // MARK: StoreTestUtility
     func setupAppState() -> AppState {
         return AppState(
-            activeScreens: ActiveScreensState(
-                screens: [
+            presentedComponents: PresentedComponentsState(
+                components: [
                     .browserViewController(
                         BrowserViewControllerState(
                             windowUUID: windowUUID
@@ -226,16 +138,5 @@ final class NavigationBarStateTests: XCTestCase, StoreTestUtility {
                 ]
             )
         )
-    }
-
-    func setupStore() {
-        mockStore = MockStoreForMiddleware(state: setupAppState())
-        StoreTestUtilityHelper.setupStore(with: mockStore)
-    }
-
-    // In order to avoid flaky tests, we should reset the store
-    // similar to production
-    func resetStore() {
-        StoreTestUtilityHelper.resetStore()
     }
 }

@@ -5,14 +5,15 @@
 import Foundation
 import UniformTypeIdentifiers
 import Shared
+import Common
 
 class URLActivityItemProvider: UIActivityItemProvider, @unchecked Sendable {
-    private struct ActivityIdentifiers {
+    private enum ActivityIdentifiers {
         static let whatsApp = "net.whatsapp.WhatsApp.ShareExtension"
     }
 
     private static var isSentFromFirefoxTreatmentA: Bool {
-        return LegacyFeatureFlagsManager.shared.isFeatureEnabled(.sentFromFirefoxTreatmentA, checking: .buildOnly)
+        return (AppContainer.shared.resolve() as FeatureFlagProviding).isEnabled(.sentFromFirefoxTreatmentA)
     }
 
     private let url: URL

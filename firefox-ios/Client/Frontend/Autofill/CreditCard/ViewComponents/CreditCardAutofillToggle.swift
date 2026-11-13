@@ -25,6 +25,12 @@ class ToggleModel: ObservableObject {
 }
 
 struct CreditCardAutofillToggle: View {
+    private enum UX {
+        static let paddingSize: CGFloat = 4
+        static let dividerHeight: CGFloat = 0.7
+        static let padding: CGFloat = 16
+    }
+
     // Theming
     let windowUUID: WindowUUID
     @Environment(\.themeManager)
@@ -37,35 +43,36 @@ struct CreditCardAutofillToggle: View {
     var body: some View {
         VStack {
             Divider()
-                .frame(height: 0.7)
-                .padding(.leading, 16)
+                .frame(height: UX.dividerHeight)
+                .padding(.leading, UX.padding)
                 .hidden()
             HStack {
                 Toggle(String.CreditCard.EditCard.ToggleToAllowAutofillTitle, isOn: $model.isEnabled)
                     .font(.body)
                     .foregroundColor(textColor)
-                    .padding(.leading, 16)
-                    .padding(.trailing, 16)
+                    .padding(.leading, UX.padding)
+                    .padding(.trailing, UX.padding)
+                    .modifier(NewStyleExtraPaddingTopAndBottom(paddingSize: UX.paddingSize))
                     .toggleStyle(SwitchToggleStyle(tint: toggleTintColor))
             }
             Divider()
-                .frame(height: 0.7)
-                .padding(.leading, 16)
+                .frame(height: UX.dividerHeight)
+                .padding(.leading, UX.padding)
         }
         .background(backgroundColor)
         .onAppear {
-            applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            applyTheme(theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false))
         }
         .onReceive(NotificationCenter.default.publisher(for: .ThemeDidChange)) { notification in
             guard let uuid = notification.windowUUID, uuid == windowUUID else { return }
-            applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
+            applyTheme(theme: themeManager.resolveTheme(for: windowUUID, privateOverride: false))
         }
     }
 
     func applyTheme(theme: Theme) {
         let color = theme.colors
         textColor = Color(color.textPrimary)
-        backgroundColor = Color(color.layer2)
+        backgroundColor = Color(theme.isNova ? color.layerSurfaceMedium : color.layer2)
         toggleTintColor = Color(color.actionPrimary)
     }
 }

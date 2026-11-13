@@ -6,11 +6,12 @@ import UIKit
 import Common
 
 protocol CredentialPasscodeRequirementViewControllerDelegate: AnyObject {
+    @MainActor
     func credentialPasscodeRequirementViewControllerDidDismiss()
 }
 
 class CredentialPasscodeRequirementViewController: UIViewController {
-    private struct UX {
+    private enum UX {
         static let cancelButtonCornerRadius: CGFloat = 8
     }
     weak var delegate: CredentialPasscodeRequirementViewControllerDelegate?

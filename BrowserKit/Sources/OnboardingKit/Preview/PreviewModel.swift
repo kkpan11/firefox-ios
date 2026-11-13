@@ -7,15 +7,15 @@ import SwiftUI
 import Common
 
 private struct PreviewModel: OnboardingCardInfoModelProtocol {
-    var image: UIImage? { UIImage(named: imageID, in: Bundle.module, compatibleWith: nil) }
-    var cardType: OnboardingCardType
-    var name, title, body, a11yIdRoot, imageID: String
-    var order: Int
-    var instructionsPopup: OnboardingInstructionsPopupInfoModel<OnboardingInstructionsPopupActions>?
-    var link: OnboardingLinkInfoModel?
-    var buttons: OnboardingButtons<OnboardingActions>
-    var multipleChoiceButtons: [OnboardingMultipleChoiceButtonModel<OnboardingMultipleChoiceAction>]
-    var onboardingType: OnboardingType
+    let cardType: OnboardingCardType
+    let name, title, body, a11yIdRoot, imageID: String
+    let order: Int
+    let instructionsPopup: OnboardingInstructionsPopupInfoModel<OnboardingInstructionsPopupActions>?
+    let link: OnboardingLinkInfoModel?
+    let buttons: OnboardingButtons<OnboardingActions>
+    let multipleChoiceButtons: [OnboardingMultipleChoiceButtonModel<OnboardingMultipleChoiceAction>]
+    let onboardingType: OnboardingType
+    let embededLinkText: [EmbeddedLink]
 
     init(
         cardType: OnboardingCardType,
@@ -29,21 +29,31 @@ private struct PreviewModel: OnboardingCardInfoModelProtocol {
         onboardingType: OnboardingType = .freshInstall,
         a11yIdRoot: String,
         imageID: String,
-        instructionsPopup: OnboardingInstructionsPopupInfoModel<OnboardingInstructionsPopupActions>? = nil
+        instructionsPopup: OnboardingInstructionsPopupInfoModel<OnboardingInstructionsPopupActions>? = nil,
+        embededLinkText: [EmbeddedLink] = []
     ) {
         self.cardType = cardType; self.name = name; self.order = order; self.title = title; self.body = body
         self.link = link; self.buttons = buttons; self.multipleChoiceButtons = multipleChoiceButtons
         self.onboardingType = onboardingType; self.a11yIdRoot = a11yIdRoot; self.imageID = imageID
         self.instructionsPopup = instructionsPopup
+        self.embededLinkText = embededLinkText
     }
+
+    var defaultSelectedButton: OnboardingMultipleChoiceButtonModel<OnboardingMultipleChoiceAction>? =
+    OnboardingMultipleChoiceButtonModel<OnboardingMultipleChoiceAction>(
+        title: "Bottom",
+        action: OnboardingMultipleChoiceAction.toolbarBottom,
+        imageID: "onboardingToolbarIconBottom"
+    )
+
+    var image: UIImage? { UIImage(named: imageID, in: Bundle.module, compatibleWith: nil) }
 }
 
-public enum OnboardingType: String, Codable {
+private enum OnboardingType: String, Codable, Sendable {
     case freshInstall = "fresh-install"
-    case upgrade
 }
 
-public enum OnboardingMultipleChoiceAction: String, CaseIterable, Codable {
+private enum OnboardingMultipleChoiceAction: String, CaseIterable, Codable, Sendable {
     case themeDark = "theme-dark"
     case themeLight = "theme-light"
     case themeSystemDefault = "theme-system-default"
@@ -67,7 +77,7 @@ public enum OnboardingMultipleChoiceAction: String, CaseIterable, Codable {
     }
 }
 
-public enum OnboardingInstructionsPopupActions: String, CaseIterable, Codable {
+private enum OnboardingInstructionsPopupActions: String, CaseIterable, Codable, Sendable {
     case dismiss
     case dismissAndNextCard = "dismiss-and-next-card"
     case openIosFxSettings = "open-ios-fx-settings"
@@ -76,7 +86,7 @@ public enum OnboardingInstructionsPopupActions: String, CaseIterable, Codable {
     var id: String { rawValue }
 }
 
-public enum OnboardingActions: String, CaseIterable, Codable {
+private enum OnboardingActions: String, CaseIterable, Codable, Sendable {
     case endOnboarding = "end-onboarding"
     case forwardOneCard = "forward-one-card"
     case forwardTwoCard = "forward-two-card"
@@ -93,21 +103,22 @@ public enum OnboardingActions: String, CaseIterable, Codable {
 }
 
 extension PreviewModel {
-    static let welcome = PreviewModel(
+    // MARK: - Brand Refresh Flow (v148)
+    static let welcomeBrandRefresh = PreviewModel(
         cardType: .basic,
-        name: "welcome",
+        name: "welcomeBrandRefresh",
         order: 10,
-        title: "Get automatic protection from trackers",
-        body: "One tap helps stop companies spying on your clicks.",
+        title: "Open your links with built-in privacy",
+        body: "We protect your data and automatically block companies from spying on your clicks.",
         link: nil,
         buttons: .init(
-            primary: .init(title: "Get Started", action: OnboardingActions.forwardOneCard),
+            primary: .init(title: "Set as Default Browser", action: OnboardingActions.openInstructionsPopup),
             secondary: .init(title: "Not Now", action: OnboardingActions.forwardOneCard)
         ),
         multipleChoiceButtons: [],
         onboardingType: .freshInstall,
         a11yIdRoot: "onboarding_welcome",
-        imageID: "trackers",
+        imageID: "onboardingTrackersBrandRefresh",
         instructionsPopup: OnboardingInstructionsPopupInfoModel(
             title: "Set as Default Browser",
             instructionSteps: [
@@ -121,93 +132,539 @@ extension PreviewModel {
         )
     )
 
-    static let signToSync = PreviewModel(
-        cardType: .basic,
-        name: "signToSync",
-        order: 20,
-        title: "Sync everywhere you use Firefox",
-        body: "Get bookmarks, tabs, and passwords on any device. All protected with encryption.",
-        link: nil,
-        buttons: .init(
-            primary: .init(title: "Sign In", action: OnboardingActions.syncSignIn),
-            secondary: .init(title: "Skip", action: OnboardingActions.forwardOneCard)
-        ),
-        multipleChoiceButtons: [],
-        onboardingType: .freshInstall,
-        a11yIdRoot: "onboarding_signToSync",
-        imageID: "syncWithIcons",
-        instructionsPopup: nil
-    )
-
-    static let customizationToolbar = PreviewModel(
+    static let customizationToolbarBrandRefresh = PreviewModel(
         cardType: .multipleChoice,
-        name: "customizationToolbar",
-        order: 41,
-        title: "Toolbar Position",
-        body: "Where should the toolbar appear?",
+        name: "customizationToolbarBrandRefresh",
+        order: 20,
+        title: "Choose your address bar",
+        body: "Start typing to get search suggestions, your top sites, bookmarks, " +
+            "history and search engines — all in one place.",
         link: nil,
         buttons: .init(
             primary: .init(title: "Continue", action: OnboardingActions.forwardOneCard),
             secondary: nil
         ),
         multipleChoiceButtons: [
-            .init(title: "Top", action: OnboardingMultipleChoiceAction.toolbarTop, imageID: "toolbarTop"),
-            .init(title: "Bottom", action: OnboardingMultipleChoiceAction.toolbarBottom, imageID: "toolbarBottom")
+            .init(
+                title: "Bottom",
+                action: OnboardingMultipleChoiceAction.toolbarBottom,
+                imageID: "onboardingToolbarIconBottomJapan"
+            ),
+            .init(
+                title: "Top",
+                action: OnboardingMultipleChoiceAction.toolbarTop,
+                imageID: "onboardingToolbarIconTopJapan"
+            )
         ],
         onboardingType: .freshInstall,
         a11yIdRoot: "onboarding_customizationToolbar",
         imageID: "toolbar",
         instructionsPopup: nil
     )
+
+    static let customizationThemeBrandRefresh = PreviewModel(
+        cardType: .multipleChoice,
+        name: "customizationThemeBrandRefresh",
+        order: 25,
+        title: "Pick your theme",
+        body: "Pick your favorite theme or have Firefox match your device, putting you in control.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Continue", action: OnboardingActions.forwardOneCard),
+            secondary: nil
+        ),
+        multipleChoiceButtons: [
+            .init(
+                title: "Automatic",
+                action: OnboardingMultipleChoiceAction.themeSystemDefault,
+                imageID: "onboardingThemeSystemJapan"
+            ),
+            .init(
+                title: "Light",
+                action: OnboardingMultipleChoiceAction.themeLight,
+                imageID: "onboardingThemeLightJapan"
+            ),
+            .init(
+                title: "Dark",
+                action: OnboardingMultipleChoiceAction.themeDark,
+                imageID: "onboardingThemeDarkJapan"
+            )
+        ],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_customizationTheme",
+        imageID: "themeing",
+        instructionsPopup: nil
+    )
+
+    static let signToSyncBrandRefresh = PreviewModel(
+        cardType: .basic,
+        name: "signToSyncBrandRefresh",
+        order: 30,
+        title: "Instantly pick up where you left off",
+        body: "Grab bookmarks, passwords, and more on any device in a snap. " +
+            "Your personal data stays safe and secure with encryption.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Start Syncing", action: OnboardingActions.syncSignIn),
+            secondary: .init(title: "Not Now", action: OnboardingActions.forwardOneCard)
+        ),
+        multipleChoiceButtons: [],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_signToSync",
+        imageID: "onboardingSyncWithIconsBrandRefresh",
+        instructionsPopup: nil
+    )
+
+    // MARK: - Modern Flow (v140)
+    static let welcomeModern = PreviewModel(
+        cardType: .basic,
+        name: "welcomeModern",
+        order: 10,
+        title: "Say goodbye to creepy ads",
+        body: "One choice protects you everywhere you go on the web. You can always change it later.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Set as Default Browser", action: OnboardingActions.openInstructionsPopup),
+            secondary: .init(title: "Not Now", action: OnboardingActions.forwardOneCard)
+        ),
+        multipleChoiceButtons: [],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_welcome",
+        imageID: "onboardingTrackers",
+        instructionsPopup: OnboardingInstructionsPopupInfoModel(
+            title: "Set as Default Browser",
+            instructionSteps: [
+                "Open Settings",
+                "Find Default Apps",
+                "Select Firefox"
+            ],
+            buttonTitle: "Open Settings",
+            buttonAction: OnboardingInstructionsPopupActions.openIosFxSettings,
+            a11yIdRoot: "onboarding_welcomeInstructionsPopup"
+        )
+    )
+
+    static let customizationToolbarModern = PreviewModel(
+        cardType: .multipleChoice,
+        name: "customizationToolbarModern",
+        order: 20,
+        title: "Choose where to put your address bar",
+        body: "",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Continue", action: OnboardingActions.forwardOneCard),
+            secondary: nil
+        ),
+        multipleChoiceButtons: [
+            .init(
+                title: "Bottom",
+                action: OnboardingMultipleChoiceAction.toolbarBottom,
+                imageID: "onboardingToolbarIconBottom"
+            ),
+            .init(
+                title: "Top",
+                action: OnboardingMultipleChoiceAction.toolbarTop,
+                imageID: "onboardingToolbarIconTop"
+            )
+        ],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_customizationToolbar",
+        imageID: "toolbar",
+        instructionsPopup: nil
+    )
+
+    static let customizationThemeModern = PreviewModel(
+        cardType: .multipleChoice,
+        name: "customizationThemeModern",
+        order: 25,
+        title: "Choose your theme",
+        body: "",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Continue", action: OnboardingActions.forwardOneCard),
+            secondary: nil
+        ),
+        multipleChoiceButtons: [
+            .init(
+                title: "System Default",
+                action: OnboardingMultipleChoiceAction.themeSystemDefault,
+                imageID: "onboardingThemeSystem"
+            ),
+            .init(
+                title: "Light",
+                action: OnboardingMultipleChoiceAction.themeLight,
+                imageID: "onboardingThemeLight"
+            ),
+            .init(
+                title: "Dark",
+                action: OnboardingMultipleChoiceAction.themeDark,
+                imageID: "onboardingThemeDark"
+            )
+        ],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_customizationTheme",
+        imageID: "themeing",
+        instructionsPopup: nil
+    )
+
+    static let signToSyncModern = PreviewModel(
+        cardType: .basic,
+        name: "signToSyncModern",
+        order: 30,
+        title: "Instantly pick up where you left off",
+        body: "Get your bookmarks, history, and passwords on any device.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Start Syncing", action: OnboardingActions.syncSignIn),
+            secondary: .init(title: "Not now", action: OnboardingActions.forwardOneCard)
+        ),
+        multipleChoiceButtons: [],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_signToSync",
+        imageID: "onboardingSyncWithIcons",
+        instructionsPopup: nil
+    )
+
+    // MARK: - Japan Flow (v145)
+    static let welcomeJapan = PreviewModel(
+        cardType: .basic,
+        name: "welcomeJapan",
+        order: 10,
+        title: "Say goodbye to creepy trackers",
+        body: "One choice protects you everywhere you go on the web. You can always change it later.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Set as Default Browser", action: OnboardingActions.openInstructionsPopup),
+            secondary: .init(title: "Not Now", action: OnboardingActions.forwardOneCard)
+        ),
+        multipleChoiceButtons: [],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_welcome",
+        imageID: "onboardingTrackersJapan",
+        instructionsPopup: OnboardingInstructionsPopupInfoModel(
+            title: "Set as Default Browser",
+            instructionSteps: [
+                "Open Settings",
+                "Find Default Apps",
+                "Select Firefox"
+            ],
+            buttonTitle: "Open Settings",
+            buttonAction: OnboardingInstructionsPopupActions.openIosFxSettings,
+            a11yIdRoot: "onboarding_welcomeInstructionsPopup"
+        )
+    )
+
+    static let customizationToolbarJapan = PreviewModel(
+        cardType: .multipleChoice,
+        name: "customizationToolbarJapan",
+        order: 20,
+        title: "Choose your address bar",
+        body: "Start typing to get search suggestions, your top sites, bookmarks, " +
+            "history and search engines — all in one place.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Continue", action: OnboardingActions.forwardOneCard),
+            secondary: nil
+        ),
+        multipleChoiceButtons: [
+            .init(
+                title: "Bottom",
+                action: OnboardingMultipleChoiceAction.toolbarBottom,
+                imageID: "onboardingToolbarIconBottomJapan"
+            ),
+            .init(
+                title: "Top",
+                action: OnboardingMultipleChoiceAction.toolbarTop,
+                imageID: "onboardingToolbarIconTopJapan"
+            )
+        ],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_customizationToolbar",
+        imageID: "toolbar",
+        instructionsPopup: nil
+    )
+
+    static let customizationThemeJapan = PreviewModel(
+        cardType: .multipleChoice,
+        name: "customizationThemeJapan",
+        order: 25,
+        title: "Pick your theme",
+        body: "Pick your favorite theme or have Firefox match your device, putting you in control.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Continue", action: OnboardingActions.forwardOneCard),
+            secondary: nil
+        ),
+        multipleChoiceButtons: [
+            .init(
+                title: "Automatic",
+                action: OnboardingMultipleChoiceAction.themeSystemDefault,
+                imageID: "onboardingThemeSystemJapan"
+            ),
+            .init(
+                title: "Light",
+                action: OnboardingMultipleChoiceAction.themeLight,
+                imageID: "onboardingThemeLightJapan"
+            ),
+            .init(
+                title: "Dark",
+                action: OnboardingMultipleChoiceAction.themeDark,
+                imageID: "onboardingThemeDarkJapan"
+            )
+        ],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_customizationTheme",
+        imageID: "themeing",
+        instructionsPopup: nil
+    )
+
+    static let signToSyncJapan = PreviewModel(
+        cardType: .basic,
+        name: "signToSyncJapan",
+        order: 30,
+        title: "Instantly pick up where you left off",
+        body: "Your bookmarks, passwords, and more are synced across your other devices. " +
+            "Everything is protected with encryption, so only you can access it.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Start Syncing", action: OnboardingActions.syncSignIn),
+            secondary: .init(title: "Not Now", action: OnboardingActions.forwardOneCard)
+        ),
+        multipleChoiceButtons: [],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_signToSync",
+        imageID: "onboardingSyncWithIconsJapan",
+        instructionsPopup: nil
+    )
+
+    // MARK: - Legacy/Default (for backwards compatibility)
+    static let welcome = welcomeBrandRefresh
+    static let signToSync = signToSyncBrandRefresh
+    static let customizationToolbar = customizationToolbarBrandRefresh
+
+    // MARK: - Terms of Service
+    static let tosBrandRefresh = PreviewModel(
+        cardType: .basic,
+        name: "tosBrandRefresh",
+        order: 20,
+        title: "Get ready to run free",
+        body: "Speedy, safe, and won't sell you out. Browsing just got better.",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Continue", action: OnboardingActions.syncSignIn),
+            secondary: nil
+        ),
+        multipleChoiceButtons: [],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_termsOfUse",
+        imageID: "fxHomeHeaderLogoBall",
+        instructionsPopup: nil,
+        embededLinkText: [
+            EmbeddedLink(
+                fullText: "By continuing, you agree to the Firefox Terms of Use",
+                linkText: "Firefox Terms of Use",
+                action: .openTermsOfService
+            ),
+            EmbeddedLink(
+                fullText: "Firefox cares about your privacy. Read more in our Privacy Notice",
+                linkText: "Privacy Notice",
+                action: .openPrivacyNotice
+            ),
+            EmbeddedLink(
+                fullText:
+                    "To help improve the browser, Firefox sends diagnostic and interaction data to Mozilla. Manage settings",
+                linkText: "Manage settings",
+                action: .openManageSettings
+            )
+        ]
+    )
+
+    static let tosModern = PreviewModel(
+        cardType: .basic,
+        name: "tosModern",
+        order: 20,
+        title: "Upgrade your browsing",
+        body: "Load sites lightning fast\nAutomatic tracking protection\nSync on all your devices",
+        link: nil,
+        buttons: .init(
+            primary: .init(title: "Continue", action: OnboardingActions.syncSignIn),
+            secondary: nil
+        ),
+        multipleChoiceButtons: [],
+        onboardingType: .freshInstall,
+        a11yIdRoot: "onboarding_termsOfUse",
+        imageID: "fxHomeHeaderLogoBall",
+        instructionsPopup: nil,
+        embededLinkText: [
+            EmbeddedLink(
+                fullText: "By continuing, you agree to the %@",
+                linkText: "Firefox Terms of Use",
+                action: .openTermsOfService
+            ),
+            EmbeddedLink(
+                fullText: "%@ cares about your privacy. Read more in our %@",
+                linkText: "Privacy Notice",
+                action: .openPrivacyNotice
+            ),
+            EmbeddedLink(
+                fullText:
+                    "To help improve the browser, %1$@ sends diagnostic and interaction data to %2$@. %3$@",
+                linkText: "Manage",
+                action: .openManageSettings
+            )
+        ]
+    )
+
+    // MARK: - Legacy/Default (for backwards compatibility)
+    static let tos = tosBrandRefresh
 }
 
 extension PreviewModel {
-    /// All of the built-in preview cards
-    static let all: [PreviewModel] = [
-        .welcome,
-        .customizationToolbar,
-        .signToSync
+    /// Brand Refresh flow preview cards (v148)
+    static let brandRefreshFlow: [PreviewModel] = [
+        .welcomeBrandRefresh,
+        .customizationToolbarBrandRefresh,
+        .customizationThemeBrandRefresh,
+        .signToSyncBrandRefresh
     ]
+
+    /// Modern flow preview cards (v140)
+    static let modernFlow: [PreviewModel] = [
+        .welcomeModern,
+        .customizationToolbarModern,
+        .customizationThemeModern,
+        .signToSyncModern
+    ]
+
+    /// Japan flow preview cards (v145)
+    static let japanFlow: [PreviewModel] = [
+        .welcomeJapan,
+        .customizationToolbarJapan,
+        .customizationThemeJapan,
+        .signToSyncJapan
+    ]
+
+    /// All of the built-in preview cards (defaults to Brand Refresh)
+    static let all: [PreviewModel] = brandRefreshFlow
 }
 
-#Preview("Onboarding Card") {
-    ZStack {
-        MilkyWayMetalView()
-            .edgesIgnoringSafeArea(.all)
-        OnboardingBasicCardView(
-            viewModel: PreviewModel.welcome,
-            windowUUID: .DefaultUITestingUUID,
-            themeManager: DefaultThemeManager(sharedContainerIdentifier: ""),
-            onBottomButtonAction: { _, _ in },
-            onLinkTap: { _ in }
-        )
-    }
-}
-
-#Preview("Multiple Choice Onboarding Card") {
-    ZStack {
-        MilkyWayMetalView()
-            .edgesIgnoringSafeArea(.all)
-        OnboardingMultipleChoiceCardView(
-            viewModel: PreviewModel.customizationToolbar,
-            windowUUID: .DefaultUITestingUUID,
-            themeManager: DefaultThemeManager(sharedContainerIdentifier: ""),
-            onBottomButtonAction: { _, _ in },
-            onMultipleChoiceAction: { _, _ in },
-            onLinkTap: { _ in }
-        )
-    }
-}
-
-#Preview("Onboarding Flow") {
+#Preview("Onboarding Flow - Brand Refresh") {
     OnboardingView<PreviewModel>(
         windowUUID: .DefaultUITestingUUID,
         themeManager: DefaultThemeManager(sharedContainerIdentifier: ""),
         viewModel: OnboardingFlowViewModel(
-            onboardingCards: PreviewModel.all,
-            onComplete: { }
-        )
+            onboardingCards: PreviewModel.brandRefreshFlow,
+            skipText: "Skip",
+            variant: .brandRefresh,
+            onActionTap: { _, _, _ in
+            },
+            onMultipleChoiceActionTap: { _, _ in },
+            onComplete: { _, _ in }
+        ),
+        pageControlAccessibilityId: "onboarding_pageControl_preview",
+        closeButtonAccessibilityId: "onboarding_closeButton_preview",
     )
+}
+
+#Preview("Onboarding Flow - Brand Refresh (Dark)") {
+    OnboardingView<PreviewModel>(
+        windowUUID: .DefaultUITestingUUID,
+        themeManager: DefaultThemeManager(sharedContainerIdentifier: ""),
+        viewModel: OnboardingFlowViewModel(
+            onboardingCards: PreviewModel.brandRefreshFlow,
+            skipText: "Skip",
+            variant: .brandRefresh,
+            onActionTap: { _, _, _ in
+            },
+            onMultipleChoiceActionTap: { _, _ in },
+            onComplete: { _, _ in }
+        ),
+        pageControlAccessibilityId: "onboarding_pageControl_preview",
+        closeButtonAccessibilityId: "onboarding_closeButton_preview",
+    )
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Onboarding Flow - Modern") {
+    OnboardingView<PreviewModel>(
+        windowUUID: .DefaultUITestingUUID,
+        themeManager: DefaultThemeManager(sharedContainerIdentifier: ""),
+        viewModel: OnboardingFlowViewModel(
+            onboardingCards: PreviewModel.modernFlow,
+            skipText: "Skip",
+            variant: .base,
+            onActionTap: { _, _, _ in
+            },
+            onMultipleChoiceActionTap: { _, _ in },
+            onComplete: { _, _ in }
+        ),
+        pageControlAccessibilityId: "onboarding_pageControl_preview",
+        closeButtonAccessibilityId: "onboarding_closeButton_preview",
+    )
+}
+
+#Preview("Onboarding Flow - Japan") {
+    OnboardingView<PreviewModel>(
+        windowUUID: .DefaultUITestingUUID,
+        themeManager: DefaultThemeManager(sharedContainerIdentifier: ""),
+        viewModel: OnboardingFlowViewModel(
+            onboardingCards: PreviewModel.japanFlow,
+            skipText: "Skip",
+            variant: .japan,
+            onActionTap: { _, _, _ in
+            },
+            onMultipleChoiceActionTap: { _, _ in },
+            onComplete: { _, _ in }
+        ),
+        pageControlAccessibilityId: "onboarding_pageControl_preview",
+        closeButtonAccessibilityId: "onboarding_closeButton_preview",
+    )
+}
+
+#Preview("Terms of service") {
+    TermsOfUseView(
+        viewModel: TermsOfUseFlowViewModel(
+            configuration: PreviewModel.tos,
+            variant: .base,
+            onTermsOfUseTap: {},
+            onPrivacyNoticeTap: {},
+            onManageSettingsTap: {},
+            onComplete: {}
+        ),
+        windowUUID: .DefaultUITestingUUID,
+        themeManager: DefaultThemeManager(sharedContainerIdentifier: "")
+    )
+}
+
+#Preview("Terms of service - Brand Refresh") {
+    TermsOfUseView(
+        viewModel: TermsOfUseFlowViewModel(
+            configuration: PreviewModel.tos,
+            variant: .brandRefresh,
+            onTermsOfUseTap: {},
+            onPrivacyNoticeTap: {},
+            onManageSettingsTap: {},
+            onComplete: {}
+        ),
+        windowUUID: .DefaultUITestingUUID,
+        themeManager: DefaultThemeManager(sharedContainerIdentifier: "")
+    )
+}
+
+#Preview("Terms of service - Brand Refresh (Dark)") {
+    TermsOfUseView(
+        viewModel: TermsOfUseFlowViewModel(
+            configuration: PreviewModel.tos,
+            variant: .brandRefresh,
+            onTermsOfUseTap: {},
+            onPrivacyNoticeTap: {},
+            onManageSettingsTap: {},
+            onComplete: {}
+        ),
+        windowUUID: .DefaultUITestingUUID,
+        themeManager: DefaultThemeManager(sharedContainerIdentifier: "")
+    )
+    .preferredColorScheme(.dark)
 }
 
 #endif

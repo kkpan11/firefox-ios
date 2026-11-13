@@ -6,7 +6,7 @@ import Foundation
 import Common
 
 final class TrackingProtectionConnectionDetailsView: UIView {
-    private struct UX {
+    private enum UX {
         static let foxImageSize: CGFloat = 100
         static let connectionDetailsLabelsVerticalSpacing: CGFloat = 12
         static let labelsCenteringDelta: CGFloat = 8
@@ -146,8 +146,18 @@ final class TrackingProtectionConnectionDetailsView: UIView {
         foxStatusImage.image = image
     }
 
-    func setupAccessibilityIdentifiers(foxImageA11yId: String) {
+    func setupAccessibilityIdentifiers(
+        connectionDetailsContentViewA11yId: String,
+        foxImageA11yId: String,
+        connectionDetailsLabelsContainerA11yId: String,
+        connectionDetailsTitleLabelA11yId: String,
+        connectionDetailsStatusLabelA11yId: String
+    ) {
+        connectionDetailsContentView.accessibilityIdentifier = connectionDetailsContentViewA11yId
         foxStatusImage.accessibilityIdentifier = foxImageA11yId
+        connectionDetailsLabelsContainer.accessibilityIdentifier = connectionDetailsLabelsContainerA11yId
+        connectionDetailsTitleLabel.accessibilityIdentifier = connectionDetailsTitleLabelA11yId
+        connectionDetailsStatusLabel.accessibilityIdentifier = connectionDetailsStatusLabelA11yId
     }
 
     func applyTheme(theme: Theme) {

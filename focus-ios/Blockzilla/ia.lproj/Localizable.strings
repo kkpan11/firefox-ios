@@ -26,7 +26,7 @@
 "About.rowRights" = "Tu derectos";
 
 /* Label for row in About screen */
-"About.rowTerms" = "Terminos de uso";
+"About.rowTerms" = "Conditiones de uso";
 
 /* Label on About screen */
 "About.safariBullet1" = "Bloca traciatores pro melior confidentialitate";
@@ -322,14 +322,17 @@
 /* Description associated with the Crash Reports toggle on settings screen */
 "Settings.detailTextCrashReports.V2" = "Isto adjuta nos a diagnosticar e reparar problemas con le navigator.";
 
+/* Description associated to the Rollouts toggle on the settings screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextRollouts" = "%@ meliorara functiones, prestationes e stabilitate inter un actualisation e le altere. Le modificationes sera applicate a distantia.";
+
 /* Description associated to the Search Suggestions toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
 "Settings.detailTextSearchSuggestion" = "%@ inviara a tu motor de recerca lo que tu scribe in le barra de adresse.";
 
-/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
 "Settings.detailTextSendUsageData" = "Mozilla se effortia a colliger solmente le informationes necessari pro fornir e meliorar %@ pro totes.";
 
-/* Description associated to the Studies toggle on the settings screen. %@ is the app name (for example “Firefox Focus” or ”Firefox Klar”). */
-"Settings.detailTextStudies" = "%@ pote installar e conducer studios de tempore in tempore.";
+/* Description associated to the Send Usage Data toggle on main screen. %@ is the app name (for example "Firefox Focus" or "Firefox Klar"). */
+"Settings.detailTextSendUsageData.v2" = "Mozilla se effortia colliger solo le informationes necessari pro fornir e meliorar %@ pro totes.";
 
 /* Title for section in settings menu */
 "Settings.general" = "General";
@@ -439,14 +442,14 @@
 /* Show home screen tips toggle label on settings screen */
 "Settings.toggleHomeScreenTips" = "Monstrar le suggestiones del pagina principal";
 
+/* Label for Rollouts toggle on the settings screen */
+"Settings.toggleRollouts" = "Permitter le meliorationes a distantia";
+
 /* Safari toggle label on settings screen */
 "Settings.toggleSafari" = "Safari";
 
 /* Label for Send Usage Data toggle on main screen */
 "Settings.toggleSendUsageData" = "Inviar datos de uso";
-
-/* Label for Studies toggle on the settings screen */
-"Settings.toggleStudies" = "Studios";
 
 /* Label for toggle on settings screen */
 "Settings.toggleTouchID" = "Usar Touch ID pro disblocar le application";
@@ -485,7 +488,7 @@
 "ShareMenu.RemoveFromShortcuts" = "Remover del accessos directe";
 
 /* Toast displayed to the user after removing the item from the Shortcuts. */
-"ShareMenu.RemoveShortcut.Confirm" = "Via breve removite";
+"ShareMenu.RemoveShortcut.Confirm" = "Accesso directe removite";
 
 /* Text for the share menu option when a user wants to reload the site as a desktop */
 "ShareMenu.RequestDesktop" = "Requestar sito de scriptorio";
@@ -512,10 +515,10 @@
 "ShortcutView.RemoveFromShortcuts" = "Remover del accessos directe";
 
 /* Text for the long press on a shortcut rename option in context menu. */
-"ShortcutView.Rename" = "Renominar via-breve";
+"ShortcutView.Rename" = "Renominar accesso directe";
 
 /* Text for the placeholder textfield on rename shortcut alert. */
-"ShortcutView.RenameShortcutAlertPlaceholder" = "Nomine via-breve";
+"ShortcutView.RenameShortcutAlertPlaceholder" = "Nomine del accesso directe";
 
 /* Text for the rename shortcut alert primary action. */
 "ShortcutView.RenameShortcutAlertPrimaryAction" = "Salvar";

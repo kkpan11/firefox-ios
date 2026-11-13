@@ -12,75 +12,95 @@ import Foundation
 /// main element wherein they appear. As we continue updating views, all
 /// `.accessibilityIdentifier` identifiers from the client and the tests
 /// should be move here and updated throughout the app.
-struct AccessibilityIdentifiers {
+enum AccessibilityIdentifiers {
     /// Used for toolbar/URL bar buttons since our classes are built that buttons can live in one or the other
     /// Using only those a11y identifiers for both ensures we have standard way to refer to buttons from iPad to iPhone
-    struct Toolbar {
-        static let urlBarBorder = "TabToolbar.urlBarBorder"
+    enum Toolbar {
         static let settingsMenuButton = "TabToolbar.menuButton"
         static let homeButton = "TabToolbar.homeButton"
-        static let trackingProtection = "TabLocationView.trackingProtectionButton"
         static let readerModeButton = "TabLocationView.readerModeButton"
+        static let readerModeWithSummarizerButton = "TabLocationView.readerModeWithSummarizerButton"
         static let reloadButton = "TabLocationView.reloadButton"
         static let shareButton = "TabLocationView.shareButton"
+        static let summarizeButton = "TabLocationView.summarizeButton"
         static let backButton = "TabToolbar.backButton"
-        static let fireButton = "TabToolbar.fireButton"
         static let forwardButton = "TabToolbar.forwardButton"
         static let tabsButton = "TabToolbar.tabsButton"
         static let addNewTabButton = "TabToolbar.addNewTabButton"
         static let searchButton = "TabToolbar.searchButton"
         static let stopButton = "TabToolbar.stopButton"
-        static let bookmarksButton = "TabToolbar.libraryButton"
+        static let translateButton = "TabToolbar.translateButton"
+        static let translateLoadingButton = "TabToolbar.translateLoadingButton"
+        static let translateActiveButton = "TabToolbar.translateActiveButton"
+        static let topBorder = "TabToolbar.toolbarTopBorderView"
     }
 
-    struct Browser {
-        struct TopTabs {
+    enum Browser {
+        enum TopTabs {
             static let collectionView = "Top Tabs View"
             static let privateModeButton = "TopTabsViewController.privateModeButton"
         }
 
-        struct UrlBar {
-            static let scanQRCodeButton = "urlBar-scanQRCode"
+        enum UrlBar {
             static let cancelButton = "urlBar-cancel"
-            static let searchTextField = "address"
         }
 
-        struct KeyboardAccessory {
+        enum KeyboardAccessory {
             static let doneButton = "KeyboardAccessory.doneButton"
             static let nextButton = "KeyboardAccessory.nextButton"
             static let previousButton = "KeyboardAccessory.previousButton"
             static let addressAutofillButton = "KeyboardAccessory.addressAutofillButton"
             static let creditCardAutofillButton = "KeyboardAccessory.creditCardAutofillButton"
+            static let relayMaskAutofillButton = "KeyboardAccessory.relayMaskAutofillButton"
         }
 
-        struct AddressToolbar {
+        enum AddressToolbar {
             static let lockIcon = "AddressToolbar.lockIcon"
+            static let lockIconOff = "AddressToolbar.lockIconOff"
             static let searchTextField = "AddressToolbar.address"
             static let searchEngine = "AddressToolbar.searchEngine"
+            static let googleLensButton = "AddressToolbar.googleLensButton"
+            static let googleLensTakePhotoAction = "AddressToolbar.googleLensTakePhotoAction"
+            static let googleLensPhotoLibraryAction = "AddressToolbar.googleLensPhotoLibraryAction"
+            static let leadingSkeleton = "AddressToolbar.leadingSkeleton"
+            static let trailingSkeleton = "AddressToolbar.trailingSkeleton"
         }
 
-        struct ToolbarButtons {
-            static let qrCode = "Toolbar.QRCode.button"
-        }
-
-        struct WebView {
+        enum WebView {
             static let documentLoadingLabel = "WebView.documentLoadingLabel"
+            static let automationTestLeakIndicator = "WebView.LeakIndicatorElement"
+            static let contentView = "contentView"
         }
+
+        enum Tab {
+            static let automationTestLeakIndicator = "Tab.LeakIndicatorElement"
+        }
+
+        static let overKeyboardContainer = "Browser.overKeyboardContainer"
+        static let headerContainer = "Browser.headerContainer"
+        static let bottomContainer = "Browser.bottomContainer"
+        static let bottomContentStackView = "Browser.bottomContentStackView"
+        static let contentContainer = "Browser.contentContainer"
+        static let statusBarOverlay = "Browser.statusBarOverlay"
+        static let topBlurView = "Browser.topBlurView"
+        static let bottomBlurView = "Browser.bottomBlurView"
+        static let keyboardSpacer = "AddressToolbar.keyboardSpacer"
     }
 
-    struct ContextualHints {
+    enum ContextualHints {
         static let actionButton = "ContextualHints.ActionButton"
     }
 
-    struct MainMenu {
-        struct HeaderView {
-            static let mainButton = "MainMenu.MainButton"
-            static let closeButton = "MainMenu.CloseMenuButton"
+    enum MainMenu {
+        enum SiteProtectionsHeaderView {
+            static let header = "MainMenu.SiteProtectionHeader"
         }
 
-        struct NavigationHeaderView {
-            static let backButton = "MainMenu.BackButton"
-            static let title = "MainMenu.Title"
+        enum HeaderBanner {
+            static let closeButton = "MainMenu.HeaderBanner.CloseMenuButton"
+        }
+
+        enum HeaderView {
             static let closeButton = "MainMenu.CloseMenuButton"
         }
 
@@ -88,9 +108,8 @@ struct AccessibilityIdentifiers {
         static let newTab = "MainMenu.NewTab"
         static let newPrivateTab = "MainMenu.NewPrivateTab"
         static let switchToDesktopSite = "MainMenu.SwitchToDesktopSite"
+        static let desktopSite = "MainMenu.DesktopSite"
         static let findInPage = "MainMenu.FindInPage"
-        static let tools = "MainMenu.Tools"
-        static let save = "MainMenu.Save"
         static let bookmarks = "MainMenu.Bookmarks"
         static let history = "MainMenu.History"
         static let downloads = "MainMenu.Downloads"
@@ -98,10 +117,9 @@ struct AccessibilityIdentifiers {
         static let getHelp = "MainMenu.GetHelp"
         static let settings = "MainMenu.Settings"
         static let whatsNew = "MainMenu.WhatsNew"
-        static let customizeHomepage = "MainMenu.CustomizeHomepage"
         static let saveToReadingList = "MainMenu.SaveToReadingList"
         static let addToShortcuts = "MainMenu.AddToShortcuts"
-        static let bookmarkThisPage = "MainMenu.BookmarkThisPage"
+        static let bookmarkPage = "MainMenu.BookmarkPage"
         static let print = "MainMenu.Print"
         static let share = "MainMenu.Share"
         static let saveAsPDF = "MainMenu.SaveAsPDF"
@@ -110,21 +128,50 @@ struct AccessibilityIdentifiers {
         static let nightMode = "MainMenu.NightModeOn"
         static let zoom = "MainMenu.Zoom"
         static let moreLess = "MainMenu.MoreLess"
+        static let signIn = "MainMenu.SignIn"
+        static let summarizePage = "MainMenu.SummarizePage"
+        static let translatePage = "MainMenu.TranslatePage"
         static let trackigProtection = "shieldCheckmarkLarge"
     }
 
-    struct UnifiedSearch {
-        struct BottomSheetRow {
+    enum WebCompatReporter {
+        static let urlField = "WebCompatReporter.URLField"
+        static let categoryMenu = "WebCompatReporter.CategoryMenu"
+        static let subOption = "WebCompatReporter.SubOption"
+        static let additionalDetails = "WebCompatReporter.AdditionalDetails"
+        static let sendButton = "WebCompatReporter.SendButton"
+        static let includeScreenshot = "WebCompatReporter.IncludeScreenshot"
+        static let includeBlockedList = "WebCompatReporter.IncludeBlockedList"
+        static let learnMore = "WebCompatReporter.LearnMore"
+
+        enum Preview {
+            static let closeButton = "WebCompatReporter.Preview.CloseButton"
+            static let summary = "WebCompatReporter.Preview.Summary"
+            static let technicalDataRow = "WebCompatReporter.Preview.TechnicalDataRow"
+            /// Suffixed with the payload group id, e.g. `…SectionHeader.basic`.
+            static let sectionHeader = "WebCompatReporter.Preview.SectionHeader"
+            static let sectionContent = "WebCompatReporter.Preview.SectionContent"
+        }
+    }
+
+    enum UnifiedSearch {
+        enum BottomSheetRow {
             static let engine = "UnifiedSearch.BottomSheetRow.Engine"
             static let searchSettings = "UnifiedSearch.BottomSheetRow.SearchSettings"
         }
     }
 
-    struct EnhancedTrackingProtection {
-        struct MainScreen {
+    enum EnhancedTrackingProtection {
+        enum MainScreen {
+            static let scrollView = "TrackingProtection.ScrollView"
+            static let baseView = "TrackingProtection.BaseView"
             static let clearCookiesButton = "TrackingProtection.ClearCookiesButton"
             static let trackingProtectionSettingsButton = "TrackingProtection.SettingsButton"
+            static let connectionDetailsContentView = "TrackingProtection.ConnectionDetailsContentView"
             static let foxImage = "TrackingProtection.FoxStatusImage"
+            static let connectionDetailsLabelsContainer = "TrackingProtection.ConnectionDetailsLabelsContainer"
+            static let connectionDetailsTitleLabel = "TrackingProtection.ConnectionDetailsTitleLabel"
+            static let connectionDetailsStatusLabel = "TrackingProtection.ConnectionDetailsStatusLabel"
             static let shieldImage = "TrackingProtection.ShieldImage"
             static let lockImage = "TrackingProtection.LockImage"
             static let arrowImage = "TrackingProtection.ArrowImage"
@@ -135,12 +182,25 @@ struct AccessibilityIdentifiers {
             static let trackersBlockedButton = "TrackingProtection.TrackersBlockedButton"
             static let securityStatusButton = "TrackingProtection.ConnectionSecurityStatusButton"
             static let toggleViewLabelsContainer = "TrackingProtection.ToggleViewLabelsContainer"
+            static let toggleLabel = "TrackingProtection.ToggleLabel"
+            static let toggleSwitch = "TrackingProtection.ToggleSwitch"
+            static let toggleStatusLabel = "TrackingProtection.ToggleStatusLabel"
             static let toggleViewBodyLabel = "TrackingProtection.ToggleViewBodyLabel"
             static let closeButton = "TrackingProtection.CloseButton"
             static let faviconImage = "TrackingProtection.FaviconImage"
+            static let trackersLabel  = "TrackingProtection.TrackersLabel"
+            static let trackersHorizontalLine = "TrackingProtection.TrackersHorizontalLine"
+            static let trackersConnectionContainer = "TrackingProtection.TrackersConnectionContainer"
+            static let connectionStatusImage = "TrackingProtection.ConnectionStatusImage"
+            static let connectionStatusLabel = "TrackingProtection.ConnectionStatusLabel"
+            static let connectionHorizontalLine = "TrackingProtection.ConnectionHorizontalLine"
+            static let favicon = "TrackingProtection.Favicon"
+            static let titleLabel = "TrackingProtection.TitleLabel"
+            static let subtitleLabel = "TrackingProtection.SubtitleLabel"
         }
 
-        struct DetailsScreen {
+        enum DetailsScreen {
+            static let scrollView = "TrackingProtectionDetails.ScrollView"
             static let headerView = "TrackingProtectionDetails.HeaderView"
             static let mainView = "TrackingProtectionDetails.MainView"
             static let containerView = "TrackingProtectionDetails.BaseView"
@@ -155,23 +215,52 @@ struct AccessibilityIdentifiers {
             static let sectionLabel = "TrackingProtectionDetails.SectionLabel"
             static let allSectionItems = "TrackingProtectionDetails.AllSectionItems"
             static let itemLabel = "TrackingProtectionDetails.ItemLabel"
+            static let connectionImage = "TrackingProtectionDetails.ConnectionImage"
+            static let connectionStatusLabel = "TrackingProtectionDetails.ConnectionStatusLabel"
+            static let dividerView = "TrackingProtectionDetails.DividerView"
+            static let verifiedByView = "TrackingProtectionDetails.VerifiedByView"
+            static let verifiedByLabel = "TrackingProtectionDetails.VerifiedByLabel"
         }
 
-        struct BlockedTrackers {
+        enum BlockedTrackers {
             static let headerView = "BlockedTrackers.HeaderView"
+            static let footerView = "BlockedTrackers.FooterView"
             static let mainView = "BlockedTrackers.MainView"
             static let containerView = "BlockedTrackers.BaseView"
+            static let trackersTable = "BlockedTrackers.TrackersTable"
+            static let totalTrackersBlockedLabel = "BlockedTrackers.TotalTrackersBlockedLabel"
+            static let trackersBlockedInfoTextView = "BlockedTrackers.TrackersBlockedInfoTextView"
+
+            static let crossSiteTitle = "BlockedTrackers.CrossSiteTitle"
+            static let crossSiteImage = "BlockedTrackers.CrossSiteImage"
+
+            static let fingerPrintersTitle = "BlockedTrackers.FingerPrintersTitle"
+            static let fingerPrintersImage = "BlockedTrackers.FingerPrintersImage"
+
+            static let trackingContentTitle = "BlockedTrackers.TrackingContentTitle"
+            static let trackingContentImage = "BlockedTrackers.TrackingContentImage"
+
+            static let socialMediaTitle = "BlockedTrackers.SocialMediaTitle"
+            static let socialMediaImage = "BlockedTrackers.SocialMediaImage"
         }
 
-        struct CertificatesScreen {
+        enum BlockedTrackersLearnMore {
+            static let headerView = "BlockedTrackersLearnMore.HeaderView"
+            static let containerView = "BlockedTrackersLearnMore.containerView"
+            static let closeButton = "BlockedTrackersLearnMore.CloseButton"
+            static let backButton = "BlockedTrackersLearnMore.BackButton"
+            static let titleLabel = "BlockedTrackersLearnMore.TitleLabel"
+        }
+
+        enum CertificatesScreen {
             static let headerView = "CertificatesViewController.HeaderView"
         }
     }
 
-    struct FirefoxHomepage {
+    enum FirefoxHomepage {
         static let collectionView = "FxCollectionView"
 
-        struct HomeTabBanner {
+        enum HomeTabBanner {
             static let titleLabel = "HomeTabBanner.titleLabel"
             static let descriptionLabel = "HomeTabBanner.descriptionLabel"
             static let descriptionLabel1 = "HomeTabBanner.descriptionLabel1"
@@ -181,43 +270,58 @@ struct AccessibilityIdentifiers {
             static let closeButton = "HomeTabBanner.closeButton"
         }
 
-        struct OtherButtons {
+        enum OtherButtons {
             static let logoID = "FxHomeLogoID"
-            static let customizeHome = "FxHomeCustomizeHomeSettingButton"
             static let closeButton = "FirefoxHomepage.closeButton"
+            static let quickAnswersButton = "FirefoxHomepage.quickAnswersButton"
         }
 
-        struct MoreButtons {
+        enum MoreButtons {
+            static let shortcuts = "shortcutsSectionMoreButton"
             static let bookmarks = "bookmarksSectionMoreButton"
             static let jumpBackIn = "jumpBackInSectionMoreButton"
-            static let customizeHomePage = "FxHomeCustomizeHomeSettingButton"
         }
 
-        struct SectionTitles {
+        enum SectionTitles {
             static let jumpBackIn = "jumpBackInTitle"
             static let bookmarks = "bookmarksTitle"
-            static let pocket = "pocketTitle"
+            static let merino = "pocketTitle"
             static let topSites = "topSitesTitle"
         }
 
-        struct TopSites {
+        enum TopSites {
             static let itemCell = "TopSitesCell"
+
+            enum AddShortcutAlert {
+                static let view = "TopSites.AddShortcutAlert"
+                static let urlTextField = "TopSites.AddShortcutAlert.URLTextField"
+            }
         }
 
-        struct Pocket {
+        enum SearchBar {
+            static let itemCell = "SearchBarCell"
+        }
+
+        enum EmbeddedAddressBar {
+            static let view = "EmbeddedAddressBar"
+        }
+
+        enum Pocket {
+            static let allCategory = "Category.All"
+            static let category = "Category"
             static let itemCell = "PocketCell"
             static let footerLearnMoreLabel = "Pocket.footerLearnMoreLabel"
         }
 
-        struct JumpBackIn {
+        enum JumpBackIn {
             static let itemCell = "JumpBackInCell"
         }
 
-        struct Bookmarks {
+        enum Bookmarks {
             static let itemCell = "BookmarksCell"
         }
 
-        struct SyncedTab {
+        enum SyncedTab {
             static let itemCell = "SyncedTabCell"
             static let cardTitle = "SyncedTabCardTitle"
             static let showAllButton = "SyncedTabShowAllButton"
@@ -225,26 +329,38 @@ struct AccessibilityIdentifiers {
             static let favIconImage = "SyncedTabFavIconImage"
             static let descriptionLabel = "SyncedTabDescriptionLabel"
         }
-    }
 
-    struct GeneralizedIdentifiers {
-        public static let back = "Back"
-    }
+        enum TrackerBlockerModule {
+            static let containerPill = "TrackerBlockerModule.containerPill"
+            static let shieldIcon = "TrackerBlockerModule.shieldIcon"
+            static let titleLabel = "TrackerBlockerModule.titleLabel"
 
-    struct SaveCardPrompt {
-        struct Prompt {
-            static let closeButton = "a11yCloseButton"
+            enum Sheet {
+                static let closeButton = "TrackerBlockerModule.Sheet.closeButton"
+                static let shieldIcon = "TrackerBlockerModule.Sheet.shieldIcon"
+                static let weeklyCountLabel = "TrackerBlockerModule.Sheet.weeklyCountLabel"
+                static let headerLabel = "TrackerBlockerModule.Sheet.headerLabel"
+                static let categoriesCard = "TrackerBlockerModule.Sheet.categoriesCard"
+                static let totalPill = "TrackerBlockerModule.Sheet.totalPill"
+                static func categoryRow(_ index: Int) -> String {
+                    return "TrackerBlockerModule.Sheet.categoryRow.\(index)"
+                }
+            }
         }
     }
 
-    struct Microsurvey {
-        struct Prompt {
+    enum GeneralizedIdentifiers {
+        public static let back = "Back"
+    }
+
+    enum Microsurvey {
+        enum Prompt {
             static let firefoxLogo = "Microsurvey.Prompt.FirefoxLogo"
             static let closeButton = "Microsurvey.Prompt.CloseButton"
             static let takeSurveyButton = "Microsurvey.Prompt.TakeSurveyButton"
         }
 
-        struct Survey {
+        enum Survey {
             static let firefoxLogo = "Microsurvey.Survey.FirefoxLogo"
             static let closeButton = "Microsurvey.Survey.CloseButton"
             static let privacyPolicyLink = "Microsurvey.Prompt.PrivacyPolicyLink"
@@ -253,9 +369,28 @@ struct AccessibilityIdentifiers {
         }
     }
 
-    struct PrivateMode {
+    enum Translations {
+        enum AutoTranslatePrompt {
+            static let messageLabel = "Translations.AutoTranslatePrompt.MessageLabel"
+            static let enableButton = "Translations.AutoTranslatePrompt.EnableButton"
+            static let closeButton = "Translations.AutoTranslatePrompt.CloseButton"
+        }
+    }
+
+    enum TermsOfUse {
+        static let logo = "TermsOfUse.Logo"
+        static let title = "TermsOfUse.Title"
+        static let description = "TermsOfUse.Description"
+        static let acceptButton = "TermsOfUse.AcceptButton"
+        static let remindMeLaterButton = "TermsOfUse.RemindMeLaterButton"
+        static let linkTermsOfUse = "TermsOfUse.Link.TermsOfUse"
+        static let linkPrivacyNotice = "TermsOfUse.Link.PrivacyNotice"
+        static let linkLearnMore = "TermsOfUse.Link.LearnMore"
+    }
+
+    enum PrivateMode {
         static let dimmingView = "PrivateMode.DimmingView"
-        struct Homepage {
+        enum Homepage {
             static let title = "PrivateMode.Homepage.Title"
             static let body = "PrivateMode.Homepage.Body"
             static let link = "PrivateMode.Homepage.Link"
@@ -263,7 +398,11 @@ struct AccessibilityIdentifiers {
         }
     }
 
-    struct TabTray {
+    enum ZeroSearch {
+        static let dimmingView = "ZeroSearch.dimmingView"
+    }
+
+    enum TabTray {
         static let deleteCloseAllButton = "TabTrayController.deleteButton.closeAll"
         static let deleteCancelButton = "TabTrayController.deleteButton.cancel"
         static let deleteOlderTabsButton = "TabTrayController.deleteButton.closeOlderTabs"
@@ -283,18 +422,10 @@ struct AccessibilityIdentifiers {
         static let tabCell = "TabDisplayView.tabCell"
         static let closeButton = "tabCloseButton"
         static let tabsTray = "Tabs Tray"
-
-        struct InactiveTabs {
-            static let headerLabel = "InactiveTabs.headerLabel"
-            static let headerButton = "InactiveTabs.headerButton"
-            static let headerView = "InactiveTabs.header"
-            static let cellLabel = "InactiveTabs.cell.label"
-            static let footerView = "InactiveTabs.footer"
-            static let deleteButton = "InactiveTabs.deleteButton"
-        }
+        static let iPadSelectionBackgroundView =  "TabTraySelectorView.selectionBackgroundView"
     }
 
-    struct LibraryPanels {
+    enum LibraryPanels {
         static let bookmarksView = "LibraryPanels.Bookmarks"
         static let historyView = "LibraryPanels.History"
         static let downloadsView = "LibraryPanels.Downloads"
@@ -307,7 +438,7 @@ struct AccessibilityIdentifiers {
         static let bottomSearchButton = "historyBottomSearchButton"
         static let bottomDeleteButton = "historyBottomDeleteButton"
 
-        struct BookmarksPanel {
+        enum BookmarksPanel {
             static let tableView = "Bookmarks List"
             static let bookmarksCell = "BookmarksPanel.BookmarksCell"
             static let bookmarksCellDisclosureButton = ".DisclosureButton"
@@ -322,44 +453,51 @@ struct AccessibilityIdentifiers {
             static let saveButton = "BookmarksDetail.SaveButton"
             static let titleTextFieldClearButton = "BookmarksDetail.TitleTextFieldClearButton"
             static let urlTextFieldClearButton = "BookmarksDetail.UrlTextFieldClearButton"
+            static let bookmarksFolder = "BookmarksDetail.ParentFolderSelector.FolderCell_0"
+            static let folderSectionHeader = "BookmarksDetail.ParentFolderSelector.SectionHeader"
+            static let changeLocationCell = "BookmarksDetail.ParentFolderSelector.ChangeLocationCell"
         }
 
-        struct HistoryPanel {
+        enum HistoryPanel {
             static let tableView = "History List"
             static let recentlyClosedCell = "HistoryPanel.recentlyClosedCell"
         }
 
-        struct GroupedList {
+        enum GroupedList {
             static let tableView = "grouped-items-table-view"
         }
 
-        struct ReadingListPanel {
+        enum ReadingListPanel {
             static let tableView = "Reading list"
             static let emptyReadingList1 = "Welcome to your Reading List"
             static let emptyReadingList2 = "Open articles in Reader View by tapping the book icon when it appears in the title bar."
             static let emptyReadingList3 = "Save pages to your Reading List by tapping the book plus icon in the Reader View controls."
         }
 
-        struct DownloadsPanel {
+        enum DownloadsPanel {
             static let tableView = "DownloadsTable"
         }
     }
 
-    struct Onboarding {
+    enum WallpaperEngagementSheet {
+        static let closeButton = "WallpaperEngagementSheet.closeButton"
+        static let ctaButton = "WallpaperEngagementSheet.ctaButton"
+    }
+
+    enum Onboarding {
         static let backgroundImage = "Onboarding.BackgroundImage"
         static let onboarding = "onboarding."
         static let closeButton = "CloseButton"
         static let pageControl = "PageControl"
         static let bottomSheetCloseButton = "Onboarding.bottomSheetCloseButton"
 
-        struct Wallpaper {
-            static let card = "wallpaperCard"
-            static let title = "wallpaperOnboardingTitle"
-            static let description = "wallpaperOnboardingDescription"
+        enum VideoIntro {
+            static let continueButton = "Onboarding.VideoIntro.ContinueButton"
         }
     }
 
-    struct TermsOfService {
+    enum TermsOfService {
+        static let root = "TermsOfService.Onboarding"
         static let logo = "TermsOfService.Logo"
         static let title = "TermsOfService.Title"
         static let subtitle = "TermsOfService.Subtitle"
@@ -369,11 +507,11 @@ struct AccessibilityIdentifiers {
         static let agreeAndContinueButton = "TermsOfService.AgreeAndContinueButton"
         static let doneButton = "TermsOfService.DoneButton"
 
-        struct PrivacyNotice {
+        enum PrivacyNotice {
             static let title = "TermsOfService.PrivacyNotice.Title"
             static let doneButton = "TermsOfService.PrivacyNotice.DoneButton"
 
-            struct CrashReports {
+            enum CrashReports {
                 static let contentStackView = "TermsOfService.PrivacyNotice.CrashReports.ContentStackView"
                 static let actionContentView = "TermsOfService.PrivacyNotice.CrashReports.ActionContentView"
                 static let actionTitleLabel = "TermsOfService.PrivacyNotice.CrashReports.ActionTitleLabel"
@@ -381,7 +519,7 @@ struct AccessibilityIdentifiers {
                 static let actionDescriptionLabel = "TermsOfService.PrivacyNotice.CrashReports.ActionDescriptionLabel"
             }
 
-            struct TechnicalData {
+            enum TechnicalData {
                 static let contentStackView = "TermsOfService.PrivacyNotice.TechnicalData.ContentStackView"
                 static let actionContentView = "TermsOfService.PrivacyNotice.TechnicalData.ActionContentView"
                 static let actionTitleLabel = "TermsOfService.PrivacyNotice.TechnicalData.ActionTitleLabel"
@@ -391,56 +529,72 @@ struct AccessibilityIdentifiers {
         }
     }
 
-    struct Upgrade {
-        static let backgroundImage = "Upgrade.BackgroundImage"
+    enum Upgrade {
         static let upgrade = "upgrade."
         static let closeButton = "Upgrade.CloseButton"
         static let pageControl = "Upgrade.PageControl"
     }
 
-    struct Settings {
+    enum Settings {
         static let title = "Settings"
         static let tableViewController = "AppSettingsTableViewController.tableView"
         static let navigationBarItem = "AppSettingsTableViewController.navigationItem.rightBarButtonItem"
 
-        struct AppIconSelection {
+        enum AIControls {
+            static let title = "AIControlsSettings"
+        }
+
+        enum Appearance {
+            static let browserThemeSectionTitle = "BrowserThemeSectionTitle"
+            static let websiteAppearanceSectionTitle = "WebsiteAppearanceSectionTitle"
+            static let navigationToolbarSectionTitle = "NavigationToolbarSectionTitle"
+            static let pageZoomTitle = "PageZoomTitle"
+            static let wallpaperTitle = "WallpaperTitle"
+
+            enum Wallpaper {
+                static let collectionTitle = "wallpaperCollectionTitle"
+                static let collectionDescription = "wallpaperCollectionDescription"
+                static let collectionButton = "wallpaperCollectionButton"
+                static let card = "wallpaperCard"
+            }
+
+            static let specificSiteSettings = "SpecificSiteSettings"
+            static let automaticThemeView = "AutomaticThemeView"
+            static let lightThemeView = "LightThemeView"
+            static let darkThemeView = "DarkThemeView"
+            static let darkModeToggle = "DarkModeToggle"
+        }
+
+        enum AppIconSelection {
             static let settingsRowTitle = "AppIconSelectionTitle"
         }
 
-        struct DefaultBrowser {
+        enum DefaultBrowser {
             static let defaultBrowser = "DefaultBrowserSettings"
         }
 
-        struct Homepage {
+        enum Homepage {
             static let homeSettings = "Home"
             static let homePageNavigationBar = "Homepage"
 
-            struct StartAtHome {
+            enum StartAtHome {
                 static let afterFourHours = "StartAtHomeAfterFourHours"
                 static let always = "StartAtHomeAlways"
                 static let disabled = "StartAtHomeDisabled"
             }
 
-            struct CustomizeFirefox {
-                struct Shortcuts {
+            enum CustomizeFirefox {
+                enum Shortcuts {
                     static let settingsPage = "TopSitesSettings"
                     static let topSitesRows = "TopSitesRows"
                 }
 
-                struct Wallpaper {
-                    static let collectionTitle = "wallpaperCollectionTitle"
-                    static let collectionDescription = "wallpaperCollectionDescription"
-                    static let collectionButton = "wallpaperCollectionButton"
-                    static let card = "wallpaperCard"
-                }
-
                 static let jumpBackIn = "Jump Back In"
                 static let recentlySaved = "Recently Saved"
-                static let wallpaper = "WallpaperSettings"
             }
         }
 
-        struct FirefoxAccount {
+        enum FirefoxAccount {
             static let continueButton = "Sign up or sign in"
             static let emailTextField = "Enter your email"
             static let fxaNavigationBar = "Sync and Save Data"
@@ -451,31 +605,46 @@ struct AccessibilityIdentifiers {
             static let signInButton = "Sign in"
         }
 
-        struct Search {
+        enum Search {
             static let title = "Search"
             static let customEngineViewButton = "customEngineViewButton"
             static let searchNavigationBar = "Search"
             static let deleteMozillaEngine = "Remove Mozilla Engine"
             static let deleteButton = "Delete"
-            static let disableSearchSuggestsInPrivateMode = "PrivateMode.DisableSearchSuggests"
+            static let showPrivateSuggestions = "PrivateMode.showPrivateSuggestions"
+            static let showTrendingSearches = "showTrendingSearch"
+            // This is based on `PrefsKeys.SearchSettings.showTrendingSearches`
+            static let showTrendingSearchesSwitch = "trendingSearchesFeatureKey"
+            static let showRecentSearches = "showRecentSearch"
+            // This is based on `PrefsKeys.SearchSettings.showRecentSearches`
+            static let showRecentSearchesSwitch = "recentSearchesFeatureKey"
             static let showSearchSuggestions = "FirefoxSuggestShowSearchSuggestions"
+            // These are based on the matching `PrefsKeys.SearchSettings` keys
+            static let showPrivateModeSearchSuggestionsSwitch = "ShowPrivateModeSearchSuggestionsKey"
+            static let showBrowsingHistorySuggestionsSwitch = "FirefoxSuggestBrowsingHistorySuggestions"
+            static let showBookmarksSuggestionsSwitch = "FirefoxSuggestBookmarksSuggestions"
+            static let showSyncedTabsSuggestionsSwitch = "FirefoxSuggestSyncedTabsSuggestions"
+            static let showNonSponsoredSuggestionsSwitch = "FirefoxSuggestShowNonSponsoredSuggestions"
+            static let showSponsoredSuggestionsSwitch = "FirefoxSuggestShowSponsoredSuggestions"
+            static let backButtoniOS26 = "BackButton"
+            static let backButton = "Settings"
         }
 
-        struct AdvancedAccountSettings {
+        enum AdvancedAccountSettings {
             static let title = "AdvancedAccount.Setting"
         }
 
-        struct Logins {
+        enum Logins {
             static let title = "Logins"
 
-            struct Passwords {
+            enum Passwords {
                 static let saveLogins = "saveLogins"
                 static let showLoginsInAppMenu = "showLoginsInAppMenu"
                 static let searchPasswords = "Search passwords"
                 static let emptyList = "No passwords found"
                 static let addButton = "Add"
 
-                struct AddLogin {
+                enum AddLogin {
                     static let saveButton = "Save"
                     static let cancelButton = "Cancel"
                     static let addCredential = "Add Credential"
@@ -483,17 +652,17 @@ struct AccessibilityIdentifiers {
             }
         }
 
-        struct CreditCards {
+        enum CreditCards {
             static let title = "AutofillCreditCard"
 
-            struct AutoFillCreditCard {
+            enum AutoFillCreditCard {
                 static let autoFillCreditCards = "Payment Methods"
                 static let addCard = "Add Card"
                 static let saveAutofillCards = "Save and Fill Payment Methods"
                 static let savedCards = "SAVED CARDS"
             }
 
-            struct AddCreditCard {
+            enum AddCreditCard {
                 static let addCreditCard = "Add Card"
                 static let nameOnCard = "Name on Card"
                 static let cardNumber = "Card Number"
@@ -502,13 +671,13 @@ struct AccessibilityIdentifiers {
                 static let save = "Save"
             }
 
-            struct ViewCreditCard {
+            enum ViewCreditCard {
                 static let viewCard = "View Card"
                 static let edit = "Edit"
                 static let close = "Close"
             }
 
-            struct EditCreditCard {
+            enum EditCreditCard {
                 static let editCreditCard = "Edit Card"
                 static let removeCard = "Remove Card"
                 static let removeThisCard = "Remove Card?"
@@ -517,145 +686,201 @@ struct AccessibilityIdentifiers {
             }
         }
 
-        struct ClearData {
+        enum ClearData {
             static let title = "ClearPrivateData"
             static let websiteDataSection = "WebsiteData"
             static let clearPrivateDataSection = "ClearPrivateData"
             static let clearAllWebsiteData = "ClearAllWebsiteData"
+            static let importBrowserData = "ImportBrowserData"
         }
 
-        struct Notifications {
+        enum Notifications {
             static let title = "NotificationsSetting"
         }
 
-        struct CreditCard {
+        enum CreditCard {
             static let title = "AutofillCreditCard"
         }
 
-        struct Address {
+        enum Address {
             static let title = "AutofillAddress"
 
-            struct Addresses {
+            enum Addresses {
                 static let title = "Addresses"
                 static let addAddress = "Add address"
+                static let addressCell = "AddressCell"
             }
         }
 
-        struct ConnectSetting {
+        enum ConnectSetting {
             static let title = "SignInToSync"
         }
 
-        struct ContentBlocker {
+        enum ContentBlocker {
             static let title = "TrackingProtection"
         }
 
-        struct NewTab {
+        enum NewTab {
             static let title = "NewTab"
         }
 
-        struct NoImageMode {
+        enum NoImageMode {
             static let title = "NoImageMode"
         }
 
-        struct BlockPopUp {
+        enum BlockPopUp {
             static let title = "BlockPopUp"
         }
 
-        struct OpenWithMail {
+        enum OpenWithMail {
             static let title = "OpenWith.Setting"
         }
 
-        struct OfferToOpen {
+        enum OfferToOpen {
             static let title = "showClipboardBar"
         }
 
-        struct BlockExternal {
+        enum BlockExternal {
             static let title = "blockOpeningExternalApps"
         }
 
-        struct ShowLink {
+        enum ShowLink {
             static let title = "showLinkPreviews"
         }
 
-        struct ClosePrivateTabs {
+        enum ClosePrivateTabs {
             static let title = "ClosePrivateTabs"
         }
 
-        struct SearchBar {
+        enum SearchBar {
             static let searchBarSetting = "SearchBarSetting"
             static let topSetting = "TopSearchBar"
             static let bottomSetting = "BottomSearchBar"
         }
 
-        struct SendData {
+        enum NavigationToolbar {
+            static let homeButton = "HomeButton"
+            static let newTabButton = "NewTabButton"
+        }
+
+        enum SendData {
             static let sendTechnicalDataTitle = "SendTechnicalData"
             static let sendCrashReportsTitle = "SendCrashReports"
             static let sendDailyUsagePingTitle = "SendDailyUsagePing"
             static let studiesTitle = "StudiesToggle"
+            static let rolloutsTitle = "RolloutsToggle"
             static let sendTechnicalDataLearnMoreButton = "SendTechnicalDataLearnMoreButton"
             static let sendCrashReportsLearnMoreButton = "SendCrashReportsLearnMoreButton"
             static let sendDailyUsagePingLearnMoreButton = "SendDailyUsagePingLearnMoreButton"
             static let studiesLearnMoreButton = "StudiesLearnMoreButton"
+            static let rolloutsLearnMoreButton = "RolloutsLearnMoreButton"
         }
 
-        struct PrivacyPolicy {
+        enum PrivacyPolicy {
             static let title = "PrivacyPolicy"
         }
 
-        struct ShowIntroduction {
+        enum ShowIntroduction {
             static let title = "ShowTour"
         }
 
-        struct SentFromFirefox {
+        enum SentFromFirefox {
             static let whatsApp = "SentFromFirefox.WhatsApp"
         }
 
-        struct SendFeedback {
+        enum SendFeedback {
             static let title = "SendFeedback"
         }
 
-        struct Help {
+        enum Help {
             static let title = "Help"
         }
 
-        struct RateOnAppStore {
+        enum RateOnAppStore {
             static let title = "RateOnAppStore"
         }
 
-        struct Licenses {
+        enum Licenses {
             static let title = "Licenses"
         }
 
-        struct YourRights {
+        enum YourRights {
             static let title = "YourRights"
         }
 
-        struct Siri {
+        enum Siri {
             static let title = "SiriSettings"
         }
 
-        struct Browsing {
+        enum Browsing {
             static let title = "BrowsingSettings"
             static let tabs = "TABS"
-            static let inactiveTabsSwitch = "Inactive Tabs"
+            static let links = "LINKS"
             static let blockPopUps = "blockPopups"
             static let autoPlay = "AutoplaySettings"
             static let blockImages = "NoImageModeStatus"
+            static let adBlockerTitle = "AdBlocker"
+            static let adBlockerLearnMore = "AdBlockerLearnMore"
+            static let backgroundAudio = "BackgroundAudio"
         }
 
-        struct Theme {
+        enum Summarize {
+            static let title = "SummarizeSettings"
+            static let summarizeContentSwitch = "summarizeContentFeature"
+            static let shakeGestureSwitch = "shakeGestureEnabledKey"
+            static let languageCell = "summarizeLanguageCell"
+        }
+
+        enum Theme {
             static let title = "DisplayThemeOption"
         }
 
-        struct BlockImages {
+        enum Translation {
+            static let title = "Settings.Translation.Title"
+            // This is based on `PrefsKeys.Settings.translationsFeature`
+            static let toggleSwitch = "settings.translationFeature"
+            static let autoTranslateSwitch = "settings.translationAutoTranslate"
+            static let navigationBar = "Settings.Translation.navigationBar"
+            static let backButtoniOS26 = "BackButton"
+            static let backButton = "Settings"
+            static let languagePickerList = "Settings.Translation.LanguagePickerList"
+        }
+
+        enum QuickAnswers {
+            static let title = "Settings.QuickAnswers.Title"
+            static let learnMoreButton = "Settings.QuickAnswers.LearnMoreButton"
+        }
+
+        enum VPN {
+            static let title = "Settings.VPN.Title"
+            static let heading = "Settings.VPN.Heading"
+            static let description = "Settings.VPN.Description"
+            static let learnMoreButton = "Settings.VPN.LearnMoreButton"
+            static let locationSetting = "Settings.VPN.LocationSetting"
+            static let vpnToggle = "Settings.VPN.VPNToggle"
+            static let dataUsage = "Settings.VPN.DataUsage"
+
+            enum Locations {
+                static let recommendedLocation = "Settings.VPN.Locations.RecommendedLocation"
+                static let location = "Settings.VPN.Locations.Location"
+                static let loadingIndicator = "Settings.VPN.Locations.LoadingIndicator"
+            }
+        }
+
+        enum BlockImages {
             static let title = "Block Images"
         }
 
-        struct AutofillsPasswords {
+        enum AutofillsPasswords {
             static let title = "AutofillsPasswordsSettings"
         }
 
-        struct Passwords {
+        enum RelayMask {
+            static let title = "RelayMaskSettings"
+            static let manageMasksButton = "manageEmailMasks"
+        }
+
+        enum Passwords {
             static let usernameField = "usernameField"
             static let passwordField = "passwordField"
             static let websiteField = "websiteField"
@@ -665,68 +890,86 @@ struct AccessibilityIdentifiers {
             static let editButton = "editButton"
         }
 
-        struct Version {
+        enum Version {
             static let title = "FxVersion"
         }
 
-        struct TrackingProtection {
+        enum TrackingProtection {
             static let basic = "Settings.TrackingProtectionOption.BlockListBasic"
             static let strict = "Settings.TrackingProtectionOption.BlockListStrict"
         }
 
-        struct Autoplay {
+        enum Autoplay {
             static let allowAudioAndVideo = "AllowAudioAndVideo"
             static let blockAudio = "BlockAudio"
             static let blockAudioAndVideo = "BlockAudioAndVideo"
         }
+
+        enum Debug {
+            static let offloadBackgroundWebViews = "Settings.Debug.OffloadBackgroundWebViews"
+        }
     }
 
-    struct ShareTo {
-        struct HelpView {
+    enum Summarizer {
+        static let tabSnapshotView = "tabSnapshotView"
+        static let closeSummaryButton = "closeSummaryButton"
+        static let titleLabel = "summaryTitleLabel"
+        static let compactTitleLabel = "summaryCompactTitleLabel"
+        static let loadingLabel = "summaryLoadingLabel"
+        static let brandLabel = "summaryBrandLabel"
+        static let summaryTableView = "summaryTextView"
+        static let errorContentView = "errorContentView"
+        static let retryErrorButton = "retryErrorButton"
+        static let closeSummaryErrorButton = "closeSummaryErrorButton"
+        static let tosAllowButton = "tosAllowButton"
+    }
+
+    enum ShareTo {
+        enum HelpView {
             static let doneButton = "doneButton"
             static let topMessageLabel = "topMessageLabel"
             static let bottomMessageLabel = "bottomMessageLabel"
         }
     }
 
-    struct SurveySurface {
+    enum SurveySurface {
         static let takeSurveyButton = "takeSurveyButton"
         static let dismissButton = "dismissSurveyButton"
         static let textLabel = "surveyDescriptionLabel"
         static let imageView = "surveyImageView"
     }
 
-    struct Photon {
+    enum Photon {
         static let closeButton = "PhotonMenu.close"
         static let view = "Action Sheet"
         static let tableView = "Context Menu"
         static let pasteAction = "pasteAction"
         static let pasteAndGoAction = "pasteAndGoAction"
+        static let copyAddressAction = "copyAddressAction"
     }
 
-    struct Alert {
+    enum Alert {
         static let cancelDownloadResume = "cancelDownloadAlert.resume"
         static let cancelDownloadCancel = "cancelDownloadAlert.cancel"
     }
 
-    struct ZoomPageBar {
+    enum ZoomPageBar {
         static let zoomPageZoomInButton = "ZoomPage.zoomInButton"
         static let zoomPageZoomOutButton = "ZoomPage.zoomOutButton"
         static let zoomPageZoomLevelLabel = "ZoomPage.zoomLevelLabel"
         static let doneButton = "find.doneButton"
     }
 
-    struct FindInPage {
+    enum FindInPage {
         static let findInPageCloseButton = "find.doneButton"
         static let findNextButton = "find.nextButton"
         static let findPreviousButton = "find.previousButton"
     }
 
-    struct RememberCreditCard {
+    enum RememberCreditCard {
         static let rememberCreditCardHeader = "RememberCreditCard.Header"
         static let yesButton = "RememberCreditCard.yesButton"
         static let manageCardsButton = "RememberCreditCard.manageCardsButton"
-        static let notNowButton = "RememberCreditCard.notNowButton"
     }
 
     enum Autofill {
@@ -750,21 +993,31 @@ struct AccessibilityIdentifiers {
         static let keyboardButton = "PasswordGenerator.keyboardButton"
     }
 
-    struct NativeErrorPage {
+    enum NativeErrorPage {
         static let foxImage = "NativeErrorPage.foxImage"
         static let titleLabel = "NativeErrorPage.titleLabel"
         static let errorDescriptionLabel = "NativeErrorPage.errorDescriptionLabel"
         static let reloadButton = "NativeErrorPage.reloadButton"
+        static let waybackButton = "NativeErrorPage.waybackButton"
+        static let waybackErrorCard = "NativeErrorPage.waybackErrorCard"
+        static let waybackErrorLabel = "NativeErrorPage.waybackErrorLabel"
+        static let waybackErrorButton = "NativeErrorPage.waybackRetryButton"
+        static let goBackButton = "NativeErrorPage.goBackButton"
+        static let proceedButton = "NativeErrorPage.proceedButton"
+        static let advancedSectionHeader = "NativeErrorPage.advancedSectionHeader"
+        static let viewCertificateLink = "NativeErrorPage.viewCertificateLink"
+        static let learnMoreLink = "NativeErrorPage.learnMoreLink"
+        static let waybackFooterTextView = "NativeErrorPage.waybackFooterTextView"
     }
 
-    struct SaveLoginAlert {
+    enum SaveLoginAlert {
         static let saveButton = "SaveLoginPrompt.saveLoginButton"
         static let notNowButton = "SaveLoginPrompt.dontSaveButton"
         static let updateButton = "UpdateLoginPrompt.updateButton"
         static let dontUpdateButton = "UpdateLoginPrompt.dontUpdateButton"
     }
 
-    struct ReaderMode {
+    enum ReaderMode {
         static let sansSerifFontButton = "ReaderMode.sansSerifFontButton"
         static let serifFontButton = "ReaderMode.serifFontButton"
         static let smallerFontSizeButton = "ReaderMode.smallerFontSizeButton"
@@ -776,6 +1029,13 @@ struct AccessibilityIdentifiers {
         static let lighterBrightnessButton = "ReaderMode.lighterBrightnessButton"
         static let darkerBrightnessButton = "ReaderMode.darkerBrightnessButton"
         static let brightnessSlider = "ReaderMode.brightnessSlider"
+
+        enum BarView {
+            static let readStatusButton = "ReaderModeBarView.readStatusButton"
+            static let settingsButton = "ReaderModeBarView.settingsButton"
+            static let listStatusButton = "ReaderModeBarView.listStatusButton"
+            static let summarizerButton = "ReaderModeBarView.summarizerButton"
+        }
     }
 }
 // swiftlint:enable line_length

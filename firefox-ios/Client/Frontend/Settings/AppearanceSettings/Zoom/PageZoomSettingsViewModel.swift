@@ -5,8 +5,10 @@
 import Common
 import Storage
 
+@MainActor
 class PageZoomSettingsViewModel: ObservableObject {
     let zoomManager: ZoomPageManager
+    private let zoomTelemetry = ZoomTelemetry()
     @Published var domainZoomLevels: [DomainZoomLevel]
     public var notificationCenter: NotificationProtocol
 
@@ -17,10 +19,17 @@ class PageZoomSettingsViewModel: ObservableObject {
         self.notificationCenter = notificationCenter
     }
 
+    func updateDefaultZoomLevel(newValue: ZoomLevel) {
+        zoomManager.saveDefaultZoomLevel(defaultZoom: newValue.rawValue)
+        notificationCenter.post(name: .PageZoomSettingsChanged)
+        zoomTelemetry.updateDefaultZoomLevel(zoomLevel: newValue)
+    }
+
     func resetDomainZoomLevel() {
         domainZoomLevels.removeAll()
         zoomManager.resetDomainZoomLevel()
         notificationCenter.post(name: .PageZoomSettingsChanged)
+        zoomTelemetry.resetDomainZoomLevel()
     }
 
     func deleteZoomLevel(at indexSet: IndexSet) {
@@ -30,5 +39,6 @@ class PageZoomSettingsViewModel: ObservableObject {
         zoomManager.deleteZoomLevel(for: deleteItem.host)
         domainZoomLevels.remove(at: index)
         notificationCenter.post(name: .PageZoomSettingsChanged)
+        zoomTelemetry.deleteZoomDomainLevel(value: Int32(index))
     }
 }

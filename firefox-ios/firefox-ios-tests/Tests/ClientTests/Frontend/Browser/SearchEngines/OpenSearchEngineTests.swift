@@ -89,6 +89,70 @@ class OpenSearchEngineTests: XCTestCase {
         )
     }
 
+    func test_trendingURLForEngine_returnsExpectedURL() throws {
+        let searchEngine = OpenSearchEngine(
+            engineID: "Bing_Test",
+            shortName: "Bing",
+            telemetrySuffix: nil,
+            image: UIImage(),
+            searchTemplate: "some link",
+            suggestTemplate: nil,
+            trendingTemplate: "www.example.com",
+            isCustomEngine: true
+        )
+
+        let url = searchEngine.trendingURLForEngine()
+
+        XCTAssertNotNil(url)
+        XCTAssertEqual(url?.absoluteString, "www.example.com")
+    }
+
+    func test_trendingURLForEngine_withNoTrendingTemplate_returnsNil() throws {
+        let searchEngine = OpenSearchEngine(
+            engineID: "Bing_Test",
+            shortName: "Bing",
+            telemetrySuffix: nil,
+            image: UIImage(),
+            searchTemplate: "some link",
+            suggestTemplate: nil,
+            trendingTemplate: nil,
+            isCustomEngine: true
+        )
+
+        let url = searchEngine.trendingURLForEngine()
+
+        XCTAssertNil(url)
+    }
+
+    func test_isGoogleEngine_withGoogleEngineID_returnsTrue() {
+        XCTAssertTrue(makeEngine(engineID: OpenSearchEngine.googleEngineID).isGoogleEngine)
+    }
+
+    func test_isGoogleEngine_withRegionalGoogleEngineID_returnsTrue() {
+        XCTAssertTrue(makeEngine(engineID: "\(OpenSearchEngine.googleEngineID)-b-1-m").isGoogleEngine)
+    }
+
+    func test_isGoogleEngine_withNonGoogleEngineID_returnsFalse() {
+        XCTAssertFalse(makeEngine(engineID: "bing").isGoogleEngine)
+    }
+
+    func test_isGoogleEngine_withGooglePrefixButNoSeparator_returnsFalse() {
+        XCTAssertFalse(makeEngine(engineID: "googler").isGoogleEngine)
+    }
+
+    private func makeEngine(engineID: String) -> OpenSearchEngine {
+        return OpenSearchEngine(
+            engineID: engineID,
+            shortName: engineID,
+            telemetrySuffix: nil,
+            image: UIImage(),
+            searchTemplate: "some link",
+            suggestTemplate: nil,
+            trendingTemplate: nil,
+            isCustomEngine: false
+        )
+    }
+
     /// For generating test `OpenSearchEngine` data.
     public enum TestSearchEngine {
         case youtube, wikipedia
@@ -139,6 +203,7 @@ class OpenSearchEngineTests: XCTestCase {
             image: testImage,
             searchTemplate: "some link",
             suggestTemplate: nil,
+            trendingTemplate: nil,
             isCustomEngine: true
         )
     }
@@ -149,18 +214,12 @@ class OpenSearchEngineTests: XCTestCase {
             let profileDirName = "profile.profile"
             let customSearchEnginesFileName = "customEngines.plist"
 
-            var directoryPath: String
-            if let url = FileManager.default.containerURL(
-                forSecurityApplicationGroupIdentifier: sharedContainerIdentifier
-            ) {
-                directoryPath = url.appendingPathComponent(profileDirName).path
-            } else {
-                directoryPath = (NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0])
-            }
-
-            let fileAccessor = FileAccessor(rootPath: directoryPath)
-            let profilePath = try fileAccessor.getAndEnsureDirectory() as NSString
-            return profilePath.appendingPathComponent(customSearchEnginesFileName)
+            let directory = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: sharedContainerIdentifier)?
+                .appendingPathComponent(profileDirName)
+                ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            return directory.appendingPathComponent(customSearchEnginesFileName).path
         }
     }
 }

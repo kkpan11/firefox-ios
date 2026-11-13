@@ -1,0 +1,118 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/
+
+import Foundation
+import UIKit
+
+/// Context containing all necessary information for layout calculations
+struct LayoutContext {
+    /// The root view size for the `SummarizeController`
+    let viewSize: CGSize
+    let traitCollection: UITraitCollection
+    let tabSnapshotTopOffset: CGFloat
+    let isInitialLandscape: Bool
+
+    var isLandscapeLayout: Bool {
+        let size = viewSize
+        // Use portrait layout when on iPad's regular size class
+        return size.width > size.height && traitCollection.horizontalSizeClass != .regular
+    }
+
+    var isRotated: Bool {
+        (viewSize.width > viewSize.height) != isInitialLandscape
+    }
+}
+
+/// Protocol for calculating the tab snapshot transforms for the different UI states
+protocol SnapshotLayoutCalculator {
+    /// Calculate transform for showing summary content
+    func calculateSummaryTransform(context: LayoutContext) -> CGAffineTransform
+
+    /// Calculate transform for showing error/info content
+    func calculateInfoTransform(context: LayoutContext) -> CGAffineTransform
+
+    /// Calculate transform for dismissing the view
+    func calculateDismissTransform(context: LayoutContext) -> CGAffineTransform
+
+    /// Calculate transform for the `viewDidAppear` state
+    func calculateViewDidAppearTransform(context: LayoutContext) -> CGAffineTransform
+
+    /// Calculate transform for lifting the background blobs to the top half, above the loading and info snapshot
+    func calculateBlobsTransform(context: LayoutContext) -> CGAffineTransform
+}
+
+/// Default implementation of `SnapshotLayoutCalculator`
+struct DefaultSnapshotLayoutCalculator: SnapshotLayoutCalculator {
+    struct Configuration {
+        let summaryTransformBottomPaddingPortrait: CGFloat
+        let transformPercentagePortrait: CGFloat
+        let transformPercentageLandscape: CGFloat
+        let tabSnapshotCornerRadius: CGFloat
+
+        static let `default` = Configuration(
+            summaryTransformBottomPaddingPortrait: 110.0,
+            transformPercentagePortrait: 0.5,
+            transformPercentageLandscape: 1.0,
+            tabSnapshotCornerRadius: DefaultAnimationController.tabSnapshotCornerRadius
+        )
+    }
+
+    private let configuration: Configuration
+
+    init(configuration: Configuration = .default) {
+        self.configuration = configuration
+    }
+
+    func calculateSummaryTransform(context: LayoutContext) -> CGAffineTransform {
+        guard !context.isRotated else {
+            return calculateHiddenTransform(context: context)
+        }
+        if context.isLandscapeLayout {
+            return CGAffineTransform(translationX: 0, y: context.viewSize.height)
+        } else {
+            let y = context.viewSize.height
+                - configuration.summaryTransformBottomPaddingPortrait
+                - context.tabSnapshotTopOffset
+            return CGAffineTransform(translationX: 0, y: y)
+        }
+    }
+
+    func calculateInfoTransform(context: LayoutContext) -> CGAffineTransform {
+        guard !context.isRotated else {
+            return calculateHiddenTransform(context: context)
+        }
+        let multiplier = context.isLandscapeLayout ?
+        configuration.transformPercentageLandscape :
+        configuration.transformPercentagePortrait
+        return CGAffineTransform(translationX: 0, y: context.viewSize.height * multiplier)
+    }
+
+    func calculateDismissTransform(context: LayoutContext) -> CGAffineTransform {
+        guard !context.isRotated else {
+            return calculateHiddenTransform(context: context)
+        }
+        return .identity
+    }
+
+    func calculateViewDidAppearTransform(context: LayoutContext) -> CGAffineTransform {
+        guard !context.isRotated else {
+            return calculateHiddenTransform(context: context)
+        }
+        let multiplier = context.isLandscapeLayout ?
+        configuration.transformPercentageLandscape :
+        configuration.transformPercentagePortrait
+        return CGAffineTransform(translationX: 0, y: context.viewSize.height * multiplier)
+    }
+
+    func calculateBlobsTransform(context: LayoutContext) -> CGAffineTransform {
+        guard !context.isLandscapeLayout else { return .identity }
+        let snapshotTop = context.viewSize.height * configuration.transformPercentagePortrait
+        let y = -snapshotTop + configuration.tabSnapshotCornerRadius + context.tabSnapshotTopOffset
+        return CGAffineTransform(translationX: 0, y: y)
+    }
+
+    private func calculateHiddenTransform(context: LayoutContext) -> CGAffineTransform {
+        return CGAffineTransform(translationX: 0.0, y: context.viewSize.height)
+    }
+}

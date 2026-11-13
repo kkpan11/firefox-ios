@@ -346,6 +346,9 @@
 /* When a user taps and holds on an item from the Recently Visited section, this label will appear indicating the option to remove that item. */
 "FirefoxHome.RecentHistory.Remove" = "Remover";
 
+/* On each Story on the Firefox Homepage, this label appears and indicates the number of minutes to read an article. Minutes should be abbreviated due to space constraints. %d represents the number of minutes */
+"FirefoxHome.Stories.Minutes.v140" = "mín.: %d";
+
 /* Label showing how many pages there is in a search group. %d represents a number */
 "FirefoxHomepage.Common.PagesCount.v112" = "Páginas: %d";
 
@@ -369,6 +372,9 @@
 
 /* This string will show under a shortcuts tile on the firefox home page, indicating that the tile is a sponsored tile. Space is limited, please keep as short as possible. */
 "FirefoxHomepage.Shortcuts.Sponsored.v100" = "Patrocinado";
+
+/* This string will show under the description on pocket story, indicating that the story is sponsored. */
+"FirefoxHomepage.Stories.Sponsored.v140" = "Patrocinado";
 
 /* Accessibility Label for the tab toolbar Forward button */
 "Forward" = "Avançar";
@@ -1490,10 +1496,13 @@
 "Settings.Studies.Toggle.Title" = "Estudos";
 
 /* Ddescription that appears in the settings screen to explain what Firefox Sync is useful for. */
-"Settings.Sync.ButtonDescription.v103" = "Inicie sessão para sincronizar os separadores, marcadores, palavras-passe e mais.";
+"Settings.Sync.ButtonDescription.v103" = "Inicie sessão para sincronizar os separadores, marcadores, palavras-passe, e muito mais.";
 
 /* Button label that appears in the settings to prompt the user to sign in to Firefox for iOS sync service to sync and save data. */
 "Settings.Sync.ButtonTitle.v103" = "Sincronizar e guardar dados";
+
+/* In the settings account row, shown transiently while the user is being signed out of their account. */
+"Settings.Sync.SigningOut.Title.v154" = "A terminar sessão…";
 
 /* Title for the page where the user sign in to their Firefox Sync account. */
 "Settings.Sync.SignInView.Title.v103" = "Sincronizar e guardar dados";
@@ -1784,7 +1793,7 @@
 "Web content" = "Conteúdo Web";
 
 /* See http://mzl.la/1LXbDOL */
-"Welcome to your Reading List" = "Bem-vindo(a) à sua lista de leitura";
+"Welcome to your Reading List" = "Boas-vindas à sua Lista de Leitura";
 
 /* Restore Tabs Prompt Title */
 "Well, this is embarrassing." = "Bem, isto é embaraçoso.";

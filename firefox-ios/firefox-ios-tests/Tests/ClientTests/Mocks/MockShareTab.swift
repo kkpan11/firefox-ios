@@ -3,39 +3,38 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import Foundation
+import Storage
 
 @testable import Client
 
+@MainActor
 class MockShareTab: ShareTab {
+    nonisolated let tabUUID: Client.TabUUID
     var canonicalURL: URL?
     var displayTitle: String
     var url: URL?
     var webView: TabWebView?
     var temporaryDocument: TemporaryDocument?
+    var mimeType: String?
 
     init(
         title: String,
         url: URL?,
         canonicalURL: URL?,
+        tabUUID: TabUUID = UUID().uuidString,
         withActiveWebView: Bool = true,
-        withTemporaryDocument: TemporaryDocument? = nil
+        withTemporaryDocument: TemporaryDocument? = nil,
+        mimeType: String? = nil
     ) {
         self.displayTitle = title
         self.url = url
         self.canonicalURL = canonicalURL
-        self.webView = TabWebView(frame: CGRect.zero, configuration: .init(), windowUUID: .XCTestDefaultUUID)
+        self.tabUUID = tabUUID
+        self.mimeType = mimeType
+        self.webView = TabWebView(frame: CGRect.zero,
+                                  configuration: .init(),
+                                  windowUUID: .XCTestDefaultUUID,
+                                  certStore: CertStore())
         self.temporaryDocument = withTemporaryDocument
-    }
-
-    static func == (lhs: MockShareTab, rhs: MockShareTab) -> Bool {
-        guard let lhsTempDoc = lhs.temporaryDocument as? MockTemporaryDocument,
-              let rhsTempDoc = rhs.temporaryDocument as? MockTemporaryDocument else {
-            return false
-        }
-
-        return lhs.displayTitle == rhs.displayTitle
-        && lhs.url == rhs.url
-        && lhs.webView === rhs.webView
-        && lhsTempDoc === rhsTempDoc
     }
 }

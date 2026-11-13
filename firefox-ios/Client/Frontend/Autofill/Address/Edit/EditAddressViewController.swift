@@ -14,6 +14,13 @@ class EditAddressViewController: UIViewController,
                                  WKScriptMessageHandler,
                                  Themeable,
                                  KeyboardHelperDelegate {
+    private enum UX {
+        static let stackViewInset: CGFloat = 16
+        static let stackViewSpacing: CGFloat = 16
+        static let removeButtonHeight: CGFloat = 44
+        static let roundedCornerRadius: CGFloat = 24
+    }
+
     private lazy var removeButton: RemoveAddressButton = {
         let button = RemoveAddressButton()
         button.setTitle(.Addresses.Settings.Edit.RemoveAddressButtonTitle, for: .normal)
@@ -35,10 +42,19 @@ class EditAddressViewController: UIViewController,
     var model: AddressListViewModel
     private let logger: Logger
     var themeManager: ThemeManager
-    var themeObserver: NSObjectProtocol?
+    var themeListenerCancellable: Any?
     var notificationCenter: NotificationProtocol = NotificationCenter.default
     var currentWindowUUID: WindowUUID? { model.windowUUID }
     var webView: WKWebView? { model.editAddressWebViewManager.webView }
+
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
+
+    private func currentTheme() -> Theme {
+        return themeManager.resolveTheme(for: currentWindowUUID,
+                                         shouldUsePrivateOverride: shouldUsePrivateOverride,
+                                         shouldBeInPrivateTheme: shouldBeInPrivateTheme)
+    }
 
     init(
         themeManager: ThemeManager,
@@ -59,8 +75,10 @@ class EditAddressViewController: UIViewController,
         super.viewDidLoad()
         setupWebView()
         setupRemoveButton()
-        listenForThemeChange(view)
         KeyboardHelper.defaultHelper.addDelegate(self)
+
+        listenForThemeChanges(withNotificationCenter: notificationCenter)
+        applyTheme()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -73,10 +91,10 @@ class EditAddressViewController: UIViewController,
         stackView.addArrangedSubview(removeButton)
         removeButton.isHidden = true
         removeButton.applyTheme(
-            theme: themeManager.getCurrentTheme(for: currentWindowUUID)
+            theme: currentTheme()
         )
         NSLayoutConstraint.activate([
-            removeButton.heightAnchor.constraint(equalToConstant: 44)
+            removeButton.heightAnchor.constraint(equalToConstant: UX.removeButtonHeight)
         ])
     }
 
@@ -85,6 +103,17 @@ class EditAddressViewController: UIViewController,
         view.addSubview(stackView)
         stackView.addArrangedSubview(webView)
         stackView.isLayoutMarginsRelativeArrangement = true
+
+        if #available(iOS 26.0, *) {
+            stackView.layoutMargins = UIEdgeInsets(top: 0, left: UX.stackViewInset, bottom: 0, right: UX.stackViewInset)
+            stackView.spacing = UX.stackViewSpacing
+            webView.layer.cornerRadius = UX.roundedCornerRadius
+            webView.clipsToBounds = true
+
+            removeButton.layer.cornerRadius = UX.removeButtonHeight / 2
+            removeButton.clipsToBounds = true
+        }
+
         NSLayoutConstraint.activate([
             stackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -188,11 +217,12 @@ class EditAddressViewController: UIViewController,
     }
 
     func applyTheme() {
-        guard let currentWindowUUID else { return }
-        let theme = themeManager.getCurrentTheme(for: currentWindowUUID)
+        guard currentWindowUUID != nil else { return }
+        let theme = currentTheme()
         removeButton.applyTheme(theme: theme)
         let isDarkTheme = theme.type == .dark
-        evaluateJavaScript("setTheme(\(isDarkTheme));")
+        let caretColor = theme.colors.actionPrimary.hexString
+        evaluateJavaScript("setTheme(\(isDarkTheme), '\(caretColor)');")
     }
 
     func presentRemoveAddressAlert() {
@@ -212,7 +242,7 @@ class EditAddressViewController: UIViewController,
             title: String.Addresses.Settings.Edit.RemoveButtonTitle,
             style: .destructive,
             handler: { [weak self] _ in
-                self?.model.removeConfimationButtonTap()
+                self?.model.removeConfirmationButtonTap()
             }
         ))
 

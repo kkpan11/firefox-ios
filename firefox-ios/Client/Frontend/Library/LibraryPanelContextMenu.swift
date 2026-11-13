@@ -5,6 +5,7 @@
 import Common
 import Storage
 
+@MainActor
 protocol LibraryPanelContextMenu {
     var windowUUID: WindowUUID { get }
     func getSiteDetails(for indexPath: IndexPath) -> Site?
@@ -36,7 +37,10 @@ extension LibraryPanelContextMenu {
 
         let viewModel = PhotonActionSheetViewModel(actions: [actions], site: site, modalStyle: .overFullScreen)
 
-        let contextMenu = PhotonActionSheet(viewModel: viewModel, windowUUID: windowUUID)
+        let shouldUsePrivateOverride = (self as? Themeable)?.shouldUsePrivateOverride ?? false
+        let contextMenu = PhotonActionSheet(viewModel: viewModel,
+                                            windowUUID: windowUUID,
+                                            shouldUsePrivateOverride: shouldUsePrivateOverride)
         contextMenu.modalTransitionStyle = .crossDissolve
 
         let generator = UIImpactFeedbackGenerator(style: .heavy)
@@ -91,7 +95,7 @@ extension LibraryPanelContextMenu {
     func getShareAction(site: Site, sourceView: UIView, delegate: LibraryPanelCoordinatorDelegate?) -> PhotonRowActions {
         return SingleActionViewModel(
             title: .ShareContextMenuTitle,
-            iconString: StandardImageIdentifiers.Large.share) { _ in
+            iconString: StandardImageIdentifiers.Large.shareApple) { _ in
                 guard let siteURL = URL(string: site.url) else { return }
                 delegate?.shareLibraryItem(url: siteURL, sourceView: sourceView)
         }.items

@@ -10,16 +10,17 @@ import Glean
 
 @testable import Client
 
+@MainActor
 class PasswordManagerViewModelTests: XCTestCase {
     var viewModel: PasswordManagerViewModel!
     var dataSource: LoginDataSource!
     var mockDelegate: MockLoginViewModelDelegate!
     var mockLoginProvider: MockLoginProvider!
 
-    override func setUp() {
-        super.setUp()
-        DependencyHelperMock().bootstrapDependencies()
-        let mockProfile = MockProfile()
+    override func setUp() async throws {
+        try await super.setUp()
+        let mockProfile = makeProfile()
+        Self.setupTelemetry(with: mockProfile)
         self.mockLoginProvider = MockLoginProvider()
         let searchController = UISearchController()
         self.viewModel = PasswordManagerViewModel(
@@ -30,23 +31,18 @@ class PasswordManagerViewModelTests: XCTestCase {
         )
         self.mockDelegate = MockLoginViewModelDelegate()
         self.viewModel.delegate = mockDelegate
-        self.viewModel.setBreachAlertsManager(MockBreachAlertsClient())
-        // Due to changes allow certain custom pings to implement their own opt-out
-        // independent of Glean, custom pings may need to be registered manually in
-        // tests in order to put them in a state in which they can collect data.
-        Glean.shared.registerPings(GleanMetrics.Pings.shared)
-        Glean.shared.resetGlean(clearStores: true)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        Self.tearDownTelemetry()
         viewModel = nil
         mockLoginProvider = nil
         mockDelegate = nil
-        DependencyHelperMock().reset()
-        super.tearDown()
+        try await super.tearDown()
     }
 
-    func testaddLoginWithEmptyString() {
+    @MainActor
+    func testAddLoginWithEmptyString() async {
         let login = LoginEntry(fromJSONDict: [
                         "hostname": "https://example.com",
                         "formSubmitUrl": "https://example.com",
@@ -58,11 +54,12 @@ class PasswordManagerViewModelTests: XCTestCase {
             XCTAssertEqual(self.mockLoginProvider.addLoginCalledCount, 1)
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 1)
+        await fulfillment(of: [expectation], timeout: 1)
         testCounterMetricRecordingSuccess(metric: GleanMetrics.Logins.saved)
     }
 
-    func testaddLoginWithString() {
+    @MainActor
+    func testAddLoginWithString() async {
         let login = LoginEntry(fromJSONDict: [
                         "hostname": "https://example.com",
                         "formSubmitUrl": "https://example.com",
@@ -74,7 +71,7 @@ class PasswordManagerViewModelTests: XCTestCase {
             XCTAssertEqual(self.mockLoginProvider.addLoginCalledCount, 1)
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 1)
+        await fulfillment(of: [expectation], timeout: 1)
         testCounterMetricRecordingSuccess(metric: GleanMetrics.Logins.saved)
     }
 

@@ -2,31 +2,35 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import SwiftUI
 import Common
+import ComponentLibrary
+import OnboardingKit
+import Shared
 import XCTest
 @testable import Client
 
+@MainActor
 final class LaunchCoordinatorTests: XCTestCase {
     private var profile: MockProfile!
     private var mockRouter: MockRouter!
     private var delegate: MockLaunchCoordinatorDelegate!
     let windowUUID: WindowUUID = .XCTestDefaultUUID
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
+        profile = makeProfile()
         DependencyHelperMock().bootstrapDependencies()
-        profile = MockProfile()
-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
         mockRouter = MockRouter(navigationController: MockNavigationController())
         delegate = MockLaunchCoordinatorDelegate()
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func tearDown() async throws {
+        DependencyHelperMock().reset()
         profile = nil
         mockRouter = nil
         delegate = nil
-        AppContainer.shared.reset()
+        try await super.tearDown()
     }
 
     func testInitialState() {
@@ -35,6 +39,16 @@ final class LaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(mockRouter.presentCalled, 0)
         XCTAssertEqual(mockRouter.setRootViewControllerCalled, 0)
         XCTAssertTrue(subject.childCoordinators.isEmpty)
+    }
+
+    // MARK: - Video Intro
+    func testStart_videoIntro_present() throws {
+        let subject = createSubject(isIphone: true)
+        subject.start(with: .videoIntro)
+
+        XCTAssertEqual(mockRouter.presentCalled, 1)
+        let presentedViewController = try XCTUnwrap(mockRouter.presentedViewController)
+        XCTAssertNotNil(presentedViewController as? OnboardingVideoIntroViewController)
     }
 
     // MARK: - Terms of Service
@@ -46,7 +60,8 @@ final class LaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(mockRouter.presentCalled, 1)
         XCTAssertEqual(mockRouter.setRootViewControllerCalled, 0)
         let presentedViewController = try XCTUnwrap(mockRouter.presentedViewController)
-        XCTAssertNotNil(presentedViewController as? TermsOfServiceViewController)
+        XCTAssertNotNil(presentedViewController as?
+                        PortraitOnlyHostingController<TermsOfUseView<OnboardingKitCardInfoModel>>)
     }
 
     func testStart_termsOfServiceIsIphone_present() throws {
@@ -57,7 +72,8 @@ final class LaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(mockRouter.presentCalled, 1)
         XCTAssertEqual(mockRouter.setRootViewControllerCalled, 0)
         let presentedViewController = try XCTUnwrap(mockRouter.presentedViewController)
-        XCTAssertNotNil(presentedViewController as? TermsOfServiceViewController)
+        XCTAssertNotNil(presentedViewController as?
+                        PortraitOnlyHostingController<TermsOfUseView<OnboardingKitCardInfoModel>>)
     }
 
     // MARK: - Intro
@@ -69,7 +85,8 @@ final class LaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(mockRouter.presentCalled, 1)
         XCTAssertEqual(mockRouter.setRootViewControllerCalled, 0)
         let presentedViewController = try XCTUnwrap(mockRouter.presentedViewController)
-        XCTAssertNotNil(presentedViewController as? IntroViewController)
+        XCTAssertNotNil(presentedViewController as?
+                        PortraitOnlyHostingController<OnboardingView<OnboardingKitCardInfoModel>>)
     }
 
     func testStart_introIsIphone_setRootView() throws {
@@ -80,40 +97,36 @@ final class LaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(mockRouter.presentCalled, 1)
         XCTAssertEqual(mockRouter.setRootViewControllerCalled, 0)
         let pushedVC = try XCTUnwrap(mockRouter.presentedViewController)
-        XCTAssertNotNil(pushedVC as? IntroViewController)
+        XCTAssertNotNil(pushedVC as?
+                        PortraitOnlyHostingController<OnboardingView<OnboardingKitCardInfoModel>>)
     }
 
-    // MARK: - Update
-    func testStart_updateNotIphone_present() throws {
-        let onboardingModel = NimbusOnboardingFeatureLayer().getOnboardingModel(for: .upgrade)
-        let telemetryUtility = OnboardingTelemetryUtility(with: onboardingModel)
-        let viewModel = UpdateViewModel(profile: profile,
-                                        model: onboardingModel,
-                                        telemetryUtility: telemetryUtility,
-                                        windowUUID: windowUUID)
+    func testStart_introNotIphone_presentToModernUI() throws {
+        let introScreenManager = MockIntroScreenManager(isModernEnabled: true)
         let subject = createSubject(isIphone: false)
-        subject.start(with: .update(viewModel: viewModel))
+        subject.start(with: .intro(manager: introScreenManager))
 
         XCTAssertEqual(mockRouter.presentCalled, 1)
         XCTAssertEqual(mockRouter.setRootViewControllerCalled, 0)
         let presentedViewController = try XCTUnwrap(mockRouter.presentedViewController)
-        XCTAssertNotNil(presentedViewController as? UpdateViewController)
+        XCTAssertTrue(
+            presentedViewController is
+            UIHostingController<OnboardingKit.OnboardingView<Client.OnboardingKitCardInfoModel>>
+        )
     }
 
-    func testStart_updateIsIphone_setRootView() throws {
-        let onboardingModel = NimbusOnboardingFeatureLayer().getOnboardingModel(for: .upgrade)
-        let telemetryUtility = OnboardingTelemetryUtility(with: onboardingModel)
-        let viewModel = UpdateViewModel(profile: profile,
-                                        model: onboardingModel,
-                                        telemetryUtility: telemetryUtility,
-                                        windowUUID: windowUUID)
+    func testStart_introIsIphone_setRootViewToModernUI() throws {
+        let introScreenManager = MockIntroScreenManager(isModernEnabled: true)
         let subject = createSubject(isIphone: true)
-        subject.start(with: .update(viewModel: viewModel))
+        subject.start(with: .intro(manager: introScreenManager))
 
         XCTAssertEqual(mockRouter.presentCalled, 1)
         XCTAssertEqual(mockRouter.setRootViewControllerCalled, 0)
         let pushedVC = try XCTUnwrap(mockRouter.presentedViewController)
-        XCTAssertNotNil(pushedVC as? UpdateViewController)
+        XCTAssertTrue(
+            pushedVC is
+            UIHostingController<OnboardingKit.OnboardingView<Client.OnboardingKitCardInfoModel>>
+        )
     }
 
     // MARK: - Default browser
@@ -200,9 +213,58 @@ final class LaunchCoordinatorTests: XCTestCase {
         XCTAssertEqual(delegate.savedDidFinishCoordinator?.id, subject.id)
     }
 
+    // MARK: - Onboarding resume (FXIOS-15647)
+    func testOnboardingResumeCardIndex_newUserWithSavedCard_returnsItsIndex() {
+        let cards = [makeOnboardingCard(name: "a"), makeOnboardingCard(name: "b"), makeOnboardingCard(name: "c")]
+        profile.prefs.setString("b", forKey: PrefsKeys.OnboardingLastCardSeen)
+        let subject = createSubject(isIphone: true)
+
+        XCTAssertEqual(subject.onboardingResumeCardIndex(in: cards, reason: .newUser), 1)
+    }
+
+    func testOnboardingResumeCardIndex_savedCardNoLongerInSet_returnsNil() {
+        let cards = [makeOnboardingCard(name: "a"), makeOnboardingCard(name: "b")]
+        profile.prefs.setString("removed-card", forKey: PrefsKeys.OnboardingLastCardSeen)
+        let subject = createSubject(isIphone: true)
+
+        XCTAssertNil(subject.onboardingResumeCardIndex(in: cards, reason: .newUser))
+    }
+
+    func testOnboardingResumeCardIndex_noSavedCard_returnsNil() {
+        let cards = [makeOnboardingCard(name: "a"), makeOnboardingCard(name: "b")]
+        let subject = createSubject(isIphone: true)
+
+        XCTAssertNil(subject.onboardingResumeCardIndex(in: cards, reason: .newUser))
+    }
+
+    func testOnboardingResumeCardIndex_showTourReason_returnsNil() {
+        let cards = [makeOnboardingCard(name: "a"), makeOnboardingCard(name: "b")]
+        profile.prefs.setString("b", forKey: PrefsKeys.OnboardingLastCardSeen)
+        let subject = createSubject(isIphone: true)
+
+        XCTAssertNil(subject.onboardingResumeCardIndex(in: cards, reason: .showTour))
+    }
+
     // MARK: - Helpers
+    private func makeOnboardingCard(name: String) -> OnboardingKitCardInfoModel {
+        return OnboardingKitCardInfoModel(
+            cardType: .basic,
+            name: name,
+            order: 0,
+            title: "",
+            body: "",
+            buttons: OnboardingButtons<OnboardingActions>(
+                primary: OnboardingButtonInfoModel<OnboardingActions>(title: "", action: .forwardOneCard),
+                secondary: nil
+            ),
+            multipleChoiceButtons: [],
+            a11yIdRoot: "",
+            imageID: ""
+        )
+    }
+
     private func createSubject(isIphone: Bool,
-                               file: StaticString = #file,
+                               file: StaticString = #filePath,
                                line: UInt = #line) -> LaunchCoordinator {
         let subject = LaunchCoordinator(
             router: mockRouter,

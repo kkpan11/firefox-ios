@@ -16,10 +16,13 @@ class SettingTest: BaseTestCase {
     // Smoketest
     // Check for the basic appearance of the Settings Menu
     // https://mozilla.testrail.io/index.php?/cases/view/394976
-    func testCheckSetting() {
+    func testCheckSetting() throws {
         dismissURLBarFocused()
 
         // Navigate to Settings
+        if #unavailable(iOS 16) {
+            throw XCTSkip("Not supported in iOS 15")
+        }
         waitForExistence(app.buttons["Settings"])
         app.buttons["Settings"].tap()
 
@@ -38,14 +41,18 @@ class SettingTest: BaseTestCase {
         // Check Help page, wait until the webpage is shown
         waitForHittable(tablesQuery.staticTexts["Help"])
         tablesQuery.staticTexts["Help"].tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tapBackButton()
 
         // Check Your Rights page, until the text is displayed
         tablesQuery.staticTexts["Terms of Use"].tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tapBackButton()
 
         // Go back to Settings
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tapBackButton()
+
+        if #unavailable(iOS 17) {
+            throw XCTSkip("Not supported in iOS 15 and 16")
+        }
 
         // Check the initial state of the switch values
         let safariSwitch = app.tables.switches["Safari"]
@@ -60,11 +67,11 @@ class SettingTest: BaseTestCase {
         if app.label == "Firefox Focus" {
             waitForExistence(app.staticTexts["Firefox Focus is not enabled."])
             waitForExistence(app.staticTexts["Enable Firefox Focus"])
-            app.navigationBars.buttons.element(boundBy: 0).tap()
+            tapBackButton()
         } else {
             waitForExistence(app.staticTexts["Firefox Klar is not enabled."])
             waitForExistence(app.staticTexts["Enable Firefox Klar"])
-            app.navigationBars.buttons.element(boundBy: 0).tap()
+            tapBackButton()
         }
 
         XCTAssertEqual(app.tables.switches["BlockerToggle.BlockFonts"].value as! String, "0")
@@ -102,7 +109,7 @@ class SettingTest: BaseTestCase {
         XCTAssertEqual(otherContentSwitch.value as! String, "0")
 
         // Go back to settings
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tapBackButton()
 
         // Check navigate to app store review and back
         let reviewCell = app.cells["settingsViewController.rateFocus"]
@@ -229,8 +236,8 @@ class SettingTest: BaseTestCase {
             waitForHittable(app.tables.cells["mozilla.org"].buttons["Delete mozilla.org"])
             app.tables.cells["mozilla.org"].buttons["Delete mozilla.org"].tap()
         }
-        waitForHittable(app.tables.cells["mozilla.org"].buttons["Delete"])
-        app.tables.cells["mozilla.org"].buttons["Delete"].tap()
+        waitForHittable(app.tables.buttons["Delete"])
+        app.tables.buttons["Delete"].tap()
 
         // Finish Editing
         waitForHittable(app.navigationBars.buttons["editButton"])
@@ -256,8 +263,8 @@ class SettingTest: BaseTestCase {
         app.tables.cells["settingsViewController.themeCell"].swipeUp()
 
         // Check that Safari toggle is off, swipe to get to Safari Integration menu
-        waitForExistence(app.otherElements["SIRI SHORTCUTS"])
-        app.otherElements["SIRI SHORTCUTS"].swipeUp()
+        waitForExistence(app.otherElements["SEARCH"])
+        app.otherElements["SEARCH"].swipeUp()
         XCTAssertEqual(app.switches["BlockerToggle.Safari"].value! as! String, "0")
 
         iOS_Settings.activate()
@@ -423,7 +430,7 @@ class SettingTest: BaseTestCase {
         } else {
             app.tables.cells["getfirefox.com"].buttons["Delete getfirefox.com"].tap()
         }
-        app.tables.cells["getfirefox.com"].buttons["Delete"].tap()
+        app.tables.buttons["Delete"].tap()
 
         // Finish Editing
         app.navigationBars.buttons["editButton"].tap()

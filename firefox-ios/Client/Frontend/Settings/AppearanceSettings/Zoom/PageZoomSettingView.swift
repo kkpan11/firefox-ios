@@ -5,16 +5,21 @@
 import Common
 import SwiftUI
 
-struct PageZoomSettingsView: View {
-    private let windowUUID: WindowUUID
+struct PageZoomSettingsView: ThemeableView {
+    let windowUUID: WindowUUID
     @ObservedObject var viewModel: PageZoomSettingsViewModel
-    @Environment(\.themeManager)
-    var themeManager
-    @State private var themeColors: ThemeColourPalette = LightTheme().colors
+    let themeManager: ThemeManager
+    @State var theme: Theme
 
-    private struct UX {
-        static var dividerHeight: CGFloat = 0.7
-        static var sectionPadding: CGFloat = 16
+    var shouldUsePrivateOverride: Bool { return true }
+    var shouldBeInPrivateTheme: Bool { return false }
+
+    private var themeColors: ThemeColourPalette { return theme.colors }
+
+    private enum UX {
+        static let dividerHeight: CGFloat = 0.7
+        static let sectionPadding: CGFloat = 16
+        static let spacing: CGFloat = 24
     }
 
     private var viewBackground: Color {
@@ -29,21 +34,21 @@ struct PageZoomSettingsView: View {
         return themeColors.textPrimary.color
     }
 
-    init(windowUUID: WindowUUID) {
+    init(windowUUID: WindowUUID, themeManager: ThemeManager = AppContainer.shared.resolve()) {
         self.windowUUID = windowUUID
         self.viewModel = PageZoomSettingsViewModel(zoomManager: ZoomPageManager(windowUUID: windowUUID))
-    }
-
-    var theme: Theme {
-        return themeManager.getCurrentTheme(for: windowUUID)
+        self.themeManager = themeManager
+        self.theme = themeManager.resolveTheme(for: windowUUID, privateOverride: false)
     }
 
     var body: some View {
         ScrollView {
             VStack {
                 // Default zoom level section
-                ZoomLevelPickerView(theme: theme, zoomManager: viewModel.zoomManager)
-                    .background(theme.colors.layer5.color)
+                ZoomLevelPickerView(theme: theme,
+                                    zoomManager: viewModel.zoomManager,
+                                    onZoomLevelChanged: viewModel.updateDefaultZoomLevel)
+                .modifier(PaddingWithColorStyle(theme: theme, spacing: UX.spacing, shouldChangeBackgroundColor: true))
 
                 // Specific site zoom level section
                 if !viewModel.domainZoomLevels.isEmpty {
@@ -51,17 +56,12 @@ struct PageZoomSettingsView: View {
                                      domainZoomLevels: $viewModel.domainZoomLevels,
                                      onDelete: viewModel.deleteZoomLevel,
                                      resetDomain: viewModel.resetDomainZoomLevel)
+                    .modifier(PaddingWithColorStyle(theme: theme, spacing: UX.spacing, shouldChangeBackgroundColor: false))
                 }
             }
             .frame(maxWidth: .infinity)
         }
         .background(viewBackground)
-        .onAppear {
-            themeColors = themeManager.getCurrentTheme(for: windowUUID).colors
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .ThemeDidChange)) { notification in
-            guard let uuid = notification.windowUUID, uuid == windowUUID else { return }
-            themeColors = themeManager.getCurrentTheme(for: windowUUID).colors
-        }
+        .listenToThemeChanges(in: self, theme: $theme)
     }
 }

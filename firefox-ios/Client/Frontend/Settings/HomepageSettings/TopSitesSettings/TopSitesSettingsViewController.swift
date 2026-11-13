@@ -6,9 +6,12 @@ import Foundation
 import Common
 import Shared
 
-class TopSitesSettingsViewController: SettingsTableViewController, FeatureFlaggable {
+final class TopSitesSettingsViewController: SettingsTableViewController, UserFeaturePreferenceProvider {
+    private let logger: Logger
+
     // MARK: - Initializers
-    init(windowUUID: WindowUUID) {
+    init(windowUUID: WindowUUID, logger: Logger = DefaultLogger.shared) {
+        self.logger = logger
         super.init(style: .grouped, windowUUID: windowUUID)
 
         self.title = .Settings.Homepage.Shortcuts.ShortcutsPageTitle
@@ -34,32 +37,41 @@ class TopSitesSettingsViewController: SettingsTableViewController, FeatureFlagga
             let toggleSettings = [
                 BoolSetting(
                     prefs: profile.prefs,
-                    theme: themeManager.getCurrentTheme(for: windowUUID),
+                    theme: currentTheme(),
                     prefKey: PrefsKeys.UserFeatureFlagPrefs.TopSiteSection,
                     defaultValue: true,
                     titleText: .Settings.Homepage.Shortcuts.ShortcutsToggle
-                ) { isOn in
+                ) { [windowUUID] isOn in
                     store.dispatch(
                         TopSitesAction(
                             isEnabled: isOn,
-                            windowUUID: self.windowUUID,
+                            windowUUID: windowUUID,
                             actionType: TopSitesActionType.toggleShowSectionSetting
                         )
                     )
                 },
                 BoolSetting(
                     prefs: profile.prefs,
-                    theme: themeManager.getCurrentTheme(for: windowUUID),
-                    prefKey: PrefsKeys.UserFeatureFlagPrefs.SponsoredShortcuts,
-                    defaultValue: true,
+                    theme: currentTheme(),
+                    prefKey: PrefsKeys.FeatureFlags.SponsoredShortcuts,
+                    defaultValue: userPreferences.getPreferenceFor(.hntSponsoredShortcuts),
                     titleText: .Settings.Homepage.Shortcuts.SponsoredShortcutsToggle
-                ) { _ in
+                ) { [windowUUID, weak self] _ in
                     store.dispatch(
                         TopSitesAction(
-                            windowUUID: self.windowUUID,
+                            windowUUID: windowUUID,
                             actionType: TopSitesActionType.toggleShowSponsoredSettings
                         )
                     )
+
+                    // If sponsored shortcuts are turned off, request to delete the user data
+                    let isSponsoredShortcutsEnabled = profile.prefs.boolForKey(
+                        PrefsKeys.FeatureFlags.SponsoredShortcuts
+                    ) ?? true
+                    if !isSponsoredShortcutsEnabled,
+                       let contextId = TelemetryContextualIdentifier.contextId {
+                        self?.deleteUserRequest(contextId: contextId)
+                    }
                 }
             ]
             let toggleSection = SettingSection(title: nil, children: toggleSettings)
@@ -71,6 +83,17 @@ class TopSitesSettingsViewController: SettingsTableViewController, FeatureFlagga
         sections.append(rowSection)
 
         return sections
+    }
+
+    private func deleteUserRequest(contextId: String) {
+        Task {
+            let remover = UnifiedAdsUserDataRemover()
+            do {
+                try await remover.deleteUserData(contextID: contextId)
+            } catch {
+                logger.log("Failed to delete unified ads user data: \(error)", level: .fatal, category: .homepage)
+            }
+        }
     }
 }
 
@@ -102,7 +125,7 @@ extension TopSitesSettingsViewController {
         init(settings: SettingsTableViewController) {
             self.profile = settings.profile
             self.windowUUID = settings.windowUUID
-            let theme = settings.themeManager.getCurrentTheme(for: windowUUID)
+            let theme = settings.currentTheme()
             super.init(
                 title: NSAttributedString(
                     string: .Settings.Homepage.Shortcuts.Rows,

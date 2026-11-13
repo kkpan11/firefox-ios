@@ -4,6 +4,7 @@
 
 import Foundation
 import Shared
+import Common
 import UIKit
 
 enum CFRTelemetryEvent {
@@ -15,14 +16,20 @@ enum CFRTelemetryEvent {
 enum ContextualHintType: String {
     case jumpBackIn = "JumpBackIn"
     case jumpBackInSyncedTab = "JumpBackInSyncedTab"
-    case inactiveTabs = "InactiveTabs"
     case mainMenu = "MainMenu"
-    case dataClearance = "DataClearance"
     case navigation = "Navigation"
-    case toolbarUpdate = "ToolbarUpdate"
+    case relay = "Relay"
+    case summarizeToolbarEntry = "SummarizeToolbarEntry"
 }
 
-class ContextualHintViewProvider: ContextualHintPrefsKeysProvider, SearchBarLocationProvider {
+enum TipKitHintType: String {
+    case googleLens = "GoogleLens"
+}
+
+@MainActor
+class ContextualHintViewProvider: ContextualHintPrefsKeysProvider,
+                                  SearchBarLocationProvider,
+                                  FeatureFlaggable {
     typealias CFRPrefsKeys = PrefsKeys.ContextualHints
     typealias CFRStrings = String.ContextualHints
 
@@ -47,8 +54,7 @@ class ContextualHintViewProvider: ContextualHintPrefsKeysProvider, SearchBarLoca
     func shouldPresentContextualHint() -> Bool {
         let hintEligibilityUtility = ContextualHintEligibilityUtility(
             with: profile,
-            overlayState: overlayState,
-            isToolbarUpdateCFRFeatureEnabled: featureFlags.isFeatureEnabled(.toolbarUpdateHint, checking: .buildOnly)
+            overlayState: overlayState
         )
 
         return hintEligibilityUtility.canPresent(hintType)
@@ -78,17 +84,11 @@ class ContextualHintViewProvider: ContextualHintPrefsKeysProvider, SearchBarLoca
     }
 
     func startTimer() {
-        var timeInterval: TimeInterval = 0
-
-        switch hintType {
-        case .inactiveTabs: timeInterval = 0.25
-        default: timeInterval = 1.25
-        }
-
+        let defaultTimeInterval: TimeInterval = 1.25
         timer?.invalidate()
 
         timer = Timer.scheduledTimer(
-            timeInterval: timeInterval,
+            timeInterval: defaultTimeInterval,
             target: self,
             selector: #selector(presentHint),
             userInfo: nil,
@@ -139,12 +139,14 @@ class ContextualHintViewProvider: ContextualHintPrefsKeysProvider, SearchBarLoca
 
     // MARK: - Present
     @objc
-    private func presentHint() {
-        guard shouldPresentContextualHint() else { return }
+    nonisolated private func presentHint() {
+        ensureMainThread {
+            guard self.shouldPresentContextualHint() else { return }
 
-        timer?.invalidate()
-        timer = nil
-        presentFromTimer?()
-        presentFromTimer = nil
+            self.timer?.invalidate()
+            self.timer = nil
+            self.presentFromTimer?()
+            self.presentFromTimer = nil
+        }
     }
 }

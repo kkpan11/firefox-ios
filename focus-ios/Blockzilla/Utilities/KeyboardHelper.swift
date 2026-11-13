@@ -50,13 +50,13 @@ public protocol KeyboardHelperDelegate: AnyObject {
 /**
  * Convenience class for observing keyboard state.
  */
-public class KeyboardHelper: NSObject {
+public final class KeyboardHelper: NSObject {
     public var currentState: KeyboardState?
 
     private var delegates = [WeakKeyboardDelegate]()
 
     public class var defaultHelper: KeyboardHelper {
-        struct Singleton {
+        enum Singleton {
             static let instance = KeyboardHelper()
         }
         return Singleton.instance
@@ -131,7 +131,7 @@ public class KeyboardHelper: NSObject {
     }
 }
 
-private class WeakKeyboardDelegate {
+private final class WeakKeyboardDelegate {
     weak var delegate: KeyboardHelperDelegate?
 
     init(_ delegate: KeyboardHelperDelegate) {

@@ -19,7 +19,7 @@ public struct ShadowCardViewModel {
 }
 
 public class ShadowCardView: UIView, ThemeApplicable {
-    private struct UX {
+    private enum UX {
         static let verticalPadding: CGFloat = 8
         static let horizontalPadding: CGFloat = 8
         static let cornerRadius: CGFloat = 8
@@ -52,7 +52,7 @@ public class ShadowCardView: UIView, ThemeApplicable {
     }
 
     public func applyTheme(theme: Theme) {
-        rootView.backgroundColor = theme.colors.layer2
+        rootView.backgroundColor = theme.isNova ? theme.colors.layer4 : theme.colors.layer2
         setupShadow(theme: theme)
     }
 

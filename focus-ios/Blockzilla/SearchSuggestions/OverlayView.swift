@@ -17,7 +17,7 @@ protocol OverlayViewDelegate: AnyObject {
     func overlayView(_ overlayView: OverlayView, didTapArrowText text: String)
 }
 
-class IndexedInsetButton: InsetButton {
+final class IndexedInsetButton: InsetButton {
     private var index = 0
     func setIndex(_ i: Int) {
         index = i
@@ -27,7 +27,7 @@ class IndexedInsetButton: InsetButton {
     }
 }
 
-class OverlayView: UIView {
+final class OverlayView: UIView {
     weak var delegate: OverlayViewDelegate?
     private let addToAutocompleteButton = InsetButton()
     private var searchQuery = ""
@@ -229,7 +229,7 @@ class OverlayView: UIView {
         }
     }
 
-    func setUpOverlayButton (button: InsetButton) {
+    func setUpOverlayButton(button: InsetButton) {
         button.titleLabel?.lineBreakMode = .byTruncatingTail
         if UIView.userInterfaceLayoutDirection(for: button.semanticContentAttribute) == .rightToLeft {
             button.contentHorizontalAlignment = .right
@@ -258,17 +258,18 @@ class OverlayView: UIView {
      */
 	func getAttributedButtonTitle(phrase: String, localizedStringFormat: String) -> NSAttributedString {
         let attributedString = NSMutableAttributedString(string: localizedStringFormat, attributes: [.foregroundColor: UIColor.primaryText])
-		let phraseString = NSAttributedString(string: phrase, attributes: [.font: UIFont.body17,
-                                                                           .foregroundColor: UIColor.primaryText])
+		let attributes: [NSAttributedString.Key: Any] = [
+			.font: UIFont.body17,
+			.foregroundColor: UIColor.primaryText
+		]
+		let phraseString = NSAttributedString(string: phrase, attributes: attributes)
 		if phrase != searchQuery {
-			let searchString = NSAttributedString(string: searchQuery, attributes: [.font: UIFont.body17,
-                                                                                    .foregroundColor: UIColor.primaryText])
+			let searchString = NSAttributedString(string: searchQuery, attributes: attributes)
 			// split suggestion into searchQuery and suggested part
 			let suggestion = phrase.components(separatedBy: searchQuery)
 			// suggestion was split
 			if suggestion.count > 1 {
-                let restOfSuggestion = NSAttributedString(string: suggestion[1], attributes: [.font: UIFont.body17,
-                                                                                              .foregroundColor: UIColor.primaryText])
+                let restOfSuggestion = NSAttributedString(string: suggestion[1], attributes: attributes)
 				attributedString.append(searchString)
 				attributedString.append(restOfSuggestion)
 				return attributedString

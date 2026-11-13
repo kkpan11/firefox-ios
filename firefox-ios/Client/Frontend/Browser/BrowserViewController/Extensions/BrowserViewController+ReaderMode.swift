@@ -33,7 +33,7 @@ extension BrowserViewController: ReaderModeStyleViewModelDelegate {
     func readerModeStyleViewModel(_ readerModeStyleViewModel: ReaderModeStyleViewModel,
                                   didConfigureStyle style: ReaderModeStyle,
                                   isUsingUserDefinedColor: Bool) {
-        var newStyle = style
+        let newStyle = style
         if !isUsingUserDefinedColor {
             newStyle.ensurePreferredColorThemeIfNeeded()
         }
@@ -43,8 +43,8 @@ extension BrowserViewController: ReaderModeStyleViewModelDelegate {
         profile.prefs.setObject(encodedStyle, forKey: PrefsKeys.ReaderModeProfileKeyStyle)
 
         // Change the reader mode style on all tabs that have reader mode active
-        for tabIndex in 0..<tabManager.count {
-            guard let tab = tabManager[tabIndex],
+        for tabIndex in 0..<tabManager.tabs.count {
+            guard let tab = tabManager.tabs[safe: tabIndex],
                   let readerMode = tab.getContentScript(name: "ReaderMode") as? ReaderMode,
                   readerMode.state == ReaderModeState.active
             else { continue }
@@ -58,6 +58,12 @@ extension BrowserViewController: ReaderModeStyleViewModelDelegate {
 }
 
 extension BrowserViewController {
+    /// Uses the tab's committed URL instead of `ReaderMode.state`, since that state is updated
+    /// asynchronously by the page script and can still describe the previous page while navigating.
+    func isShowingReaderMode(tab: Tab) -> Bool {
+        return tab.url?.isReaderModeURL ?? false
+    }
+
     func updateReaderModeBar() {
         guard let readerModeBar = readerModeBar else { return }
         readerModeBar.applyTheme(theme: themeManager.getCurrentTheme(for: windowUUID))
@@ -70,9 +76,14 @@ extension BrowserViewController {
             readerModeBar.unread = true
             readerModeBar.added = false
         }
+        readerModeBar.updateContent(
+            shouldShowSummarizerButton: browserViewControllerState?.shouldShowReaderModeBarSummarizerButton ?? false
+        )
     }
 
     func showReaderModeBar(animated: Bool) {
+        var needsConstraintsUpdate = false
+
         if self.readerModeBar == nil {
             let readerModeBar = ReaderModeBarView(frame: CGRect.zero)
             readerModeBar.delegate = self
@@ -83,10 +94,14 @@ extension BrowserViewController {
             }
 
             self.readerModeBar = readerModeBar
+            needsConstraintsUpdate = true
         }
 
         updateReaderModeBar()
-        updateViewConstraints()
+
+        if needsConstraintsUpdate, let readerModeBar {
+            browserLayoutManager.addReaderModeBarHeight(readerModeBar)
+        }
     }
 
     func hideReaderModeBar(animated: Bool) {
@@ -98,7 +113,6 @@ extension BrowserViewController {
             header.removeArrangedView(readerModeBar)
         }
         self.readerModeBar = nil
-        updateViewConstraints()
     }
 
     /// There are two ways we can enable reader mode. In the simplest case we open a URL to our internal reader mode
@@ -113,7 +127,7 @@ extension BrowserViewController {
         let forwardList = webView.backForwardList.forwardList
 
         guard let currentURL = webView.backForwardList.currentItem?.url,
-                let readerModeURL = currentURL.encodeReaderModeURL(WebServer.sharedInstance.baseReaderModeURL())
+              let readerModeURL = currentURL.encodeReaderModeURL(ReaderModeSchemeHandler.currentBaseURL)
         else { return }
         zoomPageHandleEnterReaderMode()
         if backList.count > 1 && backList.last?.url == readerModeURL {
@@ -262,6 +276,13 @@ extension BrowserViewController: ReaderModeBarViewDelegate {
             profile.readingList.deleteRecord(record, completion: nil)
             readerModeBar.added = false
             readerModeBar.unread = false
+        case .summarizer:
+            store.dispatch(
+                GeneralBrowserAction(
+                    windowUUID: windowUUID,
+                    actionType: GeneralBrowserActionType.didTapReaderModeBarSummarizerButton
+                )
+            )
         }
     }
 }

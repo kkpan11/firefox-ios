@@ -6,11 +6,12 @@ import SwiftUI
 import UIKit
 
 protocol InstructionsViewDelegate: AnyObject {
+    @MainActor
     func dismissInstructionsView()
 }
 
 struct InstructionsView: View {
-    private struct UX {
+    private enum UX {
         static let padding: CGFloat = 20
         static let textFont = Font.body
     }

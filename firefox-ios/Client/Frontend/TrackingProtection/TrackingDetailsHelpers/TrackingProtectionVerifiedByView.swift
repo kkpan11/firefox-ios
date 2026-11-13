@@ -7,7 +7,7 @@ import UIKit
 import Common
 
 class TrackingProtectionVerifiedByView: UIView {
-    private struct UX {
+    private enum UX {
         static let labelsVerticalMargins: CGFloat = 11
     }
 
@@ -29,7 +29,7 @@ class TrackingProtectionVerifiedByView: UIView {
 
     // MARK: View Setup
     private func setupView() {
-        layer.cornerRadius = TPMenuUX.UX.viewCornerRadius
+        layer.cornerRadius = TPMenuUX.UX.newStyleCornerRadius
         layer.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         layer.masksToBounds = true
 
@@ -47,9 +47,13 @@ class TrackingProtectionVerifiedByView: UIView {
         verifiedByLabel.text = verifiedBy
     }
 
+    func setupAccessibilityIdentifiers(verifiedByLabelA11yId: String) {
+        verifiedByLabel.accessibilityIdentifier = verifiedByLabelA11yId
+    }
+
     // MARK: ThemeApplicable
     public func applyTheme(theme: Theme) {
-        backgroundColor = theme.colors.layer2
+        backgroundColor = theme.isNova ? theme.colors.layerSurfaceMedium : theme.colors.layer2
         verifiedByLabel.textColor = theme.colors.textPrimary
     }
 }

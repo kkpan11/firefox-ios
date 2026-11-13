@@ -7,7 +7,9 @@ import Foundation
 import UIKit
 
 /// A view controller that manages the hidden Firefox Suggest debug settings.
-class FirefoxSuggestSettingsViewController: SettingsTableViewController, FeatureFlaggable {
+class FirefoxSuggestSettingsViewController: SettingsTableViewController,
+                                            FeatureFlaggable,
+                                            UserFeaturePreferenceProvider {
     init(profile: Profile?, windowUUID: WindowUUID) {
         super.init(style: .grouped, windowUUID: windowUUID)
         self.profile = profile
@@ -19,7 +21,7 @@ class FirefoxSuggestSettingsViewController: SettingsTableViewController, Feature
     }
 
     override func generateSettings() -> [SettingSection] {
-        let theme = themeManager.getCurrentTheme(for: windowUUID)
+        let theme = currentTheme()
         let enabled = BoolSetting(
             with: .firefoxSuggestFeature,
             titleText: NSAttributedString(
@@ -32,7 +34,8 @@ class FirefoxSuggestSettingsViewController: SettingsTableViewController, Feature
         }
 
         var sections: [SettingSection] = [SettingSection(title: nil, children: [enabled])]
-        if featureFlags.isFeatureEnabled(.firefoxSuggestFeature, checking: .buildAndUser) {
+        if featureFlagsProvider.isEnabled(.firefoxSuggestFeature)
+            && userPreferences.getPreferenceFor(.firefoxSuggestFeature) {
             sections.append(SettingSection(
                 title: nil,
                 children: [

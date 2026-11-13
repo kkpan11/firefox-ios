@@ -5,14 +5,14 @@
 import Foundation
 import Shared
 
-open class SQLiteQueue: TabQueue {
+public final class SQLiteQueue: TabQueue {
     let db: BrowserDB
 
     public init(db: BrowserDB) {
         self.db = db
     }
 
-    open func addToQueue(_ tab: ShareItem) -> Success {
+    public func addToQueue(_ tab: ShareItem) -> Success {
         return db.run("INSERT OR IGNORE INTO queue (url) VALUES (?)", withArgs: [tab.url])
     }
 
@@ -21,18 +21,21 @@ open class SQLiteQueue: TabQueue {
         return ShareItem(url: url, title: "")
     }
 
-    open func getQueuedTabs(completion: @escaping ([ShareItem]) -> Void) {
+    public func getQueuedTabs() async throws -> [ShareItem] {
         let sql = "SELECT url FROM queue"
-        let deferredResponse = db.runQuery(sql, args: nil, factory: self.factory) >>== { cursor in
-            return deferMaybe(cursor.asArray())
-        }
-
-        deferredResponse.upon { result in
-            completion(result.successValue ?? [])
+        return try await withCheckedThrowingContinuation { continuation in
+            db.runQuery(sql, args: nil, factory: self.factory).upon { result in
+                switch result {
+                case .success(let cursor):
+                    continuation.resume(returning: cursor.asArray())
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
         }
     }
 
-    open func clearQueuedTabs() -> Success {
+    public func clearQueuedTabs() -> Success {
         return db.run("DELETE FROM queue")
     }
 }

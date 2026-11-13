@@ -23,19 +23,19 @@ import:
         # This message displays on the homescreen, asking the user to set Firefox as the default.
         # It is triggered after a minimum of 4 launches of the app.
         - value:
-            messages:
-              default-browser:
-                surface: new-tab-card
-                style: FALLBACK
-                trigger-if-all:
-                  - SUPPORTS_DEFAULT_BROWSER
-                  - ON_FOURTH_LAUNCH_THIS_YEAR
-                except-if-any:
-                  - I_AM_DEFAULT_BROWSER
-                title: Default Browser/DefaultBrowserCard.Title
-                text: Default Browser/DefaultBrowserCard.Description
-                button-label: Default Browser/DefaultBrowserCard.Button.v2
-                action: MAKE_DEFAULT_BROWSER_WITH_TUTORIAL
+            # messages:
+            # default-browser:
+            #   surface: new-tab-card
+            #   style: FALLBACK
+            #   trigger-if-all:
+            #     - SUPPORTS_DEFAULT_BROWSER
+            #     - ON_FOURTH_LAUNCH_THIS_YEAR
+            #   except-if-any:
+            #     - I_AM_DEFAULT_BROWSER
+            #   title: Default Browser/DefaultBrowserCard.Title
+            #   text: Default Browser/DefaultBrowserCard.Description
+            #   button-label: Default Browser/DefaultBrowserCard.Button.v2
+            #   action: MAKE_DEFAULT_BROWSER_WITH_TUTORIAL
             triggers:
               ON_FOURTH_LAUNCH_THIS_YEAR: "'app_cycle.foreground'|eventSum('Years', 1, 0) > 3"
 
@@ -51,6 +51,7 @@ import:
                 title: Microsurvey/Microsurvey.Prompt.TitleLabel.v127
                 text: "How satisfied are you with your Firefox homepage?" # Should not show this message if this is nil
                 button-label: Microsurvey/Microsurvey.Prompt.Button.v127
+                should-randomize-options: false
                 microsurveyConfig:
                   utm-content: homepage
                   icon: homeLarge
@@ -73,6 +74,7 @@ import:
                   - NEVER
                 text: ResearchSurface/Body.Text.v112
                 button-label: ResearchSurface/PrimaryButton.Label.v112
+                should-randomize-options: false
                 action: OPEN_URL
                 action-params:
                   url: https://www.macrumors.com

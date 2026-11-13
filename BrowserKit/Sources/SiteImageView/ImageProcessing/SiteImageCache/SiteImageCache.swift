@@ -7,7 +7,7 @@ import UIKit
 
 /// Caches images for specific `SiteImageType`s.
 /// - Note: Different `SiteImageType`s will return different images. The type is appended to the cache key.
-protocol SiteImageCache {
+protocol SiteImageCache: Sendable {
     /// Retrieves an image from the cache depending on the type.
     /// - Parameters:
     ///   - cacheKey: The cache key for the image.
@@ -15,6 +15,9 @@ protocol SiteImageCache {
     /// - Returns: The image from the cache.
     /// - Throws: An error if the image cannot be retrieved.
     func getImage(cacheKey: String, type: SiteImageType) async throws -> UIImage
+
+    /// Memory-only lookup that does not suspend. `nil` when the image isn't in the memory cache.
+    nonisolated func getImageFromMemory(cacheKey: String, type: SiteImageType) -> UIImage?
 
     /// Stores an image in the cache.
     /// - Parameters:
@@ -57,7 +60,11 @@ actor DefaultSiteImageCache: SiteImageCache {
         imageCache.clear()
     }
 
-    private func createCacheKey(_ cacheKey: String, forType type: SiteImageType) -> String {
+    nonisolated func getImageFromMemory(cacheKey: String, type: SiteImageType) -> UIImage? {
+        return imageCache.retrieveFromMemory(forKey: createCacheKey(cacheKey, forType: type))
+    }
+
+    nonisolated private func createCacheKey(_ cacheKey: String, forType type: SiteImageType) -> String {
         return "\(cacheKey)-\(type.rawValue)"
     }
 }

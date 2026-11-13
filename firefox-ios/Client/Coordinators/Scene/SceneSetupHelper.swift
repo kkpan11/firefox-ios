@@ -7,6 +7,34 @@ import UIKit
 
 class BrowserWindow: UIWindow {
     let uuid: WindowUUID
+    private var safeAreaDebugGuides: SafeAreaDebugGuides?
+
+    var showsSafeAreaDebugGuides: Bool {
+        get { safeAreaDebugGuides != nil }
+        set {
+            guard newValue != showsSafeAreaDebugGuides else { return }
+            if newValue {
+                let guides = SafeAreaDebugGuides()
+                safeAreaDebugGuides = guides
+                layer.addSublayer(guides.layer)
+                setNeedsLayout()
+            } else {
+                safeAreaDebugGuides?.layer.removeFromSuperlayer()
+                safeAreaDebugGuides = nil
+            }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        safeAreaDebugGuides?.update(in: self)
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        guard safeAreaDebugGuides != nil else { return }
+        setNeedsLayout()
+    }
 
     init(frame: CGRect, uuid: WindowUUID) {
         self.uuid = uuid
@@ -26,11 +54,12 @@ class BrowserWindow: UIWindow {
 }
 
 struct SceneSetupHelper {
+    @MainActor
     func configureWindowFor(_ scene: UIScene,
                             windowUUID: WindowUUID,
                             screenshotServiceDelegate: UIScreenshotServiceDelegate) -> UIWindow {
         guard let windowScene = (scene as? UIWindowScene) else {
-            return BrowserWindow(frame: UIScreen.main.bounds, uuid: windowUUID)
+            return BrowserWindow(frame: .zero, uuid: windowUUID)
         }
 
         windowScene.screenshotService?.delegate = screenshotServiceDelegate
@@ -45,6 +74,7 @@ struct SceneSetupHelper {
         return window
     }
 
+    @MainActor
     func createNavigationController() -> UINavigationController {
         let navigationController = RootNavigationController()
         navigationController.isNavigationBarHidden = true
@@ -55,7 +85,14 @@ struct SceneSetupHelper {
 }
 
 class RootNavigationController: UINavigationController {
-    override var prefersStatusBarHidden: Bool {
-        return true
+    // Forward status bar appearance decisions to the top view controller. By default, UINavigationController ignores
+    // child view controllers’ preferStatusBarHidden values. Overriding this ensures that the top view controller controls
+    // whether the status bar is hidden.
+    override var childForStatusBarHidden: UIViewController? {
+        return topViewController
+    }
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        return topViewController?.supportedInterfaceOrientations ?? .allButUpsideDown
     }
 }
